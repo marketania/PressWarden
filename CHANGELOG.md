@@ -2,6 +2,22 @@
 
 All notable changes to PressWarden are documented here.
 
+## 1.0.4 — 2026-09-06
+
+Detection-quality and output-polish release.
+
+- Database maintenance now treats `CHECK TABLE` responses such as `The storage engine for the table doesn't support check` as informational unsupported operations, not corruption.
+- Unsupported CHECK operations are no longer sent through automatic repair or counted as unresolved/unhealthy tables.
+- Added a high-signal obfuscated remote-loader detector to FAST and FULL scans. It requires packed numeric/string reconstruction plus XOR/`chr`/`ord` decoding plus a browser/network loading sink.
+- Added a regression fixture modeled on the White-Engine behavior: packed/XOR-decoded external script loading must be detected while an ordinary local `wp_enqueue_script()` call remains clean.
+- WordPress.org plugin lifecycle output now shows each exception group's local ACTIVE/INACTIVE state explicitly.
+- Normal WordPress.org listings are labeled `LISTED` instead of the ambiguous `ACTIVE` label.
+- WordPress.org `Plugin not found` / HTTP 404 metadata is normalized to `EXTERNAL` rather than falling into `OTHER`.
+- Must-use plugin wording was cleaned up for provider-neutral output while still identifying recognized ManageWP/Hostinger MU components.
+- Upload guidance now references `./presswarden full` instead of old internal script names.
+- Added a repository `VERSION` file as the single source of truth for CLI/runtime/installer version reporting.
+- Database helper remains compatible with PHP 7.4-era shared hosts.
+
 ## 1.0.3 — 2026-09-06
 
 Shared-host portable installation release.
