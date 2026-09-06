@@ -50,6 +50,7 @@ _pw_update_validate_source() {
   [ -s "$src/VERSION" ] || { printf 'Update validation failed: VERSION is missing.\n' >&2; return 2; }
   [ -s "$src/presswarden" ] || { printf 'Update validation failed: presswarden CLI is missing.\n' >&2; return 2; }
   [ -s "$src/lib/_lib.sh" ] || { printf 'Update validation failed: runtime library is missing.\n' >&2; return 2; }
+  [ -s "$src/lib/intel.sh" ] || { printf 'Update validation failed: threat-intelligence library is missing.\n' >&2; return 2; }
   [ -s "$src/suites/fast.sh" ] || { printf 'Update validation failed: FAST suite is missing.\n' >&2; return 2; }
 
   version=$(tr -d '[:space:]' < "$src/VERSION" 2>/dev/null || true)
@@ -141,6 +142,33 @@ _pw_update_restore_managed() {
   fi
 }
 
+_pw_update_refresh_intel() {
+  local new_version="$1" rc
+
+  # Load the newly-installed intelligence implementation, not the copy that was
+  # present when this command started. Explicit `presswarden update` refreshes
+  # enabled feeds even when automatic scan-time intel updates are disabled.
+  VERSION="$new_version"; export VERSION
+  # shellcheck disable=SC1090
+  if ! . "$PRESSWARDEN_DIR/lib/intel.sh"; then
+    printf '\n⚠ PressWarden program update succeeded, but the new intelligence updater could not be loaded.\n' >&2
+    printf '  Existing threat-intelligence cache was left in place. Run: ./presswarden intel update\n' >&2
+    return 1
+  fi
+
+  printf '\nRefreshing threat intelligence with PressWarden v%s...\n\n' "$new_version"
+  pw_intel_update
+  rc=$?
+  if [ "$rc" -eq 0 ]; then
+    printf '\n✓ Threat intelligence refreshed.\n'
+    return 0
+  fi
+
+  printf '\n⚠ PressWarden program update succeeded, but one or more threat-intelligence feeds did not refresh.\n' >&2
+  printf '  Existing feed caches are preserved on refresh failure. Retry: ./presswarden intel update\n' >&2
+  return 1
+}
+
 pw_update() {
   local tmp archive src backup old_version new_version rc=0
 
@@ -180,7 +208,7 @@ pw_update() {
 
   # Validate the installed result before declaring success. Private data was
   # never part of the replacement set, so rollback also cannot overwrite it.
-  if ! bash -n "$PRESSWARDEN_DIR/presswarden" 2>/dev/null || [ ! -s "$PRESSWARDEN_DIR/lib/_lib.sh" ]; then
+  if ! bash -n "$PRESSWARDEN_DIR/presswarden" 2>/dev/null || [ ! -s "$PRESSWARDEN_DIR/lib/_lib.sh" ] || [ ! -s "$PRESSWARDEN_DIR/lib/intel.sh" ]; then
     printf 'Updated files failed post-install validation; restoring previous code...\n' >&2
     _pw_update_restore_managed "$backup" "$PRESSWARDEN_DIR"
     rm -rf "$tmp"
@@ -189,8 +217,15 @@ pw_update() {
 
   rm -rf "$tmp"
   printf '\n✓ PressWarden updated: %s → %s\n' "$old_version" "$new_version"
-  printf '✓ Preserved: config/config and all runtime state (reports, quarantine, baselines, cache, intel)\n'
+  printf '✓ Preserved: config/config, reports, quarantine, baselines, cache, and existing intel state\n'
   printf '✓ Program:   %s\n' "$PRESSWARDEN_DIR"
+
+  # Intel refresh is intentionally post-commit. A transient feed/network error
+  # must never roll back a successfully validated program update.
+  if ! _pw_update_refresh_intel "$new_version"; then
+    return 1
+  fi
+
   printf '\nRun ./presswarden doctor to verify the environment after a major update.\n'
   return 0
 }
