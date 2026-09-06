@@ -1,0 +1,26 @@
+# PressWarden v1.0.0 configuration
+# Copy to ~/.config/presswarden/config and chmod 600.
+# Environment variables override these values when exported before launch.
+
+# Discovery. Empty means the CLI auto-detects a sensible root or uses the path argument.
+PRESSWARDEN_SCAN_ROOT=""
+PRESSWARDEN_DISCOVERY_DEPTH=8
+PRESSWARDEN_EXCLUDE=""
+PRESSWARDEN_DISCOVERY_CACHE_TTL=300
+
+# Interaction / reports
+PRESSWARDEN_INTERACTIVE=1
+PRESSWARDEN_ADMINS_CHECK=""
+PRESSWARDEN_OUTPUT_JSON=1
+# PRESSWARDEN_NOCOLOR=1
+
+# Network/cache tuning
+PRESSWARDEN_PHP_RELEASE_CACHE_TTL=86400
+PRESSWARDEN_WPORG_PLUGIN_CACHE_TTL=86400
+PRESSWARDEN_HOSTINGER_PHP_CACHE_TTL=21600
+PRESSWARDEN_HOSTINGER_API_JOBS=3
+
+# Optional vulnerability/provider integrations. Never commit real tokens.
+WPSCAN_API_TOKEN=""
+HOSTINGER_API_TOKEN=""
+PRESSWARDEN_HOSTINGER_USERNAME=""

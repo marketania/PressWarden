@@ -1,0 +1,13 @@
+# Never commit local secrets/runtime state
+config/config
+.env
+*.token
+*.secret
+reports/
+cache/
+quarantine/
+*.log
+*.tmp
+.DS_Store
+.idea/
+.vscode/
