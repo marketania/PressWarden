@@ -40,6 +40,10 @@ jobs:
         shell: bash
         run: bash tests/baseline.sh
 
+      - name: Incident response safety
+        shell: bash
+        run: bash tests/incident.sh
+
       - name: Threat-intel behavior regressions
         shell: bash
         run: bash tests/threat-intel-regressions.sh
