@@ -92,7 +92,7 @@ pw_intel_status() {
 }
 
 pw_intel_update() {
-  local dir tmp dest token ok=0 failed=0
+  local dir tmp dest token ok=0 failed=0 cisa_source=''
   dir=$(pw_intel_state_dir); mkdir -p "$dir" || return 2; chmod 700 "$dir" 2>/dev/null || true
   printf 'Updating PressWarden threat intelligence...\n\n'
 
@@ -100,9 +100,18 @@ pw_intel_update() {
     dest="$dir/cisa-kev.json"; tmp="$dir/.cisa-kev.$$.tmp"
     printf '  CISA KEV                '
     if _pw_intel_fetch 'https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json' "$tmp" && _pw_intel_json_valid "$tmp" cisa; then
-      mv -f "$tmp" "$dest"; chmod 600 "$dest" 2>/dev/null || true; printf '✓ %s records\n' "$(_pw_intel_count_json "$dest" cisa)"; ok=$((ok+1))
+      cisa_source='cisa.gov'
     else
-      rm -f "$tmp"; printf '⚠ update failed; existing cache preserved\n'; failed=$((failed+1))
+      rm -f "$tmp"
+      tmp="$dir/.cisa-kev.$$.tmp"
+      if _pw_intel_fetch 'https://raw.githubusercontent.com/cisagov/kev-data/develop/known_exploited_vulnerabilities.json' "$tmp" && _pw_intel_json_valid "$tmp" cisa; then
+        cisa_source='CISA GitHub mirror'
+      fi
+    fi
+    if [ -n "$cisa_source" ]; then
+      mv -f "$tmp" "$dest"; chmod 600 "$dest" 2>/dev/null || true; printf '✓ %s records • %s\n' "$(_pw_intel_count_json "$dest" cisa)" "$cisa_source"; ok=$((ok+1))
+    else
+      rm -f "$tmp"; printf '⚠ update failed from canonical feed and official GitHub mirror; existing cache preserved\n'; failed=$((failed+1))
     fi
   fi
 
