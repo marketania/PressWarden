@@ -43,7 +43,7 @@ PressWarden v$VERSION
 Usage:
   ./presswarden fast [path]          High-signal routine audit
   ./presswarden full [path]          Comprehensive audit + deep integrity/DB maintenance
-  ./presswarden db [path]            Database-only audit + maintenance
+  ./presswarden db [path]            Database security/malware audit + maintenance
   ./presswarden scan [path]          Alias for fast
   ./presswarden intel ACTION [path]  status|update|scan threat intelligence
   ./presswarden cleanup [path]       Logs + disposable metadata/inode cleanup
@@ -106,6 +106,7 @@ show_config() {
   printf 'WPScan API:         %s\n' "$([ -n "${WPSCAN_API_TOKEN:-}" ] && printf configured || printf 'not configured')"
   printf 'Wordfence Intel:    %s\n' "$([ -n "${PRESSWARDEN_WORDFENCE_TOKEN:-}" ] && printf configured || printf 'not configured')"
   printf 'Patchstack Intel:   %s\n' "$([ -n "${PRESSWARDEN_PATCHSTACK_KEY:-}" ] && printf configured || printf 'not configured')"
+  printf 'External YARA:      %s\n' "$([ -n "${PRESSWARDEN_YARA_RULES:-}" ] && printf configured || printf 'not configured')"
   printf 'Hostinger API:      %s\n' "$([ -n "${HOSTINGER_API_TOKEN:-}" ] && printf 'configured (optional)' || printf 'not configured')"
   printf 'State directory:    %s\n' "$state"
   printf 'Cache directory:    %s\n' "$cache"
