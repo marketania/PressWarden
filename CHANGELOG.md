@@ -17,11 +17,16 @@ Threat Intelligence release.
 - Added local CISA Known Exploited Vulnerabilities caching and CVE correlation for known-exploitation prioritization, with the official CISA GitHub mirror as a fallback for feed retrieval.
 - Added optional Wordfence Intelligence V3 dual-feed support using a user-supplied `PRESSWARDEN_WORDFENCE_TOKEN`: the Scanner Feed drives installed-version detection, while matching Production Feed UUIDs add CVE/CVSS enrichment when available.
 - Wordfence matches are correlated with CISA KEV; known-exploited CVEs are elevated. Feed data remains local and is not redistributed by PressWarden.
+- Large Wordfence feeds are validated and matched with a bounded-memory streaming JSON reader instead of whole-feed `json_decode()`, keeping intelligence usable on constrained shared hosting.
+- Wordfence Scanner matching retains only installed-version matches in memory; Production is streamed only to enrich matching vulnerability UUIDs.
+- Wordfence match output now shows available source/copyright attribution metadata supplied by the feed.
 - Added optional Patchstack product/version intelligence using `PRESSWARDEN_PATCHSTACK_KEY`, with fleet-wide component/version deduplication, local TTL caching, configurable lookup caps, exploitation awareness, and CISA KEV correlation.
+- Authenticated Wordfence and Patchstack requests no longer place API credentials in external process command arguments; curl authentication is supplied through private stdin configuration with a PHP HTTPS fallback.
 - Existing WPScan vulnerability intelligence remains optional/user-token driven.
 - External vulnerability feeds are not bundled or redistributed with PressWarden; downloaded data stays in the user's local intelligence directory.
 - `presswarden doctor` now reports native-rule counts, campaign references, CISA KEV cache state, separate Wordfence Scanner/Production cache state, Patchstack readiness, and the intelligence data path.
 - Added malicious + benign regression fixtures for White-Engine-style XOR loaders, decoded JavaScript loaders, NDSW/SocGholish markers, dynamic PHP execution, and credential exfiltration.
+- Added CI coverage for PHP helper syntax, authenticated-intel credential handling, and a 12+ MB synthetic Wordfence feed parsed/matched under a 12 MB PHP memory limit.
 - Extended portable-mode tests to verify local threat-intelligence paths and `intel status` behavior.
 
 ## 1.0.4 — 2026-09-06
