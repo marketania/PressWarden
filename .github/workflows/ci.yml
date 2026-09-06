@@ -40,6 +40,10 @@ jobs:
         shell: bash
         run: bash tests/db-threat-intel.sh
 
+      - name: JavaScript threat-intel fixtures
+        shell: bash
+        run: bash tests/js-threat-intel.sh
+
       - name: Threat-intel credential safety
         shell: bash
         run: bash tests/intel-security.sh
