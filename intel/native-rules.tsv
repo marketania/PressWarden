@@ -1,16 +1,23 @@
-# id	category	severity	confidence	name	owner
-PW-PHP-001	php	critical	high	Request-controlled execution sink	phpquick/phpdeep
-PW-PHP-002	php	critical	high	Remote payload write then include	phpquick/phpdeep
-PW-PHP-003	php	critical	high	Packed XOR browser loader	php-obfuscated-loader
-PW-PHP-004	php	high	high	Dynamic request-controlled function execution	php-threat-intel
-PW-PHP-005	php	critical	high	Credential capture with remote exfiltration	php-threat-intel
-PW-JS-001	javascript	high	high	Decoded JavaScript passed to eval or Function	js-threat-intel
-PW-JS-002	javascript	critical	high	Obfuscated remote script-loader injection	js-threat-intel
-PW-JS-003	javascript	high	medium	Hidden remote iframe with obfuscation	js-threat-intel
-PW-DB-001	database	critical	high	Obfuscated external script stored in WordPress data	wp-db-malware
-PW-DB-002	database	high	high	Hidden external iframe stored in WordPress data	wp-db-malware
-PW-DB-003	database	review	medium	Executable JavaScript stored in site-wide option	wp-db-malware
-PW-CAMP-001	campaign	critical	high	WP-VCD request/password controller marker	wp-campaign-intel
-PW-CAMP-002	campaign	critical	high	SocGholish NDSW/NDSJ/NDSX marker	wp-campaign-intel
-PW-CAMP-003	campaign	high	medium	Balada-style character-code remote script injection	js-threat-intel/wp-db-malware
-PW-CAMP-004	campaign	high	medium	Sign1-style obfuscated database JavaScript injection	wp-db-malware
+# id	category	severity	confidence	type	name	owner	source	reference	date_added	date_updated
+PW-PHP-001	php	critical	high	behavior	Request-controlled execution sink	phpquick/phpdeep	PressWarden native	intel/SOURCES.md	2026-09-06	2026-09-06
+PW-PHP-002	php	critical	high	behavior	Remote payload write then include	phpquick/phpdeep	PressWarden native	intel/SOURCES.md	2026-09-06	2026-09-06
+PW-PHP-003	php	critical	high	behavior	Packed XOR browser loader	php-obfuscated-loader	PressWarden native	intel/SOURCES.md	2026-09-06	2026-09-06
+PW-PHP-004	php	high	high	behavior	Dynamic request-controlled function execution	php-threat-intel	PressWarden native	intel/SOURCES.md	2026-09-06	2026-09-06
+PW-PHP-005	php	critical	high	behavior	Credential capture with remote exfiltration	php-threat-intel	PressWarden native	intel/SOURCES.md	2026-09-06	2026-09-06
+PW-PHP-006	php	high	high	behavior	Admin-targeted remote browser payload	php-threat-intel	Sucuri research	https://blog.sucuri.net/2026/01/fake-browser-updates-targeting-wordpress-administrators-via-malicious-plugin.html	2026-09-06	2026-09-06
+PW-JS-001	javascript	high	high	behavior	Decoded JavaScript passed to eval or Function	js-threat-intel	PressWarden native	intel/SOURCES.md	2026-09-06	2026-09-06
+PW-JS-002	javascript	critical	high	behavior	Obfuscated remote script-loader injection	js-threat-intel	Sucuri research	intel/SOURCES.md	2026-09-06	2026-09-06
+PW-JS-003	javascript	high	medium	behavior	Hidden remote iframe with obfuscation	js-threat-intel	Sucuri research	intel/SOURCES.md	2026-09-06	2026-09-06
+PW-JS-004	javascript	high	high	behavior	Decoded browser redirect target	js-threat-intel	Sucuri research	intel/SOURCES.md	2026-09-06	2026-09-06
+PW-DB-001	database	critical	high	behavior	Obfuscated external script stored in WordPress data	wp-db-malware	Sucuri research	intel/SOURCES.md	2026-09-06	2026-09-06
+PW-DB-002	database	high	high	behavior	Hidden external iframe stored in WordPress data	wp-db-malware	PressWarden native	intel/SOURCES.md	2026-09-06	2026-09-06
+PW-DB-003	database	review	medium	behavior	Executable JavaScript stored in site-wide option	wp-db-malware	PressWarden native	intel/SOURCES.md	2026-09-06	2026-09-06
+PW-DB-004	database	high	medium	behavior	Suspicious administrator persistence identity	wp-db-malware	Sucuri research	intel/SOURCES.md	2026-09-06	2026-09-06
+PW-DB-005	database	high	medium	behavior	PHP execution payload persisted in WordPress data	wp-db-malware	Sucuri research	https://blog.sucuri.net/2026/06/wordpress-pbn-plugin-drops-dual-webshells-via-database-injection.html	2026-09-06	2026-09-06
+PW-DB-006	database	review	medium	behavior	Encoded redirect/reinfector option persistence	wp-db-malware	Sucuri research	intel/SOURCES.md	2026-09-06	2026-09-06
+PW-CAMP-001	campaign	critical	high	campaign	WP-VCD request/password controller marker	wp-campaign-intel	Wordfence research	https://www.wordfence.com/blog/2019/11/wp-vcd-the-malware-you-install-on-your-own-sites/	2026-09-06	2026-09-06
+PW-CAMP-002	campaign	critical	high	campaign	SocGholish NDSW/NDSJ/NDSX marker	wp-campaign-intel	Sucuri research	https://sucuri.net/reports/2023-hacked-website-report/	2026-09-06	2026-09-06
+PW-CAMP-003	campaign	high	medium	campaign	Balada-style character-code remote script injection	js-threat-intel/wp-db-malware	Sucuri research	intel/SOURCES.md	2026-09-06	2026-09-06
+PW-CAMP-004	campaign	high	medium	campaign	Sign1-style obfuscated database JavaScript injection	wp-db-malware	Sucuri research	intel/SOURCES.md	2026-09-06	2026-09-06
+PW-CAMP-005	campaign	high	medium	campaign	VexTrio-style obfuscated redirect persistence	js-threat-intel/wp-db-malware	Sucuri research	https://blog.sucuri.net/2024/04/javascript-malware-switches-to-server-side-redirects-dns-txt-records-tds.html	2026-09-06	2026-09-06
+PW-CAMP-006	campaign	high	medium	campaign	Admin-targeted fake browser update payload	php-threat-intel	Sucuri research	https://blog.sucuri.net/2026/01/fake-browser-updates-targeting-wordpress-administrators-via-malicious-plugin.html	2026-09-06	2026-09-06
