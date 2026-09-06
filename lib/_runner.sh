@@ -23,6 +23,20 @@ admin_check_wanted() {
   return 1
 }
 
+uploads_deep_check_wanted() {
+  case "${PRESSWARDEN_UPLOADS_DEEP:-}" in
+    1|y|Y|yes|YES|run|RUN|true|TRUE) return 0 ;;
+    0|n|N|no|NO|skip|SKIP|false|FALSE) return 1 ;;
+  esac
+  if [ "${PRESSWARDEN_INTERACTIVE:-1}" != "0" ] && [ -r /dev/tty ] && [ -w /dev/tty ]; then
+    local ans=''
+    printf '\n  %s%sSLOW CHECK%s  Scan image-like uploads for embedded PHP? This can take a long time on large fleets. %s[y/N]%s: ' "$B" "$Y" "$X" "$B" "$X" > /dev/tty
+    IFS= read -r ans < /dev/tty || ans=''
+    case "$ans" in y|Y|yes|YES) return 0 ;; *) return 1 ;; esac
+  fi
+  return 1
+}
+
 _run_checks() {
   local c rc n out seen="" start elapsed force="" total_checks=0 current_check=0
   [ -n "$C" ] && force=1
@@ -46,6 +60,10 @@ _run_checks() {
     seen="$seen $c"; current_check=$((current_check+1))
     if [ "$c" = "wp-access" ] && ! admin_check_wanted; then
       printf '\n%s%s▶ SKIP%s %s[%s/%s]%s  %s%s%s  %s(administrator checks skipped)%s\n' "$B" "$Y" "$X" "$B" "$current_check" "$total_checks" "$X" "$B" "$c" "$X" "$D" "$X"
+      printf '%s|0|skipped|0\n' "$c" >> "$RES"; continue
+    fi
+    if [ "$c" = "wp-uploads-deep" ] && ! uploads_deep_check_wanted; then
+      printf '\n%s%s▶ SKIP%s %s[%s/%s]%s  %s%s%s  %s(slow image-content scan skipped)%s\n' "$B" "$Y" "$X" "$B" "$current_check" "$total_checks" "$X" "$B" "$c" "$X" "$D" "$X"
       printf '%s|0|skipped|0\n' "$c" >> "$RES"; continue
     fi
     if [ ! -x "$PRESSWARDEN_DIR/checks/$c.sh" ]; then
