@@ -7,11 +7,16 @@ All notable changes to PressWarden are documented here.
 Threat Intelligence release.
 
 - Added a native threat-intelligence knowledge base with stable `PW-*` rule IDs, severity/confidence metadata, campaign references, and source documentation.
+- Formalized native rule metadata with category, behavioral/campaign family, severity, confidence, type, owning detector, added/updated dates, source, reference, and human-readable name while keeping executable detection logic in tested checks/helpers rather than a loose signature DSL.
 - Added `./presswarden intel status`, `./presswarden intel update`, and `./presswarden intel scan`.
 - Added `php-threat-intel` for request-controlled dynamic function execution and high-confidence credential-capture/exfiltration chains.
 - Added `js-threat-intel` for decoded JavaScript execution, obfuscated dynamic script-loader injection, and hidden external iframe behavior.
+- Tightened `PW-JS-002` so decoder + DOM insertion is not sufficient by itself: the rule also requires literal remote-source evidence, a Base64 literal that decodes to HTTP(S), or a sufficiently large packed `String.fromCharCode` source reconstruction.
 - Added `wp-db-malware` to inspect prefiltered `wp_options` and `wp_posts` rows for high-signal stored browser malware without printing stored payload content.
+- Expanded database intelligence with `PW-DB-004` for long-hex option keys containing strict Base64 remote-node lists across multiple hosts, and `PW-DB-005` for a high-specificity rogue-administrator identity pattern using the same long hexadecimal value as both login and email local-part plus administrator capability.
+- `./presswarden db` now includes targeted database malware/persistence intelligence before the existing conservative CHECK/repair/optimize/verify workflow.
 - Added `wp-campaign-intel` with high-specificity WP-VCD and SocGholish/NDSW markers plus separate behavior-based coverage for Balada/Sign1-like techniques.
+- Added VexTrio/redirect-reinfector campaign context for the new database persistence behaviors while deliberately keeping attribution confidence separate from behavioral-rule confidence.
 - FAST now includes native PHP/JavaScript/campaign/database threat intelligence with no API keys required.
 - Added a focused `intel` suite for threat investigation without the entire FULL maintenance sweep.
 - Added local CISA Known Exploited Vulnerabilities caching and CVE correlation for known-exploitation prioritization, with the official CISA GitHub mirror as a fallback for feed retrieval.
@@ -22,11 +27,12 @@ Threat Intelligence release.
 - Wordfence match output now shows available source/copyright attribution metadata supplied by the feed.
 - Added optional Patchstack product/version intelligence using `PRESSWARDEN_PATCHSTACK_KEY`, with fleet-wide component/version deduplication, local TTL caching, configurable lookup caps, exploitation awareness, and CISA KEV correlation.
 - Authenticated Wordfence and Patchstack requests no longer place API credentials in external process command arguments; curl authentication is supplied through private stdin configuration with a PHP HTTPS fallback.
-- Existing WPScan vulnerability intelligence remains optional/user-token driven.
+- Existing WPScan vulnerability intelligence remains optional/user-token driven and is not persisted into a PressWarden vulnerability cache.
+- Documented current external-intelligence boundaries: CISA's official KEV repository is CC0; Wordfence feed use remains subject to its current attribution/terms; Patchstack access remains plan/API controlled; WPScan vulnerability data is not bundled or cached by PressWarden.
 - External vulnerability feeds are not bundled or redistributed with PressWarden; downloaded data stays in the user's local intelligence directory.
-- `presswarden doctor` now reports native-rule counts, campaign references, CISA KEV cache state, separate Wordfence Scanner/Production cache state, Patchstack readiness, and the intelligence data path.
-- Added malicious + benign regression fixtures for White-Engine-style XOR loaders, decoded JavaScript loaders, NDSW/SocGholish markers, dynamic PHP execution, and credential exfiltration.
-- Added CI coverage for PHP helper syntax, authenticated-intel credential handling, and a 12+ MB synthetic Wordfence feed parsed/matched under a 12 MB PHP memory limit.
+- `presswarden doctor` now reports native behavior-rule counts separately from campaign references, plus CISA KEV cache state, separate Wordfence Scanner/Production cache state, Patchstack readiness, and the intelligence data path.
+- Added malicious + benign regression fixtures for White-Engine-style XOR loaders, decoded JavaScript loaders, NDSW/SocGholish markers, dynamic PHP execution, credential exfiltration, database persistence, rogue-admin behavior, and decoded local JavaScript loaders that must remain clean.
+- Added CI coverage for PHP helper syntax, database/JavaScript threat-intel fixtures, authenticated-intel credential handling, stale command-name regressions, and a 12+ MB synthetic Wordfence feed parsed/matched under a 12 MB PHP memory limit.
 - Extended portable-mode tests to verify local threat-intelligence paths and `intel status` behavior.
 
 ## 1.0.4 — 2026-09-06
