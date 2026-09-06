@@ -1,5 +1,6 @@
 # id	family	confidence	primary_evidence	source
-PW-CAMP-001	WP-VCD	high	wp_vcd controller marker + request action/password behavior	Wordfence research
+PW-CAMP-001	WP-VCD	high	wp_vcd literal or high-specificity WP-VCD controller hash	Wordfence research
 PW-CAMP-002	SocGholish / NDSW	high	ndsw/ndsj/ndsx/zqxw/zqxq/qwzx JavaScript markers	Sucuri research
 PW-CAMP-003	Balada Injector	medium	String.fromCharCode-style obfuscation + injected remote script loader	Sucuri research
 PW-CAMP-004	Sign1	medium	obfuscated JavaScript persisted in WordPress options/widgets/custom-code storage	Sucuri research
+PW-CAMP-005	VexTrio / redirect reinfector	medium	long-hex WordPress option with encoded remote-node list and/or matching hex rogue-admin identity	Sucuri research
