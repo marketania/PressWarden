@@ -35,8 +35,13 @@ fetch_archive() {
   tar -xzf "$ARCHIVE" -C "$TMP/src" --strip-components=1
 }
 
+version_from_dir() {
+  local dir="$1"
+  cat "$dir/VERSION" 2>/dev/null || printf 'unknown'
+}
+
 install_portable() {
-  local target
+  local target version
   if [ -n "${PRESSWARDEN_INSTALL_DIR:-}" ]; then
     target="$PRESSWARDEN_INSTALL_DIR"
   elif [ -f "$PWD/.presswarden-portable" ] && [ -f "$PWD/presswarden" ]; then
@@ -62,9 +67,10 @@ install_portable() {
 
   chmod +x "$target/presswarden" "$target/install.sh" "$target/uninstall.sh" "$target"/checks/*.sh "$target"/suites/*.sh
   chmod 600 "$target/config/config" 2>/dev/null || true
+  version=$(version_from_dir "$target")
 
   logo
-  printf '\n%s\n' 'PressWarden v1.0.3 • portable shared-host install'
+  printf '\nPressWarden v%s • portable shared-host install\n' "$version"
   printf '%s\n\n' 'No bin directory, symlink, PATH change, or system-wide access required.'
   printf '✓ Installed: %s\n' "$target"
   printf '✓ Config:    %s/config/config\n' "$target"
@@ -80,6 +86,7 @@ install_user() {
   local prefix="${PRESSWARDEN_PREFIX:-${XDG_DATA_HOME:-$HOME/.local/share}/presswarden}"
   local bin_dir="${PRESSWARDEN_BIN_DIR:-$HOME/.local/bin}"
   local config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/presswarden"
+  local version
 
   mkdir -p "$bin_dir" "$config_dir"
   fetch_archive
@@ -93,9 +100,10 @@ install_user() {
     cp "$prefix/config/config.example" "$config_dir/config"
     chmod 600 "$config_dir/config" 2>/dev/null || true
   fi
+  version=$(version_from_dir "$prefix")
 
   logo
-  printf '\nPressWarden v1.0.3 • user install\n\n'
+  printf '\nPressWarden v%s • user install\n\n' "$version"
   printf '✓ CLI:    %s/presswarden\n' "$bin_dir"
   printf '✓ Config: %s/config\n' "$config_dir"
   printf '\nNext steps:\n  presswarden doctor\n  presswarden fast\n'
