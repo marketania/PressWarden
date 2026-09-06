@@ -11,7 +11,7 @@ main() {
   for c in bash php find grep sed awk sort stat cksum; do
     if command -v "$c" >/dev/null 2>&1; then ok "$c" "$(command -v "$c")"; else issue "$c" "required command not found"; missing=$((missing+1)); fi
   done
-  for c in wp curl wget jq; do
+  for c in wp curl wget jq yara; do
     if command -v "$c" >/dev/null 2>&1; then ok "$c" "$(command -v "$c")"; else printf '    %sℹ OPTIONAL%s  %-8s not found\n' "$C" "$X" "$c"; fi
   done
 
@@ -57,6 +57,17 @@ main() {
     printf '    %sℹ WORDFENCE%s   not configured (optional)\n' "$C" "$X"
   fi
   [ -n "${PRESSWARDEN_PATCHSTACK_KEY:-}" ] && ok "PATCHSTACK" "API key configured • lookups are deduplicated/cached" || printf '    %sℹ PATCHSTACK%s  not configured (optional)\n' "$C" "$X"
+  if [ -n "${PRESSWARDEN_YARA_RULES:-}" ]; then
+    if command -v yara >/dev/null 2>&1 && [ -r "$PRESSWARDEN_YARA_RULES" ] && [ -f "$PRESSWARDEN_YARA_RULES" ]; then
+      ok "YARA" "external rules configured • $PRESSWARDEN_YARA_RULES"
+    elif ! command -v yara >/dev/null 2>&1; then
+      flag "YARA" "PRESSWARDEN_YARA_RULES is configured but yara is not installed"
+    else
+      flag "YARA" "configured external rules file is not readable: $PRESSWARDEN_YARA_RULES"
+    fi
+  else
+    printf '    %sℹ YARA%s        not configured (optional external rules only)\n' "$C" "$X"
+  fi
   printf '    %sℹ INTEL DIR%s   %s\n' "$C" "$X" "$idir"
 
   sec "Optional integrations" "tokens are never printed"
