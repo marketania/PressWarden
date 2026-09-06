@@ -1,5 +1,7 @@
 # Never commit local secrets/runtime state
 config/config
+var/
+.presswarden-portable
 .env
 *.token
 *.secret
