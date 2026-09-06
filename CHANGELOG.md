@@ -2,6 +2,20 @@
 
 All notable changes to PressWarden are documented here.
 
+## 1.0.3 — 2026-09-06
+
+Shared-host portable installation release.
+
+- Quick install now defaults to a local `./PressWarden/` directory instead of requiring `~/.local/bin`, symlinks, or PATH changes.
+- Portable installs run directly with `./presswarden`.
+- Portable config is stored at `PressWarden/config/config`.
+- Portable reports, cache, and quarantine are stored under `PressWarden/var/`.
+- Portable mode automatically scans outside the program directory, preferring a sibling `domains/` or `public_html/` tree when present.
+- Rerunning the installer updates an existing portable installation in place while preserving its private config and runtime data.
+- Installer output now includes the PressWarden ASCII logo plus concise next-step commands.
+- `uninstall.sh` recognizes portable mode and can remove the self-contained PressWarden directory.
+- The previous user-level `~/.local/bin/presswarden` installation remains available through `PRESSWARDEN_INSTALL_MODE=user`.
+
 ## 1.0.2 — 2026-09-06
 
 Fleet-lock usability release.
