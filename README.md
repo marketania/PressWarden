@@ -12,7 +12,7 @@
 
 **Fleet-scale WordPress security auditing from the shell.**
 
-![Version](https://img.shields.io/badge/version-1.0.3-2ea44f)
+![Version](https://img.shields.io/badge/version-1.0.4-2ea44f)
 ![Bash](https://img.shields.io/badge/bash-4%2B-4EAA25?logo=gnubash&logoColor=white)
 ![WordPress](https://img.shields.io/badge/WordPress-security-21759B?logo=wordpress&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Linux-FCC624?logo=linux&logoColor=black)
@@ -41,8 +41,9 @@ PressWarden indexes the filesystem first, validates every WordPress root it find
 - 🔒 **Fleet lock / unlock** — toggle `DISALLOW_FILE_MODS` across every discovered WordPress installation with one confirmation.
 - 🧬 **Official integrity checks** — WordPress core manifests and WordPress.org plugin checksums.
 - 🛡️ **Context-aware malware detection** — compound evidence instead of noisy single-token regexes.
+- 🧩 **Obfuscated remote-loader detection** — catches packed byte arrays + XOR/`chr`/`ord` decoding that secretly feeds remote browser/network loading sinks.
 - 🧱 **Hardening review** — `.htaccess`, `wp-config.php`, PHP runtime, permissions, salts, debug settings, file modification controls, uploads, and persistence.
-- 🗄️ **Database auditing + maintenance** — URL posture, registration, privilege/isolation visibility, salt reuse, table checks, conditional repair, optimize, verify.
+- 🗄️ **Database auditing + maintenance** — distinguishes genuine table problems from storage engines that simply do not support `CHECK TABLE`.
 - 🧹 **Inode cleanup** — quarantine-backed cleanup for logs and disposable OS/development metadata.
 - ♻️ **Safe remediation** — destructive actions are interactive and backed up to quarantine first.
 - 📦 **Cached discovery and network metadata** — avoids repeating expensive work across large fleets.
@@ -52,7 +53,7 @@ PressWarden indexes the filesystem first, validates every WordPress root it find
 
 ## Quick install — shared hosting / recommended
 
-PressWarden v1.0.3 defaults to a **portable local installation**. It creates a `PressWarden` folder in your current directory and does **not** require access to `~/.local/bin`, symlinks, PATH changes, sudo, or system directories.
+PressWarden v1.0.4 defaults to a **portable local installation**. It creates a `PressWarden` folder in your current directory and does **not** require access to `~/.local/bin`, symlinks, PATH changes, sudo, or system directories.
 
 From your hosting account's home directory:
 
@@ -81,7 +82,7 @@ cd PressWarden
 The installer prints the PressWarden logo plus a short confirmation and next steps:
 
 ```text
-PressWarden v1.0.3 • portable shared-host install
+PressWarden v1.0.4 • portable shared-host install
 No bin directory, symlink, PATH change, or system-wide access required.
 
 ✓ Installed: /home/example/PressWarden
@@ -134,7 +135,7 @@ var/quarantine/
 
 ### Optional user-wide install
 
-Users who do have a writable `~/.local/bin` and prefer a global-style command can still install the older user-level layout:
+Users who do have a writable `~/.local/bin` and prefer a global-style command can still install the user-level layout:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/marketania/PressWarden/main/install.sh \
@@ -148,6 +149,7 @@ That mode installs the `presswarden` command into `~/.local/bin`. Portable mode 
 ```text
 PressWarden/
 ├── presswarden             # run this as ./presswarden
+├── VERSION                 # release version used by CLI/runtime/installer
 ├── config/
 │   ├── config.example
 │   └── config              # private local settings / API tokens
@@ -265,7 +267,7 @@ The older `file-mods status|on|off` interface remains available for compatibilit
 
 | Profile | Intended use | Major checks |
 |---|---|---|
-| `fast` | Frequent fleet audit | persistence, targeted permissions, `.htaccess`, config, PHP runtime, high-signal PHP malware, sensitive files/cleanup, admin opt-in, core, root anomalies, plugins, themes, uploads, lean DB |
+| `fast` | Frequent fleet audit | persistence, targeted permissions, `.htaccess`, config, PHP runtime, high-signal PHP malware, obfuscated remote loaders, sensitive files/cleanup, admin opt-in, core, root anomalies, plugins, themes, uploads, lean DB |
 | `full` | Periodic assurance / incident response | everything in fast plus recursive permissions, deep PHP, WordPress.org plugin checksums, **optional slow image-extension payload inspection**, full DB isolation checks, DB maintenance |
 | `db` | Database-only | database security/isolation plus conditional repair, optimize, final verification |
 | `cleanup` | Inode housekeeping | public logs and conservative disposable metadata candidates, quarantine-backed |
@@ -295,25 +297,29 @@ Non-interactive FULL runs skip the slow scan unless `PRESSWARDEN_UPLOADS_DEEP=1`
 
 ## What PressWarden checks
 
-### WordPress integrity
+### WordPress integrity and plugin provenance
 
 - Official WordPress core checksum verification keyed by exact version + locale.
 - Cached official manifests for fleet-scale speed.
 - Detects `MISMATCH`, `MISSING`, and core `EXTRA` files.
 - Interactive targeted remediation can restore only failed core files from the exact official package and quarantine/remove extras.
 - WordPress.org plugin checksum verification with severity-aware classification of code mismatches, static-asset deviations, added files, and harmless OS metadata.
+- WordPress.org lifecycle/provenance output distinguishes `LISTED`, `CLOSED`, `DISABLED`, `EXTERNAL`, and unexpected API states.
+- Lifecycle exception rows explicitly show the local plugin state (`ACTIVE`, `INACTIVE`, etc.) so WordPress.org status cannot be confused with local activation.
+- A plugin with no WordPress.org match is classified `EXTERNAL`; this is provenance metadata, not a safety verdict.
 
 ### Malware and persistence
 
 - Request-controlled execution and filesystem primitives.
 - Obfuscation/decode chains and dangerous sinks.
+- **Packed/XOR remote loaders:** numeric/string packing plus `chr()`/`ord()` XOR decoding plus `wp_enqueue_script()`/`wp_enqueue_style()` or remote network sinks.
 - Remote payload write/include behavior.
 - Webshell primitives using compound evidence.
 - Known redirect/cloaking campaign markers.
 - Suspicious PHP in uploads with context-aware handling of legitimate plugin-generated files.
 - Host cron/startup/SSH persistence indicators.
 
-PressWarden intentionally avoids treating ordinary `base64_decode()`, `chmod(0777)`, upload handlers, importers, or plugin cache files as malware by location/token alone.
+PressWarden intentionally avoids treating ordinary `base64_decode()`, `chmod(0777)`, XOR, numeric arrays, upload handlers, importers, or `wp_enqueue_script()` as malware by themselves. The higher-risk rules require corroborating behavior.
 
 ### Configuration and hardening
 
@@ -326,6 +332,17 @@ PressWarden intentionally avoids treating ordinary `base64_decode()`, `chmod(077
 - dangerous `.htaccess` directives and cloaked redirects.
 - nested `.htaccess` handling that understands nested WordPress roots.
 - Wordfence WAF `auto_prepend_file` validation and consolidation instead of false-positive spam.
+
+### Database maintenance
+
+PressWarden's native SQL maintenance path differentiates an unhealthy table from a storage engine that does not implement a maintenance command.
+
+- `CHECK TABLE` is evaluated first.
+- Tables with a genuine supported-table failure can enter the repair path.
+- Responses such as `The storage engine for the table doesn't support check` are labeled **SKIPPED / informational**, not corruption.
+- Unsupported CHECK operations are not sent to repair and do not increase the unresolved-table count.
+- `OPTIMIZE TABLE` and a final verification still run when appropriate.
+- PressWarden never runs `wp db clean`, `reset`, `drop`, `import`, or similar destructive database commands as part of maintenance.
 
 ### PHP environment
 
@@ -402,7 +419,7 @@ PressWarden defaults to **detect first, explain, then remediate interactively**.
 - Critical WordPress files are protected from generic delete prompts.
 - Core repair backs up the existing file, retrieves the exact official package, verifies the source file against the official manifest, replaces only the failed path, and verifies the result again.
 - Fleet lock/unlock creates a backup of each site's `wp-config.php` and restores the original automatically if WP-CLI fails.
-- Database maintenance checks tables first and only attempts repair where appropriate before final verification.
+- Database maintenance repairs only genuine table-check failures; unsupported storage-engine maintenance operations are informational.
 - Slow or optional inventory checks can be skipped explicitly rather than silently consuming hours on large fleets.
 - Non-interactive execution can disable remediation prompts with `PRESSWARDEN_INTERACTIVE=0`.
 
@@ -435,6 +452,7 @@ PressWarden is intended to scale beyond a single site:
 - Official core manifests are fetched once per version/locale and reused.
 - WordPress.org plugin lifecycle metadata is deduplicated by slug and cached.
 - Plugin checksums batch verification per site rather than launching WP-CLI for each plugin.
+- Obfuscated-loader detection prefilters remote-loading PHP before applying the more expensive static behavior validator.
 - Heavy/deep scans are separated from the frequent `fast` profile.
 - The slow upload image-content scan is opt-in during FULL runs.
 - No Bash process substitution is used in runtime scanner paths, avoiding `/dev/fd` issues seen on restricted shared hosting.
@@ -451,7 +469,7 @@ Core requirements:
 
 - Linux/Unix-like shell environment
 - Bash 4+
-- PHP CLI
+- PHP CLI (PHP 7.4+ recommended)
 - standard GNU/POSIX utilities (`find`, `grep`, `sed`, `awk`, `sort`, `stat`)
 
 Strongly recommended:
@@ -482,6 +500,7 @@ Because portable mode is self-contained, removing it also removes its local conf
 
 ```text
 PressWarden/
+├── VERSION                  # single source of truth for the release version
 ├── presswarden              # single user-facing CLI
 ├── install.sh               # curl/wget installer
 ├── uninstall.sh
