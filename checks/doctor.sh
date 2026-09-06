@@ -40,16 +40,19 @@ main() {
   fi
 
   sec "Threat intelligence" "native knowledge base + local external-feed cache"
-  local idir native_count campaign_count kev_count wf_count
+  local idir native_count campaign_count kev_count wf_scan_count wf_prod_count
   idir=$(pw_intel_state_dir)
   native_count=$(grep -cvE '^[[:space:]]*(#|$)' "$PRESSWARDEN_DIR/intel/native-rules.tsv" 2>/dev/null || true); native_count=${native_count:-0}
   campaign_count=$(grep -cvE '^[[:space:]]*(#|$)' "$PRESSWARDEN_DIR/intel/campaigns.tsv" 2>/dev/null || true); campaign_count=${campaign_count:-0}
-  kev_count=$(_pw_intel_count_json "$idir/cisa-kev.json" cisa); wf_count=$(_pw_intel_count_json "$idir/wordfence-production.json" wordfence)
+  kev_count=$(_pw_intel_count_json "$idir/cisa-kev.json" cisa)
+  wf_scan_count=$(_pw_intel_count_json "$idir/wordfence-scanner.json" wordfence)
+  wf_prod_count=$(_pw_intel_count_json "$idir/wordfence-production.json" wordfence)
   [ "$native_count" -gt 0 ] && ok "NATIVE RULES" "$native_count behavior/campaign rules available" || flag "NATIVE RULES" "native rule catalog missing or empty"
   printf '    %sℹ CAMPAIGNS%s   %s documented campaign family reference(s)\n' "$C" "$X" "$campaign_count"
   if [ "$kev_count" -gt 0 ]; then ok "CISA KEV" "$kev_count record(s) cached • $(_pw_intel_age "$idir/cisa-kev.json")"; else printf '    %sℹ CISA KEV%s    not cached yet • run ./presswarden intel update\n' "$C" "$X"; fi
-  if [ -n "${PRESSWARDEN_WORDFENCE_TOKEN:-}" ]; then
-    if [ "$wf_count" -gt 0 ]; then ok "WORDFENCE" "$wf_count vulnerability record(s) cached • $(_pw_intel_age "$idir/wordfence-production.json")"; else printf '    %sℹ WORDFENCE%s   token configured; feed not cached yet • run ./presswarden intel update\n' "$C" "$X"; fi
+  if [ -n "${PRESSWARDEN_WORDFENCE_TOKEN:-}" ] || [ "$wf_scan_count" -gt 0 ] || [ "$wf_prod_count" -gt 0 ]; then
+    if [ "$wf_scan_count" -gt 0 ]; then ok "WF SCANNER" "$wf_scan_count detection record(s) cached • $(_pw_intel_age "$idir/wordfence-scanner.json")"; else printf '    %sℹ WF SCANNER%s  not cached yet • run ./presswarden intel update\n' "$C" "$X"; fi
+    if [ "$wf_prod_count" -gt 0 ]; then ok "WF PROD" "$wf_prod_count enrichment record(s) cached • $(_pw_intel_age "$idir/wordfence-production.json")"; else printf '    %sℹ WF PROD%s     not cached yet • detection can still use Scanner feed\n' "$C" "$X"; fi
   else
     printf '    %sℹ WORDFENCE%s   not configured (optional)\n' "$C" "$X"
   fi
