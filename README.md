@@ -12,7 +12,7 @@
 
 **Fleet-scale WordPress security auditing from the shell.**
 
-![Version](https://img.shields.io/badge/version-1.0.2-2ea44f)
+![Version](https://img.shields.io/badge/version-1.0.3-2ea44f)
 ![Bash](https://img.shields.io/badge/bash-4%2B-4EAA25?logo=gnubash&logoColor=white)
 ![WordPress](https://img.shields.io/badge/WordPress-security-21759B?logo=wordpress&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Linux-FCC624?logo=linux&logoColor=black)
@@ -36,6 +36,7 @@ PressWarden indexes the filesystem first, validates every WordPress root it find
 ## Highlights
 
 - 🔎 **Host-agnostic WordPress discovery** — finds validated WordPress roots and nested installations below any directory.
+- 🧳 **Shared-host portable mode** — installs completely inside one local `PressWarden/` folder with no PATH or bin-directory requirement.
 - ⚡ **Fast + Full profiles** — frequent high-signal audits or deeper incident-response sweeps.
 - 🔒 **Fleet lock / unlock** — toggle `DISALLOW_FILE_MODS` across every discovered WordPress installation with one confirmation.
 - 🧬 **Official integrity checks** — WordPress core manifests and WordPress.org plugin checksums.
@@ -49,87 +50,203 @@ PressWarden indexes the filesystem first, validates every WordPress root it find
 - 🔌 **Optional integrations** — WPScan vulnerability intelligence and Hostinger PHP-details enrichment.
 - 🩺 **Doctor preflight** — validates dependencies, configuration, discovery, integration state, and portability.
 
-## Quick install
+## Quick install — shared hosting / recommended
+
+PressWarden v1.0.3 defaults to a **portable local installation**. It creates a `PressWarden` folder in your current directory and does **not** require access to `~/.local/bin`, symlinks, PATH changes, sudo, or system directories.
+
+From your hosting account's home directory:
 
 ### curl
 
 ```bash
+cd ~
 curl -fsSL https://raw.githubusercontent.com/marketania/PressWarden/main/install.sh | bash
 ```
 
 ### wget
 
 ```bash
+cd ~
 wget -qO- https://raw.githubusercontent.com/marketania/PressWarden/main/install.sh | bash
 ```
 
-For security-sensitive environments, download and inspect the installer before executing it:
+Then:
 
 ```bash
+cd PressWarden
+./presswarden doctor
+./presswarden fast
+```
+
+The installer prints the PressWarden logo plus a short confirmation and next steps:
+
+```text
+PressWarden v1.0.3 • portable shared-host install
+No bin directory, symlink, PATH change, or system-wide access required.
+
+✓ Installed: /home/example/PressWarden
+✓ Config:    /home/example/PressWarden/config/config
+✓ Data:      /home/example/PressWarden/var
+
+Next steps:
+  cd /home/example/PressWarden
+  ./presswarden doctor
+  ./presswarden fast
+
+Tip: use ./presswarden full for the comprehensive audit.
+```
+
+### Inspect before installing
+
+For security-sensitive environments:
+
+```bash
+cd ~
 curl -fsSLO https://raw.githubusercontent.com/marketania/PressWarden/main/install.sh
 less install.sh
 bash install.sh
 ```
 
-The installer places the project in `~/.local/share/presswarden`, creates `~/.local/bin/presswarden`, and creates a private config at `~/.config/presswarden/config` if one does not already exist.
+### Custom local folder
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/marketania/PressWarden/main/install.sh \
+  | PRESSWARDEN_INSTALL_DIR="$HOME/tools/PressWarden" bash
+```
+
+### Update an existing portable installation
+
+You can rerun the installer from inside the existing folder:
+
+```bash
+cd ~/PressWarden
+curl -fsSL https://raw.githubusercontent.com/marketania/PressWarden/main/install.sh | bash
+```
+
+PressWarden updates the program files while preserving:
+
+```text
+config/config
+var/reports/
+var/cache/
+var/quarantine/
+```
+
+### Optional user-wide install
+
+Users who do have a writable `~/.local/bin` and prefer a global-style command can still install the older user-level layout:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/marketania/PressWarden/main/install.sh \
+  | PRESSWARDEN_INSTALL_MODE=user bash
+```
+
+That mode installs the `presswarden` command into `~/.local/bin`. Portable mode remains the default and recommended option for shared hosting.
+
+## Portable folder layout
+
+```text
+PressWarden/
+├── presswarden             # run this as ./presswarden
+├── config/
+│   ├── config.example
+│   └── config              # private local settings / API tokens
+├── var/
+│   ├── reports/
+│   ├── cache/
+│   └── quarantine/
+├── checks/
+├── lib/
+├── suites/
+└── ...
+```
+
+Everything required by a portable installation stays inside that folder.
 
 ## Usage
 
+Portable/shared-host installation:
+
 ```bash
-presswarden doctor
-presswarden fast
-presswarden full
-presswarden db
-presswarden cleanup
-presswarden lock-status
-presswarden lock
-presswarden unlock
+cd PressWarden
+./presswarden doctor
+./presswarden fast
+./presswarden full
+./presswarden db
+./presswarden cleanup
+./presswarden lock-status
+./presswarden lock
+./presswarden unlock
 ```
 
 Scan an explicit filesystem tree:
 
 ```bash
-presswarden fast /var/www
-presswarden full /home/example/websites
-presswarden fast ~/domains
-presswarden lock ~/domains
+./presswarden fast /var/www
+./presswarden full /home/example/websites
+./presswarden fast ~/domains
+./presswarden lock ~/domains
 ```
 
 Other commands:
 
 ```bash
-presswarden config
-presswarden file-mods status
-presswarden file-mods on
-presswarden file-mods off
-presswarden --version
+./presswarden config
+./presswarden file-mods status
+./presswarden file-mods on
+./presswarden file-mods off
+./presswarden --version
 ```
+
+If PressWarden was installed in user mode, omit `./` and use `presswarden ...` normally.
+
+### Automatic root selection
+
+If no path is supplied, portable PressWarden deliberately scans **outside its own program folder**:
+
+1. `PRESSWARDEN_SCAN_ROOT` from config/environment
+2. `../domains` when present
+3. `../public_html` when present
+4. the parent directory containing `PressWarden/`
+
+This matches common shared-hosting layouts such as:
+
+```text
+/home/account/
+├── PressWarden/
+└── domains/
+    ├── site-one.com/public_html/
+    ├── site-two.com/public_html/
+    └── ...
+```
+
+User-wide mode retains the broader `~/domains` → `~/public_html` → `/var/www` → current-directory fallback.
 
 ### Fleet locking with DISALLOW_FILE_MODS
 
 PressWarden can lock WordPress dashboard file modifications across every discovered installation by setting the WordPress `DISALLOW_FILE_MODS` constant.
 
 ```bash
-presswarden lock-status
-presswarden lock
-presswarden unlock
+./presswarden lock-status
+./presswarden lock
+./presswarden unlock
 ```
 
-`presswarden lock` sets:
+`./presswarden lock` sets:
 
 ```php
 define('DISALLOW_FILE_MODS', true);
 ```
 
-This prevents WordPress administrators from installing, updating, or editing plugins/themes from inside WordPress while the site is locked. `presswarden unlock` sets the constant to `false` so normal update/maintenance workflows can run again.
+This prevents WordPress administrators from installing, updating, or editing plugins/themes from inside WordPress while the site is locked. `./presswarden unlock` sets the constant to `false` so normal update/maintenance workflows can run again.
 
 A common maintenance workflow is:
 
 ```bash
-presswarden unlock
+./presswarden unlock
 # run trusted WordPress/plugin/theme updates
-presswarden lock
-presswarden lock-status
+./presswarden lock
+./presswarden lock-status
 ```
 
 For a large fleet, `lock` and `unlock` ask for **one fleet-level confirmation** and then apply the setting to all discovered WordPress installations. Before each `wp-config.php` change, PressWarden creates a quarantine-backed copy. If WP-CLI fails to update a site, the original config is restored automatically.
@@ -137,24 +254,12 @@ For a large fleet, `lock` and `unlock` ask for **one fleet-level confirmation** 
 For automation, explicitly disable interactive mode:
 
 ```bash
-PRESSWARDEN_INTERACTIVE=0 presswarden unlock /var/www
+PRESSWARDEN_INTERACTIVE=0 ./presswarden unlock /var/www
 # maintenance automation
-PRESSWARDEN_INTERACTIVE=0 presswarden lock /var/www
+PRESSWARDEN_INTERACTIVE=0 ./presswarden lock /var/www
 ```
 
-The older `presswarden file-mods status|on|off` interface remains available for compatibility and advanced workflows.
-
-### Automatic root selection
-
-If no path is supplied, PressWarden resolves the scan root in this order:
-
-1. `PRESSWARDEN_SCAN_ROOT` from config/environment
-2. `~/domains` when present
-3. `~/public_html` when present
-4. `/var/www` when present
-5. current working directory
-
-This preserves fast behavior on common shared-hosting accounts while remaining provider-independent.
+The older `file-mods status|on|off` interface remains available for compatibility and advanced workflows.
 
 ## Scan profiles
 
@@ -183,10 +288,10 @@ PRESSWARDEN_UPLOADS_DEEP=0   # always skip in FULL
 Or force it for a single run:
 
 ```bash
-PRESSWARDEN_UPLOADS_DEEP=1 presswarden full
+PRESSWARDEN_UPLOADS_DEEP=1 ./presswarden full
 ```
 
-Non-interactive FULL runs skip the slow scan unless `PRESSWARDEN_UPLOADS_DEEP=1` is explicitly set. The check can still be run directly by advanced users from `checks/wp-uploads-deep.sh`.
+Non-interactive FULL runs skip the slow scan unless `PRESSWARDEN_UPLOADS_DEEP=1` is explicitly set.
 
 ## What PressWarden checks
 
@@ -196,7 +301,7 @@ Non-interactive FULL runs skip the slow scan unless `PRESSWARDEN_UPLOADS_DEEP=1`
 - Cached official manifests for fleet-scale speed.
 - Detects `MISMATCH`, `MISSING`, and core `EXTRA` files.
 - Interactive targeted remediation can restore only failed core files from the exact official package and quarantine/remove extras.
-- WordPress.org plugin checksum verification in the full suite with severity-aware classification of code mismatches, static-asset deviations, added files, and harmless OS metadata.
+- WordPress.org plugin checksum verification with severity-aware classification of code mismatches, static-asset deviations, added files, and harmless OS metadata.
 
 ### Malware and persistence
 
@@ -235,11 +340,17 @@ PressWarden audits the CLI/runtime layer for:
 - error/log disclosure defaults
 - session hardening defaults
 
-On Hostinger, an **optional** API integration can additionally compare exact per-domain PHP versions, every hPanel PHP option (memory, upload/post limits, execution/input limits, timezone and all returned settings), and extension drift. Without a Hostinger token, core PressWarden functionality is unchanged.
+On Hostinger, an **optional** API integration can additionally compare exact per-domain PHP versions, hPanel PHP options, and extension drift. Without a Hostinger token, core PressWarden functionality is unchanged.
 
 ## Configuration
 
-Edit:
+Portable installation:
+
+```text
+PressWarden/config/config
+```
+
+User-wide installation:
 
 ```text
 ~/.config/presswarden/config
@@ -263,16 +374,12 @@ HOSTINGER_API_TOKEN=""
 PRESSWARDEN_HOSTINGER_USERNAME=""
 ```
 
-Exported environment variables override the same setting in the persistent config, which makes one-shot commands such as this reliable:
-
-```bash
-PRESSWARDEN_UPLOADS_DEEP=1 presswarden full
-```
+Exported environment variables override the same setting in the persistent config.
 
 If the file contains API credentials:
 
 ```bash
-chmod 600 ~/.config/presswarden/config
+chmod 600 config/config
 ```
 
 **Never commit real API tokens.** PressWarden never intentionally prints configured token values.
@@ -281,13 +388,7 @@ chmod 600 ~/.config/presswarden/config
 
 ### WPScan
 
-Set `WPSCAN_API_TOKEN` to enable vulnerability intelligence:
-
-```bash
-WPSCAN_API_TOKEN="your-token"
-```
-
-The local integrity/malware scanner does not require WPScan.
+Set `WPSCAN_API_TOKEN` to enable vulnerability intelligence. The local integrity/malware scanner does not require WPScan.
 
 ### Hostinger
 
@@ -305,23 +406,25 @@ PressWarden defaults to **detect first, explain, then remediate interactively**.
 - Slow or optional inventory checks can be skipped explicitly rather than silently consuming hours on large fleets.
 - Non-interactive execution can disable remediation prompts with `PRESSWARDEN_INTERACTIVE=0`.
 
-Quarantine and reports live outside the program directory under the user's state directory (normally `~/.local/state/presswarden`).
+## Reports and runtime data
 
-## Reports
-
-Console logs and JSON summaries are written under:
+Portable mode keeps runtime data inside the PressWarden directory:
 
 ```text
-~/.local/state/presswarden/reports/
+PressWarden/var/reports/
+PressWarden/var/cache/
+PressWarden/var/quarantine/
 ```
 
-Example:
+Example reports:
 
 ```text
 fast-20260906-120000.log
 fast-20260906-120000-summary.json
 fast-latest-summary.json
 ```
+
+User-wide mode uses the normal XDG/home state directories instead.
 
 ## Performance design
 
@@ -339,7 +442,7 @@ PressWarden is intended to scale beyond a single site:
 Force discovery refresh:
 
 ```bash
-PRESSWARDEN_DISCOVERY_REFRESH=1 presswarden fast
+PRESSWARDEN_DISCOVERY_REFRESH=1 ./presswarden fast
 ```
 
 ## Requirements
@@ -356,32 +459,38 @@ Strongly recommended:
 - WP-CLI
 - `curl` or `wget`
 
-Run:
+Start with:
 
 ```bash
-presswarden doctor
+./presswarden doctor
 ```
 
 for an environment-specific readiness report.
 
+## Uninstall
+
+Portable install:
+
+```bash
+cd PressWarden
+./uninstall.sh
+```
+
+Because portable mode is self-contained, removing it also removes its local config and runtime data after confirmation.
+
 ## Project layout
 
 ```text
-presswarden/
+PressWarden/
 ├── presswarden              # single user-facing CLI
 ├── install.sh               # curl/wget installer
 ├── uninstall.sh
 ├── config/
 │   └── config.example
 ├── lib/
-│   ├── _lib.sh              # discovery, UI, cache, safety helpers
-│   └── _runner.sh           # suite driver + JSON summaries
 ├── suites/
-│   ├── fast.sh
-│   ├── full.sh
-│   └── db.sh
-├── checks/                  # focused WordPress/PHP/filesystem/DB scanners
-├── integrations/            # optional provider/intelligence documentation/adapters
+├── checks/
+├── integrations/
 └── tests/
 ```
 
