@@ -8,15 +8,32 @@ SCAN_WHY="A fleet may repeat the same plugin/version dozens of times; deduplicat
 
 _urlencode() { php -r 'echo rawurlencode($argv[1]);' "$1" 2>/dev/null; }
 _cache_fresh() { local f="$1" ttl="$2" now mt; [ -s "$f" ] || return 1; now=$(date +%s); mt=$(stat -c %Y "$f" 2>/dev/null || printf 0); case "$mt" in ''|*[!0-9]*) return 1 ;; esac; [ $((now-mt)) -lt "$ttl" ]; }
+_ps_curl_escape() { local v="$1"; v=${v//\\/\\\\}; v=${v//\"/\\\"}; printf '%s' "$v"; }
 _fetch_patchstack() {
-  local type="$1" slug="$2" ver="$3" out="$4" key="$5" url es ev http rc
+  local type="$1" slug="$2" ver="$3" out="$4" key="$5" url es ev http rc escaped
   es=$(_urlencode "$slug"); ev=$(_urlencode "$ver"); url="https://patchstack.com/database/api/v2/product/$type/$es/$ev"
   if command -v curl >/dev/null 2>&1; then
-    http=$(curl -sS -L --connect-timeout 10 --max-time 45 -H "PSKey: $key" -A 'PressWarden/1.1 Threat Intelligence' -o "$out" -w '%{http_code}' "$url" 2>/dev/null); rc=$?
+    escaped=$(_ps_curl_escape "PSKey: $key")
+    # Feed authentication through curl stdin config so the API key is not
+    # visible in the curl process command line on shared hosting.
+    http=$(printf 'header = "%s"\n' "$escaped" | \
+      curl -sS -L --config - --connect-timeout 10 --max-time 45 \
+        -A 'PressWarden/1.1 Threat Intelligence' -o "$out" -w '%{http_code}' "$url" 2>/dev/null); rc=$?
     [ "$rc" -eq 0 ] || return 2; printf '%s' "$http"; return 0
   fi
-  if command -v wget >/dev/null 2>&1; then
-    wget -q -T 45 --header="PSKey: $key" -O "$out" "$url" 2>/dev/null || return 2; printf '200'; return 0
+  if command -v php >/dev/null 2>&1; then
+    # PHP fallback also receives the key over stdin rather than argv/env.
+    printf '%s' "$key" | php -r '
+      $key=trim(stream_get_contents(STDIN));$url=$argv[1];$out=$argv[2];
+      $ctx=stream_context_create(["http"=>[
+        "method"=>"GET","timeout"=>45,"ignore_errors"=>true,
+        "header"=>"PSKey: ".$key."\r\nUser-Agent: PressWarden/1.1 Threat Intelligence\r\n"
+      ]]);
+      $data=@file_get_contents($url,false,$ctx);$status=0;
+      foreach((array)($http_response_header??[]) as $h){if(preg_match("~^HTTP/\\S+\\s+(\\d{3})~i",$h,$m))$status=(int)$m[1];}
+      if($data===false&&$status===0)exit(2);if(@file_put_contents($out,(string)$data)===false)exit(3);echo $status?:200;
+    ' "$url" "$out" || return 2
+    return 0
   fi
   return 127
 }
@@ -79,7 +96,7 @@ main() {
       [ -n "$kind" ] || continue; vulns=$((vulns+1))
       printf '\n      %s%s%s PATCHSTACK%s  %s%s%s v%s  %s(local: %s)%s\n' "$B" "$([ "$kind" = ALERT ] && printf "$R" || printf "$Y")" "$([ "$kind" = ALERT ] && printf '✖' || printf '⚠')" "$X" "$B" "$slug" "$X" "$ver" "$D" "${statuses:-unknown}" "$X"
       printf '        %s\n' "$title"; [ -n "$cve" ] && printf '        CVE: %s%s%s' "$B" "$cve" "$X"; [ "$iskev" = 1 ] && printf '  %s• CISA KEV%s' "$R" "$X"; [ "$exploited" = 1 ] && printf '  %s• Patchstack observed exploitation%s' "$R" "$X"; printf '\n'
-      [ -n "$score" ] && printf '        CVSS: %s\n' "$score"; [ -n "$fixed" ] && printf '        Fixed: %s\n' "$fixed"; _meta_field 12 WEBSITES "$sites"
+      [ -n "$score" ] && printf '        CVSS: %s\n' "$score"; [ -n "$fixed" ] && printf '        Fixed: %s\n' "$fixed"; [ -n "$url" ] && printf '        %sSOURCE%s  %s\n' "$D" "$X" "$url"; _meta_field 12 WEBSITES "$sites"
       if [ "$kind" = ALERT ]; then ALERTS=$((ALERTS+1)); TOTAL=$((TOTAL+1)); else REVIEWS=$((REVIEWS+1)); TOTAL=$((TOTAL+1)); fi
     done < "$pf"
     rm -f "$pf"
