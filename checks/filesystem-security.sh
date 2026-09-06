@@ -9,7 +9,7 @@ main() {
   banner
   local L s f mode modes target owner d
 
-  sec "World-writable high-risk paths" "FAST targeted scan • full recursion is runall-full only"
+  sec "World-writable high-risk paths" "FAST targeted scan • exhaustive recursion is FULL-only"
   L=$(tmpf); : > "$L"
   for s in "${SCAN_ROOTS[@]}"; do
     # Document-root objects and critical WordPress roots/files.
@@ -38,7 +38,7 @@ main() {
   sort -u "$L" -o "$L"
   report "$L" issue "no world-writable high-risk paths"
   note "FAST checks root/critical files, plugin/theme/MU roots (depth 2), and upload directories (depth 2)."
-  note "runall-full uses filesystem-security-full.sh for exhaustive recursive permission coverage."
+  note "./presswarden full uses filesystem-security-full for exhaustive recursive permission coverage."
 
   sec "wp-config.php permission posture" "inventory; group/other WRITE is an alert"
   L=$(tmpf); modes=$(tmpf); : > "$L"; : > "$modes"
@@ -56,7 +56,7 @@ main() {
   note "Mode inventory is informational; shared-host ownership models vary, so read-only differences are not auto-flagged."
   rm -f "$modes"
 
-  sec "Escaping symlinks in high-risk paths" "FAST targeted scan • exhaustive scan is full-only"
+  sec "Escaping symlinks in high-risk paths" "FAST targeted scan • exhaustive scan is FULL-only"
   L=$(tmpf); : > "$L"
   for s in "${SCAN_ROOTS[@]}"; do
     # Root plus shallow wp-content areas only in FAST mode.
