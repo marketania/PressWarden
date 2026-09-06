@@ -1,4 +1,4 @@
-# PressWarden v1.0.1 configuration
+# PressWarden v1.0.2 configuration
 # Copy to ~/.config/presswarden/config and chmod 600.
 # Exported environment variables override values from this file.
 
