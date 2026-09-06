@@ -149,6 +149,17 @@ pw_intel_status() {
   fi
   if [ -n "${PRESSWARDEN_PATCHSTACK_KEY:-}" ]; then printf '  Patchstack API          configured\n'; else printf '  Patchstack API          not configured\n'; fi
   if [ -n "${WPSCAN_API_TOKEN:-}" ]; then printf '  WPScan API              configured\n'; else printf '  WPScan API              not configured\n'; fi
+  if [ -n "${PRESSWARDEN_YARA_RULES:-}" ]; then
+    if command -v yara >/dev/null 2>&1 && [ -r "$PRESSWARDEN_YARA_RULES" ] && [ -f "$PRESSWARDEN_YARA_RULES" ]; then
+      printf '  External YARA rules     configured / ready\n'
+    elif command -v yara >/dev/null 2>&1; then
+      printf '  External YARA rules     configured / rules unreadable\n'
+    else
+      printf '  External YARA rules     configured / yara unavailable\n'
+    fi
+  else
+    printf '  External YARA rules     not configured\n'
+  fi
   printf '\n  Intel directory         %s\n' "$dir"
   printf '\nUse: ./presswarden intel update\n'
 }
