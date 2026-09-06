@@ -19,7 +19,7 @@
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Host](https://img.shields.io/badge/hosting-host--agnostic-8A2BE2)
 
-A high-signal, exception-first WordPress security, integrity, hardening, and threat-intelligence auditor for one site or an entire hosting fleet.
+PressWarden scans one WordPress site or an entire hosting account for malware, suspicious persistence, integrity problems, risky configuration, vulnerable components, and database threats.
 
 Created and maintained by Mustafa Sharif with support from [Marketania](https://marketania.com/).
 
@@ -27,243 +27,231 @@ Created and maintained by Mustafa Sharif with support from [Marketania](https://
 
 ---
 
-## Why PressWarden?
+## What PressWarden is for
 
-WordPress incident response on a hosting account is rarely just “scan this one site.” A compromised account may contain dozens of installations, nested WordPress copies, stale plugins, writable persistence points, database injections, modified core files, executable uploads, malicious JavaScript, and legitimate plugin behavior that simplistic malware regexes misclassify.
+PressWarden is designed for people who manage WordPress websites and want a practical security audit without a wall of noisy regex matches.
 
-PressWarden indexes the filesystem first, validates every WordPress root it finds, and then applies layered checks with **context-aware false-positive reduction**. It works on shared hosting, cPanel/Plesk/DirectAdmin layouts, SiteGround, VPS servers, `/var/www`, home directories, and custom Linux hosting structures. **Hostinger is optional, not architectural.**
+It can discover multiple WordPress installations automatically, including nested sites, and works across common Linux hosting environments such as:
 
-## Highlights
+- Hostinger
+- cPanel
+- Plesk
+- DirectAdmin
+- SiteGround
+- VPS servers
+- `/var/www`
+- custom shared-hosting layouts
 
-- 🔎 **Host-agnostic WordPress discovery** — validated roots plus nested installations below any directory.
-- 🧳 **Portable shared-host mode** — the entire runtime can live inside one local `PressWarden/` folder; no sudo, PATH edits, or system directories required.
-- 🧠 **Native Threat Intelligence** — 22 stable `PW-*` rules with category, severity, confidence, type, source/reference, and date metadata.
-- 🦠 **PHP behavioral detection** — request-controlled execution, remote payload behavior, packed/XOR loaders, credential exfiltration, and admin-targeted browser payloads.
-- 🌐 **JavaScript malware inspection** — decoded execution, decoded script-source injection, hidden external iframes, and reconstructed redirect targets.
-- 🗄️ **Database malware + persistence inspection** — targeted `wp_options`, `wp_posts`, PHP payload, reinfector-option, and suspicious administrator checks without dumping stored payloads.
-- 🕵️ **Campaign awareness** — WP-VCD, SocGholish/NDSW, Balada-like, Sign1-like, VexTrio/redirect-like, and admin-targeted fake-browser-update behavior.
-- 🚨 **Known-exploitation prioritization** — CISA KEV correlation distinguishes known-exploited CVEs from ordinary vulnerability matches when evidence permits.
-- 🛡️ **Optional vulnerability intelligence** — Wordfence Intelligence, Patchstack, and WPScan remain user-configured and are not bundled.
-- 🧪 **Optional external YARA** — use administrator-supplied/licensed YARA rules; PressWarden ships no third-party YARA signatures and treats matches as review-only.
-- 🧬 **Official integrity checks** — WordPress core manifests and WordPress.org plugin checksums.
-- 🔒 **Fleet lock / unlock** — toggle `DISALLOW_FILE_MODS` across discovered WordPress installations with one confirmation.
-- 🧱 **Hardening review** — `.htaccess`, `wp-config.php`, PHP runtime, permissions, salts, debug settings, uploads, persistence, and more.
-- ♻️ **Safe remediation** — destructive actions are interactive and quarantine-backed.
-- 📊 **Human + JSON reporting** — exception-first terminal output plus suite summaries.
-- 🩺 **Doctor preflight** — dependencies, discovery, configuration, intelligence cache, integrations, syntax, and restricted-host portability readiness.
+PressWarden focuses on **high-signal findings**. A PHP function such as `base64_decode()`, `file_get_contents()`, or `wp_enqueue_script()` is not considered malware by itself. Stronger findings require multiple suspicious behaviors to appear together.
 
-## Quick install — shared hosting
+### Highlights
 
-The default installer is portable. Run it from the hosting-account directory where you want the `PressWarden/` folder created, usually your home directory.
+- **Automatic WordPress discovery** across one site or a hosting fleet
+- **PHP malware detection** including webshell behavior, remote loaders, credential theft, and obfuscated payloads
+- **JavaScript malware detection** including injected scripts and suspicious redirects
+- **Database malware scanning** for stored scripts, PHP payloads, persistence, and suspicious administrator accounts
+- **WordPress integrity checks** for core and plugins
+- **Threat Intelligence** with native rules and optional external providers
+- **CISA KEV correlation** for known-exploited vulnerabilities
+- **Portable shared-hosting install** with no sudo or PATH changes required
+- **Safe remediation** with quarantine-backed file actions
+- **Fleet lock/unlock** for `DISALLOW_FILE_MODS`
+- **Human-readable and JSON reports**
 
-### curl
+---
+
+## Quick start
+
+### 1. Install
+
+From your hosting account home directory:
 
 ```bash
 cd ~
 curl -fsSL https://raw.githubusercontent.com/marketania/PressWarden/main/install.sh | bash
 ```
 
-### wget
+If `curl` is unavailable:
 
 ```bash
 cd ~
 wget -qO- https://raw.githubusercontent.com/marketania/PressWarden/main/install.sh | bash
 ```
 
-Then:
+### 2. Check the environment
 
 ```bash
 cd ~/PressWarden
 ./presswarden doctor
+```
+
+### 3. Run your first scan
+
+```bash
 ./presswarden fast
 ```
 
-Portable mode keeps program data and private runtime data local:
+That is the recommended starting point for most users.
 
-```text
-PressWarden/
-├── presswarden
-├── VERSION
-├── config/
-│   └── config              # private config / API keys
-├── intel/                  # native metadata, campaign mappings, source docs
-├── var/
-│   ├── reports/
-│   ├── cache/
-│   ├── quarantine/
-│   └── intel/              # locally cached optional external intelligence
-├── checks/
-├── lib/
-└── suites/
-```
+---
 
-No `~/.local/bin`, symlink, PATH change, sudo, or system-wide access is required. Rerunning the installer updates program files in place while preserving `config/config` and `var/`.
+## Which scan should I run?
 
-An optional user-wide install remains available:
+| Command | Best for |
+|---|---|
+| `./presswarden fast` | Regular security checks across your sites |
+| `./presswarden full` | Deeper audits, incident response, and periodic assurance |
+| `./presswarden intel scan` | Focused malware + threat-intelligence investigation |
+| `./presswarden db` | Database security, stored malware, and DB maintenance |
+| `./presswarden doctor` | Checking setup, dependencies, discovery, and integrations |
+| `./presswarden cleanup` | Conservative log / disposable-file cleanup |
+
+For routine use, start with:
 
 ```bash
-PRESSWARDEN_INSTALL_MODE=user \
-  bash -c "$(curl -fsSL https://raw.githubusercontent.com/marketania/PressWarden/main/install.sh)"
-```
-
-## Core usage
-
-```bash
-./presswarden doctor
 ./presswarden fast
+```
+
+If something looks suspicious or you want the deepest available scan:
+
+```bash
 ./presswarden full
-./presswarden db
-./presswarden cleanup
-
-./presswarden intel status
-./presswarden intel update
-./presswarden intel scan
-
-./presswarden lock-status
-./presswarden unlock
-# perform trusted updates
-./presswarden lock
 ```
 
-The legacy/advanced file-mods interface remains available:
+---
 
-```bash
-./presswarden file-mods status
-./presswarden file-mods on
-./presswarden file-mods off
-```
+## Understanding the results
 
-Scan an explicit filesystem tree:
-
-```bash
-./presswarden fast /var/www
-./presswarden full /home/example/websites
-./presswarden intel scan ~/domains
-```
-
-Portable mode automatically looks outside the program folder, preferring sibling `domains/` or `public_html/` trees when present.
-
-## Threat Intelligence — v1.1
-
-PressWarden v1.1 combines **native behavioral detections** with optional external vulnerability intelligence. The core threat layer requires zero API keys.
-
-### Intelligence commands
-
-```bash
-./presswarden intel status
-./presswarden intel update
-./presswarden intel scan
-```
-
-- `intel status` shows native rule/campaign counts, CISA KEV cache state, Wordfence Scanner/Production cache state, provider configuration, external YARA readiness, and the local intelligence directory.
-- `intel update` refreshes download-style intelligence. CISA KEV is enabled by default; Wordfence is downloaded only when a user token is configured.
-- `intel scan` runs a focused threat suite without the complete FULL maintenance workflow.
-
-Focused coverage includes:
+PressWarden is exception-first, so healthy items are kept concise while important findings stand out.
 
 ```text
-PHP high-signal malware
-packed/XOR remote loaders
-dynamic request-controlled execution
-credential capture + exfiltration
-admin-targeted remote browser payloads
-known campaign markers
-JavaScript decoded execution and script loaders
-decoded browser redirects
-database-stored browser/PHP malware
-database persistence and suspicious admin identities
-external administrator-supplied YARA rules (optional)
-Wordfence vulnerability matching (optional)
-Patchstack vulnerability matching (optional)
-WPScan vulnerability intelligence (optional)
+✖ ALERT    Strong evidence that needs investigation
+⚠ REVIEW   Suspicious or unusual behavior that should be checked
+ℹ INFO     Useful context that is not considered a security finding
+✓ CLEAN    No reportable issue found for that check
 ```
 
-## Native rule architecture
+A finding is evidence for investigation, not automatic proof that a site is compromised.
 
-PressWarden does **not** equate one suspicious function with malware. Native rules require compound evidence whenever practical.
-
-For example:
+Example:
 
 ```text
-PW-PHP-004
-request-controlled function name
-        +
-dynamic invocation
-        =
-high-confidence execution backdoor
+✖ ALERT  example.com  ›  wp-content/plugins/example/example.php
 ```
 
-```text
-PW-PHP-005
-login/password POST capture
-        +
-outbound transmission
-        +
-TLS certificate verification disabled
-        =
-high-confidence credential exfiltration
-```
+Threat-intelligence checks may also include a stable PressWarden rule ID such as:
 
 ```text
+PW-PHP-003
 PW-JS-002
-decoder / character reconstruction
-        +
-decoded value reaches <script> source
-        +
-dynamic script creation + DOM insertion
-        =
-obfuscated browser loader
+PW-DB-001
 ```
 
-```text
-PW-DB-005
-stored PHP tag
-        +
-execution primitive
-        +
-request-controlled input or decoding
-        =
-database-resident PHP payload review
-```
+These IDs make findings easier to identify across reports and future scanner versions.
 
-The native catalog lives in [`intel/native-rules.tsv`](intel/native-rules.tsv). Its metadata includes:
+---
 
-```text
-ID • category • severity • confidence • type • name • owner
-source • reference • date added • date updated
-```
+## What PressWarden checks
 
-The design and contribution contract are documented in [`intel/README.md`](intel/README.md). Executable logic remains in `checks/` and small helpers under `lib/` so tokenization, WordPress context, data-flow approximations, and false-positive protections can be tested directly instead of being reduced to noisy one-function regex rules.
+### Malware and persistence
 
-## Campaign knowledge
+- request-controlled PHP execution
+- webshell-like behavior
+- remote payload download/write/include chains
+- packed XOR / `chr()` / `ord()` loaders
+- credential capture and exfiltration
+- suspicious JavaScript loaders and redirects
+- hidden external iframes
+- executable files in unusual locations
+- malicious or suspicious MU-plugin persistence
+- cron, startup, SSH, and hosting-account persistence indicators
+- known high-confidence WordPress malware markers
 
-Current native intelligence includes high-specificity or behavior-based coverage informed by public research around:
+### WordPress integrity
 
-- **WP-VCD** — high-specificity controller/request markers.
-- **SocGholish / NDSW** — documented NDSW-family JavaScript marker families.
-- **Balada Injector** — decoded/obfuscated dynamic browser-loader behavior rather than fragile domain-only IOCs.
-- **Sign1** — database-stored obfuscated JavaScript behavior.
-- **VexTrio / redirect malware** — reconstructed browser redirect behavior and encoded/URL-rich option persistence.
-- **Admin-targeted fake browser updates** — WordPress administrator + capability + Windows User-Agent gating combined with remote encoded browser payload behavior.
+- official WordPress core checksums
+- missing or modified core files
+- unexpected files in core locations
+- WordPress.org plugin checksums in FULL scans
+- installed plugin provenance and lifecycle information
 
-PressWarden deliberately says **campaign-like** when evidence is behavioral rather than claiming attribution from a generic technique. Research references and licensing notes are in [`intel/SOURCES.md`](intel/SOURCES.md).
+Plugin **activation state** and **package provenance** are kept separate. For example, a premium or custom plugin that is not listed on WordPress.org may appear as `EXTERNAL` while still being locally `ACTIVE` or `INACTIVE`.
 
-## Vulnerability intelligence providers
+### Database threats
 
-All external providers are optional. PressWarden does not copy third-party vulnerability databases into the MIT repository.
+PressWarden uses WordPress's existing database connection to inspect targeted areas such as:
 
-### CISA KEV
+- `wp_options`
+- `wp_posts`
+- administrator accounts and capabilities
+- site-wide custom script storage
+
+It looks for high-signal behavior such as stored external script loaders, obfuscated JavaScript, suspicious redirects, database-resident PHP payloads, and privileged persistence.
+
+Stored database payloads are not dumped into normal reports.
+
+### Configuration and hardening
+
+- `wp-config.php`
+- `.htaccess`
+- `.user.ini` / `php.ini`
+- WordPress salts and debug settings
+- `FORCE_SSL_ADMIN`
+- `DISALLOW_FILE_MODS`
+- Wordfence WAF `auto_prepend_file`
+- file and directory permissions
+- PHP runtime security settings
+- executable uploads
+
+---
+
+## Threat Intelligence
+
+PressWarden v1.1 includes a native threat-intelligence layer that works with **zero API keys**.
 
 ```bash
-PRESSWARDEN_INTEL_CISA=1
+./presswarden intel status
+./presswarden intel update
+./presswarden intel scan
+```
+
+The native catalog currently includes **22 stable rule IDs**, including behavioral rules and campaign knowledge covering PHP, JavaScript, database threats, and WordPress malware patterns.
+
+Detailed rule metadata and research references are maintained separately:
+
+- [`intel/README.md`](intel/README.md) — native rule architecture
+- [`intel/native-rules.tsv`](intel/native-rules.tsv) — rule catalog
+- [`intel/campaigns.tsv`](intel/campaigns.tsv) — campaign mappings
+- [`intel/SOURCES.md`](intel/SOURCES.md) — research sources and licensing notes
+
+### CISA Known Exploited Vulnerabilities
+
+CISA KEV support is enabled by default for intelligence updates:
+
+```bash
 ./presswarden intel update
 ```
 
-PressWarden caches CISA's public Known Exploited Vulnerabilities catalog locally and correlates CVE IDs from vulnerability providers. A matching CVE is surfaced as **known exploited**; KEV is a prioritization signal, not a WordPress-specific vulnerability database.
+When a vulnerability CVE also appears in CISA KEV, PressWarden can identify it as **known exploited** rather than treating it as an ordinary vulnerability match.
+
+---
+
+## Optional vulnerability intelligence
+
+PressWarden's core scanner does not require any commercial service or API key.
+
+Optional integrations can add more vulnerability context:
+
+| Integration | Purpose | Configuration |
+|---|---|---|
+| Wordfence Intelligence | Installed-version vulnerability matching | `PRESSWARDEN_WORDFENCE_TOKEN` |
+| Patchstack | Plugin/theme/core vulnerability intelligence | `PRESSWARDEN_PATCHSTACK_KEY` |
+| WPScan | WPScan vulnerability checks | `WPSCAN_API_TOKEN` + WPScan CLI |
+| Hostinger API | Optional PHP/account enrichment | `HOSTINGER_API_TOKEN` |
+
+External vulnerability data is not bundled into the PressWarden repository. See [`intel/SOURCES.md`](intel/SOURCES.md) for provider-specific notes.
 
 ### Wordfence Intelligence
-
-Configure:
 
 ```bash
 PRESSWARDEN_WORDFENCE_TOKEN="your-token"
@@ -271,158 +259,189 @@ PRESSWARDEN_WORDFENCE_TOKEN="your-token"
 ./presswarden intel scan
 ```
 
-PressWarden uses the two Wordfence Intelligence V3 feeds for different roles:
-
-```text
-Wordfence Scanner Feed
-        ↓
-installed-version detection
-        ↓
-matching vulnerability UUID
-        ↓
-Wordfence Production Feed
-        ↓
-CVE / CVSS enrichment when available
-        ↓
-CISA KEV correlation
-        ↓
-known-exploited priority elevation
-```
-
-The **Scanner Feed** is the primary detection source. The **Production Feed** enriches matching UUIDs. Large feeds are validated and matched with bounded-memory streaming rather than whole-feed `json_decode()` so they remain practical on constrained shared hosting.
-
-Both feeds remain in the user's local `var/intel/` cache. PressWarden does not redistribute them and displays available record attribution for matched entries. See [`intel/SOURCES.md`](intel/SOURCES.md) for current licensing notes.
+Wordfence data is cached locally under the PressWarden runtime directory and matched against installed WordPress core, plugin, and theme versions.
 
 ### Patchstack
 
-Configure:
-
 ```bash
 PRESSWARDEN_PATCHSTACK_KEY="your-key"
-PRESSWARDEN_PATCHSTACK_CACHE_TTL=21600
-PRESSWARDEN_PATCHSTACK_MAX_LOOKUPS=250
+./presswarden intel scan
 ```
 
-PressWarden deduplicates installed component/version pairs across the fleet, performs user-keyed product/version lookups, and maintains an operational TTL cache to avoid repeated API calls. Patchstack exploitation observations and CISA KEV matches can elevate priority. Use remains subject to the user's Patchstack plan and current terms.
+Patchstack lookups are deduplicated and cached to reduce unnecessary API requests.
 
 ### WPScan
 
-The existing WPScan integration remains user-token/user-install driven:
-
 ```bash
 WPSCAN_API_TOKEN="your-token"
+./presswarden full
 ```
 
-PressWarden invokes the user's WPScan CLI and does **not** build or cache a local WPScan vulnerability database. WPScan licensing/API limits remain the token holder's responsibility.
+WPScan remains user-installed and user-token driven.
 
-## Optional external YARA
+---
 
-PressWarden ships no third-party `.yar` / `.yara` collections. If an administrator already maintains or licenses YARA signatures, point PressWarden at one rules file:
+## Optional YARA scanning
+
+If you already maintain or license YARA rules, PressWarden can run them during `full` or `intel scan`.
 
 ```bash
 PRESSWARDEN_YARA_RULES="/home/example/security/wordpress.yar"
 ./presswarden intel scan
 ```
 
-YARA is included only in `full` and `intel scan`, never `fast`. Matches are always **REVIEW** inside PressWarden because external rule severity, licensing, and false-positive characteristics are outside the native `PW-*` contract. A YARA match does not trigger automatic quarantine/deletion.
+PressWarden does **not** ship third-party YARA signature collections.
 
-## Scan profiles
+External YARA matches are shown as `REVIEW` and are never automatically deleted or quarantined.
 
-| Profile | Intended use | Major coverage |
-|---|---|---|
-| `fast` | Frequent fleet audit | persistence, targeted permissions, config, PHP, native PHP/JS/campaign/DB threat intelligence, core/plugin/theme/uploads, lean DB |
-| `full` | Periodic assurance / incident response | FAST concepts plus recursive/deep scanning, optional external YARA, official plugin checksums, optional Wordfence/Patchstack/WPScan, slow image scan, full DB isolation + maintenance |
-| `intel scan` | Focused threat investigation | PHP/JS/campaign/DB malware + optional YARA + optional vulnerability intelligence |
-| `db` | Database security/threat/maintenance | DB isolation/security, stored malware + privileged persistence, conditional repair, optimize, verify |
-| `cleanup` | Inode housekeeping | conservative logs/disposable metadata cleanup, quarantine-backed |
+---
 
-### Slow image-extension scan
+## Portable installation
 
-FULL contains a deliberately expensive check that reads image-like upload files looking for embedded PHP. PressWarden asks before running it:
+The default installer keeps PressWarden self-contained:
 
 ```text
-SLOW CHECK  Scan image-like uploads for embedded PHP? This can take a long time on large fleets. [y/N]:
+~/PressWarden/
+├── presswarden
+├── VERSION
+├── config/
+│   └── config
+├── intel/
+├── checks/
+├── lib/
+├── suites/
+└── var/
+    ├── reports/
+    ├── cache/
+    ├── quarantine/
+    └── intel/
 ```
 
-Set a permanent preference if desired:
+You do not need:
+
+- sudo
+- `/usr/local/bin`
+- `~/.local/bin`
+- a PATH modification
+- system-wide configuration
+
+Rerunning the installer updates PressWarden while preserving your private `config/config` and `var/` data.
+
+An optional user-wide install is also available:
 
 ```bash
-PRESSWARDEN_UPLOADS_DEEP=1   # always run in FULL
-PRESSWARDEN_UPLOADS_DEEP=0   # always skip in FULL
+PRESSWARDEN_INSTALL_MODE=user \
+  bash -c "$(curl -fsSL https://raw.githubusercontent.com/marketania/PressWarden/main/install.sh)"
 ```
 
-Empty means ask interactively. Noninteractive FULL runs skip it unless explicitly enabled.
+---
 
-## What PressWarden checks
+## Scan another directory
 
-### Integrity
+Pass a path after the scan command:
 
-- official WordPress core checksums by exact version + locale
-- missing/mismatched/extra core files
-- quarantine-backed targeted core restore
-- WordPress.org plugin checksum verification in FULL
-- plugin repository lifecycle/provenance with local ACTIVE/INACTIVE state kept separate
+```bash
+./presswarden fast /var/www
+./presswarden full /home/example/websites
+./presswarden intel scan ~/domains
+```
 
-### PHP / filesystem malware
+Portable installations also try to locate common sibling directories such as `domains/` and `public_html/` automatically.
 
-- request-controlled execution sinks
-- dynamic attacker-selected functions
-- remote payload write/include behavior
-- packed/XOR/`chr()`/`ord()` loaders
-- credential capture + exfiltration chains
-- admin-targeted remote encoded browser payload chains
-- obfuscation/decode chains
-- executable uploads
-- host cron/startup/SSH persistence indicators
-- high-specificity campaign markers
+---
 
-Standalone `base64_decode()`, `chmod(0777)`, upload handlers, XOR, numeric arrays, `file_get_contents()`, or `wp_enqueue_script()` are **not** automatically treated as malware.
+## Lock WordPress file modifications
 
-### JavaScript / stored browser malware
+PressWarden can manage:
 
-- decoded code passed into `eval` / `Function`
-- decoded values reaching dynamic script sources plus DOM insertion
-- reconstructed targets reaching `location`, `location.assign`, or `location.replace`
-- hidden external iframes with corroborating obfuscation
-- targeted `wp_options` / `wp_posts` inspection
-- stored PHP execution payload review when multiple behaviors corroborate it
-- suspicious privileged-account persistence identities
-- encoded redirect/reinfector-style option persistence
-- stored payload bodies are not printed in reports
+```php
+define('DISALLOW_FILE_MODS', true);
+```
 
-### Configuration / hardening
+across all discovered WordPress installations.
 
-- `wp-config.php` malware/obfuscation indicators
-- `DISALLOW_FILE_MODS` + fleet `lock` / `unlock`
-- debug/query constants
-- salts without printing secrets
-- `FORCE_SSL_ADMIN`
-- `.user.ini` / `php.ini` persistence
-- dangerous `.htaccess` directives / cloaked redirects
-- nested WordPress-aware `.htaccess` handling
-- Wordfence WAF `auto_prepend_file` validation/consolidation
+Check status:
 
-### PHP runtime
+```bash
+./presswarden lock-status
+```
 
-- PHP support lifecycle / patch currency
-- loaded INI stack
-- URL include / prepend / append
-- FFI / PHAR / assertions / error disclosure
-- process execution surface
-- filesystem/temp/session posture
-- optional Hostinger PHP-details enrichment when configured
+Temporarily unlock sites before trusted maintenance or updates:
 
-### Database maintenance
+```bash
+./presswarden unlock
+```
 
-PressWarden uses WordPress's existing `$wpdb` connection and does not require `proc_open`, `mysqlcheck`, or an external MySQL client for database maintenance/threat inspection.
+After updates are finished:
 
-`CHECK TABLE` messages such as:
+```bash
+./presswarden lock
+```
+
+The older interface remains available for compatibility:
+
+```bash
+./presswarden file-mods status
+./presswarden file-mods on
+./presswarden file-mods off
+```
+
+---
+
+## Slow image-content scan
+
+`./presswarden full` includes an optional deep scan of image-like upload files for embedded PHP.
+
+Because this can be slow on large hosting accounts, PressWarden asks before running it.
+
+You can set a permanent preference in configuration:
+
+```bash
+PRESSWARDEN_UPLOADS_DEEP=1   # always run
+PRESSWARDEN_UPLOADS_DEEP=0   # always skip
+PRESSWARDEN_UPLOADS_DEEP=""  # ask interactively
+```
+
+Noninteractive FULL scans skip this check unless it is explicitly enabled.
+
+---
+
+## Database maintenance note
+
+Some WordPress database tables use storage engines that do not support `CHECK TABLE`.
+
+A message such as:
 
 ```text
 The storage engine for the table doesn't support check
 ```
 
-are informational unsupported operations. They are **not** treated as corruption, repaired, counted as unhealthy, or reported as unresolved.
+is treated as an informational **SKIP**, not database corruption.
+
+PressWarden does not attempt to repair these tables or count them as unhealthy.
+
+---
+
+## Safety by default
+
+PressWarden is designed to detect first and remediate carefully.
+
+- file-removal actions are interactive
+- files are copied to quarantine before deletion
+- critical WordPress files are protected from generic deletion prompts
+- core repair verifies official replacements
+- fleet lock/unlock backs up `wp-config.php`
+- threat-intelligence matches do not automatically delete plugins or themes
+- external YARA matches are review-only
+- API failures do not become fake malware findings
+
+Quarantine and reports normally live under:
+
+```text
+PressWarden/var/
+```
+
+---
 
 ## Configuration
 
@@ -432,25 +451,22 @@ Portable installs use:
 PressWarden/config/config
 ```
 
-Example:
+Common settings:
 
 ```bash
 PRESSWARDEN_SCAN_ROOT=""
 PRESSWARDEN_DISCOVERY_DEPTH=8
 PRESSWARDEN_EXCLUDE=""
 PRESSWARDEN_DISCOVERY_CACHE_TTL=300
+
 PRESSWARDEN_INTERACTIVE=1
 PRESSWARDEN_OUTPUT_JSON=1
 PRESSWARDEN_UPLOADS_DEEP=""
 
-# Threat intelligence
 PRESSWARDEN_INTEL_AUTO_UPDATE=1
 PRESSWARDEN_INTEL_CISA=1
-PRESSWARDEN_PATCHSTACK_CACHE_TTL=21600
-PRESSWARDEN_PATCHSTACK_MAX_LOOKUPS=250
 PRESSWARDEN_YARA_RULES=""
 
-# Optional providers
 WPSCAN_API_TOKEN=""
 PRESSWARDEN_WORDFENCE_TOKEN=""
 PRESSWARDEN_PATCHSTACK_KEY=""
@@ -458,138 +474,97 @@ HOSTINGER_API_TOKEN=""
 PRESSWARDEN_HOSTINGER_USERNAME=""
 ```
 
-Environment variables override persistent config values. Keep configs containing credentials private:
+Environment variables override saved configuration values.
+
+If your config contains API credentials:
 
 ```bash
 chmod 600 config/config
 ```
 
-**Never commit real API keys. PressWarden never intentionally prints configured token values.**
+Never commit real API keys to the repository.
 
-## Safety model
-
-PressWarden defaults to **detect first, explain, then remediate interactively**.
-
-- File deletion candidates are quarantined first.
-- Critical WordPress files are protected from generic delete prompts.
-- Core repair backs up the existing file and verifies the official replacement.
-- Fleet lock/unlock backs up `wp-config.php` and rolls back on failure.
-- DB maintenance repairs only genuine supported-table failures.
-- Unsupported storage-engine maintenance operations remain informational.
-- Threat-intelligence matches do not automatically delete plugins or themes.
-- External YARA matches are review-only and never auto-remediated.
-- External-intelligence failures do not become fake malware findings.
-- Slow checks can be explicitly skipped.
-
-Reports, cache, quarantine, and downloaded intelligence normally remain under:
-
-```text
-PressWarden/var/
-```
-
-## Performance design
-
-PressWarden is built for fleets, not only one website:
-
-- WordPress discovery is cached and structurally revalidated.
-- Recursive scans use outermost roots so nested installs are not double-scanned.
-- Core manifests and WordPress.org lifecycle metadata are cached.
-- Plugin integrity verification is batched per site.
-- Patchstack lookups are deduplicated by component/version.
-- Wordfence Scanner/Production and CISA feeds are downloaded once and matched locally.
-- Wordfence matching streams records with bounded memory.
-- JavaScript/database scanners prefilter candidates before expensive validation.
-- Heavy image inspection remains opt-in.
-- Runtime scanner code avoids Bash process substitution to remain compatible with restricted shared hosting where `/dev/fd` may be unavailable.
+---
 
 ## Requirements
 
-Core:
+### Required
 
-- Linux/Unix-like shell environment
+- Linux / Unix-like environment
 - Bash 4+
 - PHP CLI
-- standard GNU/POSIX utilities such as `find`, `grep`, `sed`, `awk`, `sort`, `stat`
+- common utilities such as `find`, `grep`, `sed`, `awk`, `sort`, and `stat`
 
-Strongly recommended:
+### Recommended
 
 - WP-CLI
 - `curl` or `wget`
 
-Optional:
+### Optional
 
-- `yara` only when `PRESSWARDEN_YARA_RULES` is configured
-- WPScan CLI/token for WPScan intelligence
-- provider tokens for Wordfence/Patchstack/Hostinger integrations
+- YARA for external YARA rules
+- WPScan CLI for WPScan vulnerability checks
+- Wordfence / Patchstack / Hostinger credentials for their optional integrations
 
-Check the environment:
+Check your environment at any time:
 
 ```bash
 ./presswarden doctor
 ```
 
-## Project layout
+---
+
+## Reports and exit codes
+
+Reports are written under the PressWarden reports directory, normally:
 
 ```text
-PressWarden/
-├── presswarden
-├── VERSION
-├── install.sh
-├── config/
-├── intel/
-│   ├── README.md             # native rule architecture / contract
-│   ├── native-rules.tsv      # stable rule metadata
-│   ├── campaigns.tsv         # campaign knowledge mappings
-│   └── SOURCES.md            # research + licensing boundaries
-├── lib/
-├── suites/
-│   ├── fast.sh
-│   ├── full.sh
-│   ├── db.sh
-│   └── intel.sh
-├── checks/
-├── tests/
-└── var/                      # portable runtime data, ignored by git
+PressWarden/var/reports/
 ```
 
-## CI / regression philosophy
+Suites can also generate JSON summaries for automation and downstream reporting.
 
-New threat logic should include both:
+Exit codes:
 
-1. a malicious fixture that **must trigger**, and
-2. a benign lookalike that **must not trigger**.
+```text
+0   scan completed with no reportable findings
+1   one or more ALERT / REVIEW findings were reported
+2+  scanner or dependency error
+```
 
-GitHub Actions also enforces Bash/PHP syntax, host-agnostic discovery, portable shared-host behavior, bounded-memory Wordfence parsing, intelligence credential safety, external-only YARA behavior, no runtime process substitution, no legacy branding, and no hard-coded API credentials.
+---
 
-## Exit codes
+## For contributors and security researchers
 
-- `0` — scan completed with no reportable findings
-- `1` — findings/review items were reported
-- `2+` — scanner/tooling error
+The main README focuses on using PressWarden. More detailed implementation information lives in the project documentation:
+
+- [`CONTRIBUTING.md`](CONTRIBUTING.md)
+- [`SECURITY.md`](SECURITY.md)
+- [`intel/README.md`](intel/README.md)
+- [`intel/SOURCES.md`](intel/SOURCES.md)
+- [`CHANGELOG.md`](CHANGELOG.md)
+
+New detection logic should continue to prioritize high confidence, benign lookalike testing, portability, safe remediation, and protection against false positives.
+
+---
 
 ## Responsible use
 
-Run PressWarden only against systems you own or are authorized to administer. Security findings are evidence for investigation, not automatic proof of compromise. Legitimate plugins and hosting stacks can perform unusual operations; PressWarden deliberately favors compound behavior, official integrity sources, explicit confidence, and conservative remediation.
+Run PressWarden only against systems you own or are authorized to administer.
 
-## Contributing
+Security findings should be investigated in context. Legitimate WordPress plugins, themes, and hosting platforms can perform unusual operations, which is why PressWarden favors compound behavioral evidence over isolated suspicious-looking functions.
 
-Issues and pull requests are welcome. Scanner logic should prioritize:
-
-1. high signal over broad regex matching,
-2. malicious + benign regression fixtures,
-3. reproducible evidence,
-4. shared-host portability,
-5. no secret exposure,
-6. no destructive defaults,
-7. clear separation between behavior, provenance, vulnerability, exploitation, and external-signature evidence.
-
-See [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), [`intel/README.md`](intel/README.md), and [`intel/SOURCES.md`](intel/SOURCES.md).
+---
 
 ## About Marketania
 
-PressWarden was created and is maintained by Mustafa Sharif with support from [Marketania](https://marketania.com/), a digital agency working across WordPress development, website maintenance, security, SEO, and business technology. PressWarden grew out of real-world fleet maintenance and WordPress security work across many client environments.
+PressWarden was created and is maintained by Mustafa Sharif with support from [Marketania](https://marketania.com/).
 
-If your organization needs professional WordPress, web, or digital services, visit [Marketania.com](https://marketania.com/).
+Marketania provides WordPress development, website maintenance, security, SEO, and digital technology services.
+
+For professional WordPress or digital services, visit [Marketania.com](https://marketania.com/).
+
+---
 
 ## License
 
