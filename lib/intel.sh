@@ -11,25 +11,56 @@ pw_intel_state_dir() {
   fi
 }
 
+_pw_intel_curl_escape() {
+  local v="$1"
+  v=${v//\\/\\\\}
+  v=${v//\"/\\\"}
+  printf '%s' "$v"
+}
+
+_pw_intel_fetch_php_auth() {
+  local url="$1" out="$2" auth="$3"
+  command -v php >/dev/null 2>&1 || return 127
+  # The secret is delivered over stdin, not argv/environment, so it does not
+  # appear in the child process command line on shared hosts.
+  printf '%s' "$auth" | php -r '
+    $auth=trim(stream_get_contents(STDIN)); $url=$argv[1]; $out=$argv[2];
+    $ctx=stream_context_create(["http"=>[
+      "method"=>"GET", "timeout"=>120, "ignore_errors"=>true,
+      "header"=>$auth."\r\nUser-Agent: PressWarden/1.1 Threat Intelligence\r\n"
+    ]]);
+    $data=@file_get_contents($url,false,$ctx); if($data===false) exit(2);
+    $status=0; foreach((array)($http_response_header??[]) as $h){if(preg_match("~^HTTP/\\S+\\s+(\\d{3})~i",$h,$m))$status=(int)$m[1];}
+    if($status<200||$status>=300) exit(3);
+    exit(@file_put_contents($out,$data)===false?4:0);
+  ' "$url" "$out"
+}
+
 _pw_intel_fetch() {
-  local url="$1" out="$2" auth="${3:-}"
+  local url="$1" out="$2" auth="${3:-}" escaped
   if command -v curl >/dev/null 2>&1; then
     if [ -n "$auth" ]; then
-      curl -fsSL --connect-timeout 10 --max-time 120 -A 'PressWarden/1.1 Threat Intelligence' -H "$auth" "$url" -o "$out"
+      # Feed the header through curl's stdin config. This prevents Bearer/API
+      # credentials from appearing in `ps`/process argv as `curl -H SECRET`.
+      escaped=$(_pw_intel_curl_escape "$auth")
+      printf 'header = "%s"\n' "$escaped" | \
+        curl -fsSL --config - --connect-timeout 10 --max-time 120 \
+          -A 'PressWarden/1.1 Threat Intelligence' "$url" -o "$out"
     else
-      curl -fsSL --connect-timeout 10 --max-time 120 -A 'PressWarden/1.1 Threat Intelligence' "$url" -o "$out"
+      curl -fsSL --connect-timeout 10 --max-time 120 \
+        -A 'PressWarden/1.1 Threat Intelligence' "$url" -o "$out"
     fi
+    return $?
+  fi
+  if [ -n "$auth" ]; then
+    _pw_intel_fetch_php_auth "$url" "$out" "$auth"
     return $?
   fi
   if command -v wget >/dev/null 2>&1; then
-    if [ -n "$auth" ]; then
-      wget -q -T 120 --header="$auth" -O "$out" "$url"
-    else
-      wget -q -T 120 -O "$out" "$url"
-    fi
+    wget -q -T 120 -O "$out" "$url"
     return $?
   fi
-  printf 'PressWarden intel: curl or wget is required for updates.\n' >&2
+  printf 'PressWarden intel: curl or wget is required for public feeds; authenticated feeds can also use PHP HTTPS streams.\n' >&2
   return 127
 }
 
