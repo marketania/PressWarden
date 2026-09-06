@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -uo pipefail
 PRESSWARDEN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VERSION="1.0.1"
+VERSION="1.0.2"
 CONFIG_FILE="${PRESSWARDEN_CONFIG_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/presswarden/config}"
 
 # Preserve explicitly exported PressWarden/API values so one-shot environment
@@ -39,7 +39,10 @@ Usage:
   presswarden scan [path]          Alias for fast
   presswarden cleanup [path]       Logs + disposable metadata/inode cleanup
   presswarden doctor [path]        Dependencies, config, integrations, discovery
-  presswarden file-mods ACTION [path]  status|on|off for DISALLOW_FILE_MODS
+  presswarden lock [path]          Lock WordPress file modifications across discovered sites
+  presswarden unlock [path]        Unlock WordPress file modifications for updates/maintenance
+  presswarden lock-status [path]   Show DISALLOW_FILE_MODS status across discovered sites
+  presswarden file-mods ACTION [path]  Legacy/advanced status|on|off interface
   presswarden config               Show sanitized effective configuration
   presswarden --version
   presswarden help
@@ -75,6 +78,19 @@ show_config() {
   printf 'Cache directory:    %s\n' "${PRESSWARDEN_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/presswarden}"
 }
 
+confirm_fleet_file_mods() {
+  local action="$1" root="$2" verb ans=''
+  [ "$action" = on ] && verb='LOCK' || verb='UNLOCK'
+  if [ "${PRESSWARDEN_INTERACTIVE:-1}" = "0" ]; then return 0; fi
+  if [ -r /dev/tty ] && [ -w /dev/tty ]; then
+    printf '\n  %s all discovered WordPress installations under:\n  %s\n\n  This will set DISALLOW_FILE_MODS=%s on every discovered site. Continue? [y/N]: ' "$verb" "$root" "$([ "$action" = on ] && printf true || printf false)" > /dev/tty
+    IFS= read -r ans < /dev/tty || ans=''
+    case "$ans" in y|Y|yes|YES) return 0 ;; *) printf 'Cancelled.\n'; return 1 ;; esac
+  fi
+  printf 'Refusing fleet %s without an interactive terminal. Set PRESSWARDEN_INTERACTIVE=0 to run intentionally in automation.\n' "${verb,,}" >&2
+  return 1
+}
+
 cmd="${1:-help}"; shift || true
 case "$cmd" in
   -V|--version|version) printf 'PressWarden %s\n' "$VERSION" ;;
@@ -92,6 +108,17 @@ case "$cmd" in
   doctor)
     ROOT=$(resolve_root "${1:-}"); export ROOT PRESSWARDEN_DIR
     exec "$PRESSWARDEN_DIR/checks/doctor.sh"
+    ;;
+  lock|unlock)
+    ROOT=$(resolve_root "${1:-}"); export ROOT PRESSWARDEN_DIR
+    action=on; [ "$cmd" = unlock ] && action=off
+    confirm_fleet_file_mods "$action" "$ROOT" || exit 1
+    export PRESSWARDEN_INTERACTIVE=0
+    exec "$PRESSWARDEN_DIR/checks/file-mods.sh" "$action"
+    ;;
+  lock-status)
+    ROOT=$(resolve_root "${1:-}"); export ROOT PRESSWARDEN_DIR
+    exec "$PRESSWARDEN_DIR/checks/file-mods.sh" status
     ;;
   file-mods)
     action="${1:-status}"; [ "$#" -gt 0 ] && shift || true
