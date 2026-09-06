@@ -50,7 +50,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if grep -R -nE '(WPSCAN_API_TOKEN|HOSTINGER_API_TOKEN)="[^"$][^"]+"' checks lib suites config presswarden install.sh --exclude-dir=.git; then
-            echo 'Potential hard-coded API token assignment detected.' >&2
+          if grep -R -nE '(WPSCAN_API_TOKEN|HOSTINGER_API_TOKEN|PRESSWARDEN_WORDFENCE_TOKEN|PRESSWARDEN_PATCHSTACK_KEY)="[^"$][^"]+"' checks lib suites config intel presswarden install.sh --exclude-dir=.git; then
+            echo 'Potential hard-coded API/token assignment detected.' >&2
             exit 1
           fi
