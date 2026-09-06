@@ -4,8 +4,17 @@ All notable changes to PressWarden are documented here.
 
 ## 1.1.0 — 2026-09-06
 
-Threat Intelligence release.
+Threat Intelligence and fleet-security release.
 
+- Added `./presswarden baseline create|status|diff` plus the `./presswarden changes` shortcut for local security-state baselining and change detection.
+- Baselines record SHA-256 + size for security-relevant executable/configuration files and, when WP-CLI is available, plugin/theme versions and state, administrator usernames, and cron hook/recurrence metadata.
+- Baselines intentionally exclude volatile uploads, caches, logs, backups, temporary trees, and similar high-churn paths from change tracking while normal security scans continue to inspect their relevant scopes.
+- Baseline manifests do not store file contents, passwords, API keys, database payloads, or other secret values; previous accepted baselines are retained locally for future history/reinfection workflows.
+- Added `./presswarden incident [path]`, an evidence-first compromise/reinfection suite combining baseline changes, fleet correlation, persistence, malware, administrator/application-password inventory, integrity, vulnerability intelligence, upload, and database-threat checks.
+- Incident Mode deliberately excludes `wp-db-maintenance`, so database repair/optimization does not alter state during evidence collection. The existing deep-upload preference remains unchanged: empty asks interactively, `1` runs, `0` skips, and noninteractive execution skips unless explicitly enabled.
+- Added `./presswarden correlate [path]` and the `fleet-correlate` check for cross-site outbreak signals. To avoid normal package duplication noise, correlation is restricted to file hashes, administrator identities, or cron state that are new/changed relative to the accepted baseline and repeat across multiple WordPress installations.
+- Baseline changes and fleet correlation are review-only evidence signals and never trigger automatic removal or quarantine by themselves.
+- Added dedicated baseline, incident-safety, and fleet-correlation CI regressions covering secret-free manifests, noisy-upload exclusion, new/changed/removed file detection, administrator/plugin changes, previous-baseline history, evidence-first incident composition, and duplicate-file false-positive protection.
 - Added a native threat-intelligence knowledge base with stable `PW-*` rule IDs, category/severity/confidence/type metadata, source/reference fields, and added/updated dates.
 - Added [`intel/README.md`](intel/README.md) defining the native manifest-plus-detector architecture, rule contract, evidence standards, and contribution requirements.
 - Added `./presswarden intel status`, `./presswarden intel update`, and `./presswarden intel scan`.
@@ -23,7 +32,7 @@ Threat Intelligence release.
 - FAST includes native PHP/JavaScript/campaign/database threat intelligence with no API keys required.
 - Added a focused `intel` suite for threat investigation without the entire FULL maintenance sweep.
 - Added optional external YARA compatibility through `PRESSWARDEN_YARA_RULES`. PressWarden bundles no third-party YARA collections; external matches are review-only and never trigger automatic remediation.
-- External YARA runs only in FULL and `intel scan`, not FAST, and scans validated outermost WordPress roots to avoid duplicate nested-site work.
+- External YARA runs only in FULL, Incident Mode, and `intel scan`, not FAST, and scans validated outermost WordPress roots to avoid duplicate nested-site work.
 - `presswarden doctor`, `presswarden config`, and `presswarden intel status` report external YARA readiness without exposing rule content or secrets.
 - Added local CISA Known Exploited Vulnerabilities caching and CVE correlation for known-exploitation prioritization, with the official CISA GitHub mirror as a fallback for feed retrieval.
 - Added optional Wordfence Intelligence V3 dual-feed support using a user-supplied `PRESSWARDEN_WORDFENCE_TOKEN`: the Scanner Feed drives installed-version detection, while matching Production Feed UUIDs add CVE/CVSS enrichment when available.
