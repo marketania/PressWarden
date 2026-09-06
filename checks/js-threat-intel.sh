@@ -18,12 +18,20 @@ while (($line=fgets(STDIN))!==false) {
     $scriptCreate=(bool)preg_match('~(?:createelement\s*\(\s*[\'\"]script[\'\"]|\.src\s*=|setattribute\s*\(\s*[\'\"]src[\'\"])~i',$s);
     $domInsert=(bool)preg_match('~\b(?:appendchild|insertbefore|document\.write)\s*\(~i',$s);
     $remote=(bool)preg_match('~https?:\\?/\\?/|[\'\"](?:src|href)[\'\"]\s*[,=:]~i',$s);
+    $charPack=(bool)preg_match('~string\.fromcharcode\s*\(\s*(?:[0-9]{1,3}|0x[0-9a-f]+)(?:\s*,\s*(?:[0-9]{1,3}|0x[0-9a-f]+)){7,}\s*\)~i',$s);
+    $encodedRemote=false;
+    if (preg_match_all('~atob\s*\(\s*[\'\"]([A-Za-z0-9+/=]{16,})[\'\"]\s*\)~i',$s,$encoded)) {
+        foreach ($encoded[1] as $blob) {
+            $decoded=base64_decode($blob,true);
+            if ($decoded!==false && preg_match('~https?://~i',$decoded)) { $encodedRemote=true; break; }
+        }
+    }
     $hiddenIframe=(bool)preg_match('~<iframe\b[^>]*(?:display\s*:\s*none|visibility\s*:\s*hidden|width\s*=\s*[\'\"]?0|height\s*=\s*[\'\"]?0)[^>]*>~i',$s);
     $iframeRemote=(bool)preg_match('~<iframe\b[^>]+https?://~i',$s);
     if ($directExec && ($domInsert || $remote || strlen($s)>4000)) {
         echo "ALERT\tPW-JS-001\t",$file,"\n"; continue;
     }
-    if ($decode && $scriptCreate && $domInsert) {
+    if ($decode && $scriptCreate && $domInsert && ($remote || $charPack || $encodedRemote)) {
         echo "ALERT\tPW-JS-002\t",$file,"\n"; continue;
     }
     if ($hiddenIframe && $iframeRemote && ($decode || strpos($low,'eval(')!==false)) {
@@ -63,9 +71,9 @@ main() {
   sec "PW-JS-001 • decoded JavaScript execution" "eval/Function fed by atob/fromCharCode/decode routines + corroborating browser behavior"
   report "$A1" issue "no decoded JavaScript execution chains found"
 
-  sec "PW-JS-002 • obfuscated remote script-loader injection" "decoder + dynamic script/src construction + DOM insertion • Balada-like behavior"
-  report "$A2" issue "no obfuscated dynamic script-loader chains found"
-  note "String.fromCharCode or createElement(script) alone are not findings; PW-JS-002 requires the compound loader behavior."
+  sec "PW-JS-002 • obfuscated remote script-loader injection" "decoder + dynamic script/src construction + DOM insertion + remote/packed-source evidence • Balada-like behavior"
+  report "$A2" issue "no obfuscated dynamic remote script-loader chains found"
+  note "Decoder or createElement(script) alone are not findings; PW-JS-002 also requires DOM insertion and literal, Base64-decoded, or strongly packed remote-source evidence."
 
   sec "PW-JS-003 • hidden external iframe with obfuscation" "hidden iframe + remote URL + decode/eval evidence"
   report "$R3" review "no hidden external iframe with corroborating obfuscation found"
