@@ -1,6 +1,6 @@
-# PressWarden v1.0.0 configuration
+# PressWarden v1.0.1 configuration
 # Copy to ~/.config/presswarden/config and chmod 600.
-# Environment variables override these values when exported before launch.
+# Exported environment variables override values from this file.
 
 # Discovery. Empty means the CLI auto-detects a sensible root or uses the path argument.
 PRESSWARDEN_SCAN_ROOT=""
@@ -12,6 +12,8 @@ PRESSWARDEN_DISCOVERY_CACHE_TTL=300
 PRESSWARDEN_INTERACTIVE=1
 PRESSWARDEN_ADMINS_CHECK=""
 PRESSWARDEN_OUTPUT_JSON=1
+# Slow image-extension PHP scan in FULL: empty=ask, 1=always run, 0=always skip.
+PRESSWARDEN_UPLOADS_DEEP=""
 # PRESSWARDEN_NOCOLOR=1
 
 # Network/cache tuning
