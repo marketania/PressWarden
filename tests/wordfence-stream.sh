@@ -3,6 +3,7 @@ set -euo pipefail
 ROOTDIR="$(cd "$(dirname "$0")/.." && pwd)"
 TMP="${TMPDIR:-/tmp}/presswarden-wordfence-stream.$$"
 trap 'rm -rf "$TMP"' EXIT
+mkdir -p "$TMP"
 feed="$TMP/feed.json"
 inv="$TMP/inventory.tsv"
 empty="$TMP/empty.json"
