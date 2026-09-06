@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # php-threat-intel — focused high-confidence PHP threat behaviors not covered by generic sinks.
-NAME=php-threat-intel; DESC="dynamic PHP execution + credential-exfil intelligence"
-SCAN_DOES="Validates request-controlled dynamic function execution and credential-capture patterns combined with outbound transmission/verification weakening."
-SCAN_WHY="Backdoors and credential stealers may avoid eval/base64 signatures by invoking attacker-selected functions or hiding exfiltration inside plausible WordPress plugin code."
+NAME=php-threat-intel; DESC="dynamic PHP execution + credential/admin-targeted payload intelligence"
+SCAN_DOES="Validates request-controlled dynamic execution, credential-capture/exfiltration, and admin-targeted remote browser payload behavior."
+SCAN_WHY="Backdoors and malicious plugins may avoid classic eval/base64 signatures by invoking attacker-selected functions, stealing credentials, or targeting logged-in administrators with remote browser payloads."
 . "$(cd "$(dirname "$0")/.." && pwd)/lib/_lib.sh"
 
 _make_validator() {
@@ -19,31 +19,44 @@ while(($line=fgets(STDIN))!==false){
   $raw=$s;
   $login=(bool)preg_match('~\$_POST\s*\[\s*[\'\"](?:log|user_login|username)[\'\"]\s*\]~i',$raw);
   $pass=(bool)preg_match('~\$_POST\s*\[\s*[\'\"](?:pwd|user_pass|password)[\'\"]\s*\]~i',$raw);
-  $outbound=(bool)preg_match('~\b(?:wp_remote_post|curl_exec|curl_setopt|file_get_contents)\s*\(~i',$raw);
+  $outbound=(bool)preg_match('~\b(?:wp_remote_get|wp_remote_post|curl_exec|curl_setopt|file_get_contents)\s*\(~i',$raw);
   $weakTls=(bool)preg_match('~CURLOPT_SSL_VERIFYPEER\s*,\s*(?:false|0)|[\'\"]sslverify[\'\"]\s*=>\s*false~i',$raw);
-  if($login&&$pass&&$outbound&&$weakTls)echo "ALERT\tPW-PHP-005\t",$file,"\n";
+  if($login&&$pass&&$outbound&&$weakTls){echo "ALERT\tPW-PHP-005\t",$file,"\n";continue;}
+
+  $isAdmin=(bool)preg_match('~\bis_admin\s*\(\s*\)~i',$raw);
+  $manage=(bool)preg_match('~\bcurrent_user_can\s*\(\s*[\'\"]manage_options[\'\"]~i',$raw);
+  $ua=(bool)preg_match('~\$_SERVER\s*\[\s*[\'\"]HTTP_USER_AGENT[\'\"]\s*\]~i',$raw);
+  $windows=(bool)preg_match('~(?:Windows|Win32|Win64)~i',$raw);
+  $decode=(bool)preg_match('~\bbase64_decode\s*\(~i',$raw);
+  $remote=(bool)preg_match('~\b(?:wp_remote_get|wp_remote_post|curl_exec|file_get_contents)\s*\(~i',$raw);
+  $inject=(bool)preg_match('~\b(?:wp_add_inline_script|wp_enqueue_script|add_action)\s*\(|\b(?:echo|print)\b~i',$raw);
+  if($isAdmin&&$manage&&$ua&&$windows&&$decode&&$remote&&$inject)echo "ALERT\tPW-PHP-006\t",$file,"\n";
 }
 PRESSWARDEN_PHP_INTEL
 }
 
 main() {
   banner
-  local CAND V A4 A5 s
-  CAND=$(tmpf); V=$(tmpf); A4=$(tmpf); A5=$(tmpf); : > "$CAND"; : > "$A4"; : > "$A5"
+  local CAND V A4 A5 A6 s
+  CAND=$(tmpf); V=$(tmpf); A4=$(tmpf); A5=$(tmpf); A6=$(tmpf); : > "$CAND"; : > "$A4"; : > "$A5"; : > "$A6"
   for s in "${TREE_ROOTS[@]}"; do
     find "$s" -xdev \
       \( -type d \( -name vendor -o -name node_modules -o -name cache -o -name caches -o -name uploads -o -name wflogs -o -name .git -o -name .private \) -prune \) -o \
       \( -type f \( -name '*.php' -o -name '*.phtml' \) -size -5M -print0 \) 2>/dev/null \
-      | xargs -0 -r grep -IlE '\$_(GET|POST|REQUEST|COOKIE)|user_login|user_pass|CURLOPT_SSL_VERIFYPEER|sslverify' 2>/dev/null >> "$CAND"
+      | xargs -0 -r grep -IlE '\$_(GET|POST|REQUEST|COOKIE)|user_login|user_pass|CURLOPT_SSL_VERIFYPEER|sslverify|is_admin[[:space:]]*\(|current_user_can[[:space:]]*\(|HTTP_USER_AGENT|base64_decode[[:space:]]*\(' 2>/dev/null >> "$CAND"
   done
   sort -u "$CAND" -o "$CAND"
   if [ -s "$CAND" ] && command -v php >/dev/null 2>&1; then
     _make_validator "$V"
     php "$V" < "$CAND" 2>/dev/null | while IFS=$'\t' read -r kind rule file; do
       [ -n "$file" ] || continue
-      case "$rule" in PW-PHP-004) printf '%s\n' "$file" >> "$A4" ;; PW-PHP-005) printf '%s\n' "$file" >> "$A5" ;; esac
+      case "$rule" in
+        PW-PHP-004) printf '%s\n' "$file" >> "$A4" ;;
+        PW-PHP-005) printf '%s\n' "$file" >> "$A5" ;;
+        PW-PHP-006) printf '%s\n' "$file" >> "$A6" ;;
+      esac
     done
-    sort -u "$A4" -o "$A4"; sort -u "$A5" -o "$A5"
+    sort -u "$A4" -o "$A4"; sort -u "$A5" -o "$A5"; sort -u "$A6" -o "$A6"
   fi
 
   sec "PW-PHP-004 • request-controlled dynamic function execution" "attacker-controlled function name + invocation/call_user_func"
@@ -51,7 +64,11 @@ main() {
 
   sec "PW-PHP-005 • credential capture with weakened-TLS exfiltration" "login + password POST capture + outbound request + certificate verification disabled"
   report "$A5" issue "no high-confidence credential-exfiltration chain found"
-  note "Login handling or outbound HTTP alone is not a finding; PW-PHP-005 requires captured credential fields plus outbound transmission plus explicit TLS verification weakening."
+
+  sec "PW-PHP-006 • admin-targeted remote browser payload" "wp-admin + manage_options + Windows UA gating + remote fetch + base64 decode + browser injection"
+  report "$A6" issue "no high-confidence admin-targeted remote browser payload chain found"
+  note "PW-PHP-006 is behavior-based coverage informed by 2026 fake-browser-update malware research; it does not depend on a campaign domain or plugin name."
+  note "Login handling, outbound HTTP, base64_decode(), is_admin(), or User-Agent checks alone are not findings; rules require compound behavior."
 
   rm -f "$CAND" "$V"
   finish
