@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+set -uo pipefail
+PRESSWARDEN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VERSION="1.0.0"
+CONFIG_FILE="${PRESSWARDEN_CONFIG_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/presswarden/config}"
+[ -r "$CONFIG_FILE" ] && . "$CONFIG_FILE"
+
+logo() {
+cat <<'EOF'
+ ____                    __        __            _            
+|  _ \ _ __ ___  ___ ___\ \      / /_ _ _ __ __| | ___ _ __ 
+| |_) | '__/ _ \/ __/ __|\ \ /\ / / _` | '__/ _` |/ _ \ '_ \
+|  __/| | |  __/\__ \__ \\ V  V / (_| | | | (_| |  __/ | | |
+|_|   |_|  \___||___/___/ \_/\_/ \__,_|_|  \__,_|\___|_| |_|
+
+          Fleet-scale WordPress security auditing from the shell.
+EOF
+}
+
+usage() {
+  logo
+  cat <<EOF
+PressWarden v$VERSION
+
+Usage:
+  presswarden fast [path]          High-signal routine audit
+  presswarden full [path]          Comprehensive audit + deep integrity/DB maintenance
+  presswarden db [path]            Database-only audit + maintenance
+  presswarden scan [path]          Alias for fast
+  presswarden cleanup [path]       Logs + disposable metadata/inode cleanup
+  presswarden doctor [path]        Dependencies, config, integrations, discovery
+  presswarden file-mods ACTION [path]  status|on|off for DISALLOW_FILE_MODS
+  presswarden config               Show sanitized effective configuration
+  presswarden --version
+  presswarden help
+
+Path is optional. Resolution order: explicit path → PRESSWARDEN_SCAN_ROOT → common hosting roots → current directory.
+EOF
+}
+
+resolve_root() {
+  local explicit="${1:-}" c
+  if [ -n "$explicit" ]; then c="$explicit"
+  elif [ -n "${PRESSWARDEN_SCAN_ROOT:-}" ]; then c="$PRESSWARDEN_SCAN_ROOT"
+  elif [ -d "$HOME/domains" ]; then c="$HOME/domains"
+  elif [ -d "$HOME/public_html" ]; then c="$HOME/public_html"
+  elif [ -d /var/www ]; then c=/var/www
+  else c="$PWD"
+  fi
+  if command -v realpath >/dev/null 2>&1; then realpath "$c" 2>/dev/null || printf '%s' "$c"; else (cd "$c" 2>/dev/null && pwd -P) || printf '%s' "$c"; fi
+}
+
+show_config() {
+  local r; r=$(resolve_root '')
+  printf 'PressWarden v%s\n\n' "$VERSION"
+  printf 'Config:             %s\n' "$CONFIG_FILE"
+  printf 'Scan root:          %s\n' "$r"
+  printf 'Discovery depth:    %s\n' "${PRESSWARDEN_DISCOVERY_DEPTH:-8}"
+  printf 'Interactive:        %s\n' "${PRESSWARDEN_INTERACTIVE:-1}"
+  printf 'JSON reports:       %s\n' "${PRESSWARDEN_OUTPUT_JSON:-1}"
+  printf 'WPScan API:         %s\n' "$([ -n "${WPSCAN_API_TOKEN:-}" ] && printf configured || printf 'not configured')"
+  printf 'Hostinger API:      %s\n' "$([ -n "${HOSTINGER_API_TOKEN:-}" ] && printf 'configured (optional)' || printf 'not configured')"
+  printf 'State directory:    %s\n' "${PRESSWARDEN_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/presswarden}"
+  printf 'Cache directory:    %s\n' "${PRESSWARDEN_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/presswarden}"
+}
+
+cmd="${1:-help}"; shift || true
+case "$cmd" in
+  -V|--version|version) printf 'PressWarden %s\n' "$VERSION" ;;
+  help|-h|--help) usage ;;
+  config) show_config ;;
+  fast|scan|full|db)
+    ROOT=$(resolve_root "${1:-}"); export ROOT PRESSWARDEN_DIR
+    suite="$cmd"; [ "$suite" = scan ] && suite=fast
+    exec "$PRESSWARDEN_DIR/suites/$suite.sh"
+    ;;
+  cleanup)
+    ROOT=$(resolve_root "${1:-}"); export ROOT PRESSWARDEN_DIR
+    exec "$PRESSWARDEN_DIR/checks/sensitive-files.sh"
+    ;;
+  doctor)
+    ROOT=$(resolve_root "${1:-}"); export ROOT PRESSWARDEN_DIR
+    exec "$PRESSWARDEN_DIR/checks/doctor.sh"
+    ;;
+  file-mods)
+    action="${1:-status}"; [ "$#" -gt 0 ] && shift || true
+    ROOT=$(resolve_root "${1:-}"); export ROOT PRESSWARDEN_DIR
+    exec "$PRESSWARDEN_DIR/checks/file-mods.sh" "$action"
+    ;;
+  *) printf 'Unknown command: %s\n\n' "$cmd" >&2; usage >&2; exit 2 ;;
+esac
