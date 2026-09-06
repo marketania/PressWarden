@@ -2,6 +2,17 @@
 
 All notable changes to PressWarden are documented here.
 
+## 1.1.1 — 2026-09-06
+
+Unified updater release.
+
+- `./presswarden update` now updates both PressWarden program code and enabled threat-intelligence feeds in one maintenance workflow.
+- Threat intelligence is refreshed only after the newly downloaded PressWarden code passes validation and is installed, so the refresh uses the new intelligence implementation rather than the old one.
+- Program updates continue to preserve private `config/config`, reports, quarantine, baselines, caches, and existing intel state; the post-update intelligence refresh may intentionally update provider cache files under the intel state directory.
+- A transient intelligence/feed/network failure does not roll back a successfully validated program update. Existing feed caches are preserved by the intelligence layer, the CLI reports the partial failure, and exits `1` so automation can detect that the refresh should be retried.
+- Update source validation now requires the threat-intelligence library in addition to core runtime files.
+- Expanded updater regression coverage to prove successful post-update intel refresh, safe partial failure behavior, symlink execution, obsolete-code removal, malformed-package rejection, and preservation of private state.
+
 ## 1.1.0 — 2026-09-06
 
 Threat Intelligence and fleet-security release.
