@@ -12,7 +12,7 @@
 
 **Fleet-scale WordPress security auditing from the shell.**
 
-![Version](https://img.shields.io/badge/version-1.1.0-2ea44f)
+![Version](https://img.shields.io/badge/version-1.1.1-2ea44f)
 ![Bash](https://img.shields.io/badge/bash-4%2B-4EAA25?logo=gnubash&logoColor=white)
 ![WordPress](https://img.shields.io/badge/WordPress-security-21759B?logo=wordpress&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Linux-FCC624?logo=linux&logoColor=black)
@@ -56,6 +56,7 @@ PressWarden focuses on **high-signal findings**. A PHP function such as `base64_
 - 🔗 **Fleet correlation** for repeated new or changed artifacts appearing across multiple WordPress sites
 - 🧠 **Threat Intelligence** with native rules and optional external providers
 - 🚨 **CISA KEV correlation** for known-exploited vulnerabilities
+- 🔄 **Safe self-update** for program code plus threat intelligence without replacing private state
 - 🧳 **Portable shared-hosting install** with no sudo or PATH changes required
 - ♻️ **Safe remediation** with quarantine-backed file actions
 - 🔒 **Fleet lock/unlock** for `DISALLOW_FILE_MODS`
@@ -107,6 +108,7 @@ That is the recommended starting point for most users.
 | `./presswarden incident` | Investigating a suspected compromise or reinfection |
 | `./presswarden intel scan` | Focused malware + threat-intelligence investigation |
 | `./presswarden db` | Database security, stored malware, and DB maintenance |
+| `./presswarden update` | Updating PressWarden code and refreshing threat intelligence |
 | `./presswarden doctor` | Checking setup, dependencies, discovery, and integrations |
 | `./presswarden cleanup` | Conservative log / disposable-file cleanup |
 
@@ -120,6 +122,28 @@ If you suspect a compromise:
 
 ```bash
 ./presswarden incident
+```
+
+---
+
+## Keep PressWarden updated
+
+After installation, program and intelligence updates are handled together:
+
+```bash
+./presswarden update
+```
+
+PressWarden first downloads and validates the new program version, creates a rollback copy of its managed code, installs the validated code, and then refreshes enabled threat-intelligence feeds using the newly installed intelligence implementation.
+
+The code updater does **not** replace your private configuration, reports, quarantine, baselines, caches, or existing intel state. The final intelligence-refresh step may intentionally update provider cache files under the intel state directory.
+
+If an intelligence feed is temporarily unavailable, the validated program update remains installed and existing feed caches are preserved. The command reports the partial failure and exits `1` so automated maintenance can retry the intelligence refresh later.
+
+You can still refresh intelligence by itself when needed:
+
+```bash
+./presswarden intel update
 ```
 
 ---
@@ -381,7 +405,7 @@ You do not need:
 - a PATH modification
 - system-wide configuration
 
-Rerunning the installer updates PressWarden while preserving your private `config/config` and `var/` data.
+After installation, use `./presswarden update` for future program + threat-intelligence updates. Rerunning the installer remains safe and preserves your private `config/config` and `var/` data.
 
 An optional user-wide install is also available:
 
@@ -492,6 +516,7 @@ PressWarden is designed to detect first and remediate carefully.
 - Incident Mode does not run database repair/optimization automatically
 - threat-intelligence matches do not automatically delete plugins or themes
 - external YARA matches are review-only
+- program self-update never replaces private config, reports, quarantine, baselines, or runtime history
 - API failures do not become fake malware findings
 
 Quarantine, baselines, and reports normally live under:
@@ -591,6 +616,8 @@ Exit codes:
 1   one or more ALERT / REVIEW findings were reported
 2+  scanner or dependency error
 ```
+
+For `./presswarden update`, exit `1` can also mean the program update succeeded but one or more threat-intelligence feeds could not refresh. The updater states this explicitly and preserves existing feed caches so `./presswarden intel update` can be retried later.
 
 ---
 
