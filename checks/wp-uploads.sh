@@ -23,7 +23,7 @@ main() {
   report "$L" review
 
   note "Upload .htaccess files are content-checked by htcheck; upload .user.ini files are content-checked by confcheck instead of being flagged merely for existing."
-  note "Deep image-content inspection remains full-only: wp-uploads-deep.sh / runall-full.sh."
+  note "Deep image-content inspection is available in ./presswarden full; PressWarden asks before running that slow scan."
   finish
 }
 run_logged wp-uploads
