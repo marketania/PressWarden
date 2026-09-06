@@ -24,6 +24,14 @@ jobs:
             bash -n "$file"
           done < <(find . -type f \( -name '*.sh' -o -name 'presswarden' \) -not -path './.git/*' | sort)
 
+      - name: PHP helper syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r file; do
+            php -l "$file" >/dev/null
+          done < <(find lib -type f -name '*.php' | sort)
+
       - name: Host-agnostic discovery smoke test
         shell: bash
         run: bash tests/smoke.sh
@@ -31,6 +39,10 @@ jobs:
       - name: Threat-intel credential safety
         shell: bash
         run: bash tests/intel-security.sh
+
+      - name: Bounded-memory Wordfence streaming
+        shell: bash
+        run: bash tests/wordfence-stream.sh
 
       - name: No runtime process substitution
         shell: bash
