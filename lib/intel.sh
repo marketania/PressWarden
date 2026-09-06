@@ -131,7 +131,7 @@ pw_intel_status() {
   local dir native campaigns cisa wfscan wfprod nc ncamp nkev nscan nprod
   dir=$(pw_intel_state_dir); native="$PRESSWARDEN_DIR/intel/native-rules.tsv"; campaigns="$PRESSWARDEN_DIR/intel/campaigns.tsv"
   cisa="$dir/cisa-kev.json"; wfscan="$dir/wordfence-scanner.json"; wfprod="$dir/wordfence-production.json"
-  nc=$(grep -cvE '^[[:space:]]*(#|$)' "$native" 2>/dev/null || true); nc=${nc:-0}
+  nc=$(awk -F'\t' '$1 !~ /^[[:space:]]*#/ && NF && $2 != "campaign" {n++} END{print n+0}' "$native" 2>/dev/null || true); nc=${nc:-0}
   ncamp=$(grep -cvE '^[[:space:]]*(#|$)' "$campaigns" 2>/dev/null || true); ncamp=${ncamp:-0}
   nkev=$(_pw_intel_count_json "$cisa" cisa); nscan=$(_pw_intel_count_json "$wfscan" wordfence); nprod=$(_pw_intel_count_json "$wfprod" wordfence)
   printf 'PressWarden Threat Intelligence v%s\n\n' "${VERSION:-$(cat "$PRESSWARDEN_DIR/VERSION" 2>/dev/null)}"
