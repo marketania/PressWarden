@@ -25,6 +25,11 @@ printf '%s\n' "$out" | grep -q 'REVIEW'
 skip=$(ROOT="$TMP/sites" PATH="$TMP/bin:$PATH" PRESSWARDEN_CONFIG_FILE="$TMP/no-config" PRESSWARDEN_STATE_DIR="$TMP/state-skip" PRESSWARDEN_CACHE_DIR="$TMP/cache-skip" PRESSWARDEN_NOCOLOR=1 bash "$ROOTDIR/checks/external-yara.sh" 2>&1)
 printf '%s\n' "$skip" | grep -q 'PRESSWARDEN_YARA_RULES is not configured'
 
+status=$(PATH="$TMP/bin:$PATH" PRESSWARDEN_YARA_RULES="$TMP/rules.yar" PRESSWARDEN_CONFIG_FILE="$TMP/no-config" PRESSWARDEN_STATE_DIR="$TMP/state-status" "$ROOTDIR/presswarden" intel status)
+printf '%s\n' "$status" | grep -qE 'External YARA rules[[:space:]]+configured / ready$'
+config=$(PATH="$TMP/bin:$PATH" PRESSWARDEN_YARA_RULES="$TMP/rules.yar" PRESSWARDEN_CONFIG_FILE="$TMP/no-config" PRESSWARDEN_STATE_DIR="$TMP/state-config" "$ROOTDIR/presswarden" config)
+printf '%s\n' "$config" | grep -qE 'External YARA:[[:space:]]+configured$'
+
 if find "$ROOTDIR/intel" -type f \( -name '*.yar' -o -name '*.yara' \) | grep -q .; then
   printf 'bundled YARA signatures found under intel/; external-only contract violated\n' >&2
   exit 1
