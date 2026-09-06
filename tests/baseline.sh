@@ -3,7 +3,6 @@ set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/presswarden-baseline-test.XXXXXX")"
-trap 'rc=$?; printf "Baseline test failed near line %s (exit %s)\n" "$LINENO" "$rc" >&2; for f in "$TMP"/*.out; do [ -f "$f" ] && { printf "%s\n" "--- $f ---" >&2; cat "$f" >&2; }; done; m=$(find "$TMP/state" -path "*/current/manifest.tsv" -type f -print -quit 2>/dev/null || true); [ -z "$m" ] || { printf "%s\n" "--- $m ---" >&2; cat "$m" >&2; }; exit "$rc"' ERR
 trap 'rm -rf "$TMP"' EXIT
 ROOT="$TMP/fleet"
 STATE="$TMP/state"
