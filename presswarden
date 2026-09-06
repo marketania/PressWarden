@@ -46,6 +46,8 @@ Usage:
   ./presswarden db [path]            Database security/malware audit + maintenance
   ./presswarden scan [path]          Alias for fast
   ./presswarden intel ACTION [path]  status|update|scan threat intelligence
+  ./presswarden baseline ACTION [path]  create|status|diff security baseline
+  ./presswarden changes [path]       Compare current state with the saved baseline
   ./presswarden cleanup [path]       Logs + disposable metadata/inode cleanup
   ./presswarden doctor [path]        Dependencies, config, integrations, discovery
   ./presswarden lock [path]          Lock WordPress file modifications across discovered sites
@@ -82,7 +84,7 @@ resolve_root() {
 }
 
 show_config() {
-  local r mode state cache intel
+  local r mode state cache intel baseline
   r=$(resolve_root '')
   if [ "$PRESSWARDEN_PORTABLE" = 1 ]; then
     mode='portable/local'
@@ -94,6 +96,7 @@ show_config() {
     cache="${PRESSWARDEN_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/presswarden}"
   fi
   intel="${PRESSWARDEN_INTEL_DIR:-$state/intel}"
+  baseline="$state/baselines"
   printf 'PressWarden v%s\n\n' "$VERSION"
   printf 'Install mode:       %s\n' "$mode"
   printf 'Program directory:  %s\n' "$PRESSWARDEN_DIR"
@@ -111,6 +114,7 @@ show_config() {
   printf 'State directory:    %s\n' "$state"
   printf 'Cache directory:    %s\n' "$cache"
   printf 'Intel directory:    %s\n' "$intel"
+  printf 'Baseline directory: %s\n' "$baseline"
 }
 
 confirm_fleet_file_mods() {
@@ -149,6 +153,24 @@ case "$cmd" in
         ;;
       *) printf 'Unknown intel action: %s (use status, update, or scan)\n' "$action" >&2; exit 2 ;;
     esac
+    ;;
+  baseline)
+    action="${1:-status}"; [ "$#" -gt 0 ] && shift || true
+    ROOT=$(resolve_root "${1:-}"); export ROOT PRESSWARDEN_DIR
+    # shellcheck disable=SC1090
+    . "$PRESSWARDEN_DIR/lib/baseline.sh"
+    case "$action" in
+      create) pw_baseline_create ;;
+      status) pw_baseline_status ;;
+      diff|check|compare) pw_baseline_diff ;;
+      *) printf 'Unknown baseline action: %s (use create, status, or diff)\n' "$action" >&2; exit 2 ;;
+    esac
+    ;;
+  changes)
+    ROOT=$(resolve_root "${1:-}"); export ROOT PRESSWARDEN_DIR
+    # shellcheck disable=SC1090
+    . "$PRESSWARDEN_DIR/lib/baseline.sh"
+    pw_baseline_diff
     ;;
   cleanup)
     ROOT=$(resolve_root "${1:-}"); export ROOT PRESSWARDEN_DIR
