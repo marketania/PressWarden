@@ -46,17 +46,17 @@ PressWarden focuses on **high-signal findings**. A PHP function such as `base64_
 
 ### Highlights
 
-- **Automatic WordPress discovery** across one site or a hosting fleet
-- **PHP malware detection** including webshell behavior, remote loaders, credential theft, and obfuscated payloads
-- **JavaScript malware detection** including injected scripts and suspicious redirects
-- **Database malware scanning** for stored scripts, PHP payloads, persistence, and suspicious administrator accounts
-- **WordPress integrity checks** for core and plugins
-- **Threat Intelligence** with native rules and optional external providers
-- **CISA KEV correlation** for known-exploited vulnerabilities
-- **Portable shared-hosting install** with no sudo or PATH changes required
-- **Safe remediation** with quarantine-backed file actions
-- **Fleet lock/unlock** for `DISALLOW_FILE_MODS`
-- **Human-readable and JSON reports**
+- 🔎 **Automatic WordPress discovery** across one site or a hosting fleet
+- 🦠 **PHP malware detection** including webshell behavior, remote loaders, credential theft, and obfuscated payloads
+- 🌐 **JavaScript malware detection** including injected scripts and suspicious redirects
+- 🗄️ **Database malware scanning** for stored scripts, PHP payloads, persistence, and suspicious administrator accounts
+- 🧬 **WordPress integrity checks** for core and plugins
+- 🧠 **Threat Intelligence** with native rules and optional external providers
+- 🚨 **CISA KEV correlation** for known-exploited vulnerabilities
+- 🧳 **Portable shared-hosting install** with no sudo or PATH changes required
+- ♻️ **Safe remediation** with quarantine-backed file actions
+- 🔒 **Fleet lock/unlock** for `DISALLOW_FILE_MODS`
+- 📊 **Human-readable and JSON reports**
 
 ---
 
