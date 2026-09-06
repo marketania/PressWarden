@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -uo pipefail
 PRESSWARDEN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VERSION="1.0.3"
+VERSION="$(cat "$PRESSWARDEN_DIR/VERSION" 2>/dev/null || printf '1.0.4')"
 PRESSWARDEN_PORTABLE=0
 [ -f "$PRESSWARDEN_DIR/.presswarden-portable" ] && PRESSWARDEN_PORTABLE=1
 
