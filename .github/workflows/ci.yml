@@ -41,7 +41,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if grep -R -nE 'MKS SECURITY|mks_bash|\.config/mks' . --exclude-dir=.git; then
+          if grep -R -nE 'MKS SECURITY|mks_bash|\.config/mks' README.md SECURITY.md CONTRIBUTING.md CHANGELOG.md docs checks lib suites config tests presswarden install.sh uninstall.sh; then
             echo 'Legacy MKS branding/path detected.' >&2
             exit 1
           fi
