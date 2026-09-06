@@ -36,6 +36,10 @@ jobs:
         shell: bash
         run: bash tests/smoke.sh
 
+      - name: Database threat-intel fixtures
+        shell: bash
+        run: bash tests/db-threat-intel.sh
+
       - name: Threat-intel credential safety
         shell: bash
         run: bash tests/intel-security.sh
@@ -53,12 +57,12 @@ jobs:
             exit 1
           fi
 
-      - name: No legacy branding
+      - name: No legacy branding or stale commands
         shell: bash
         run: |
           set -euo pipefail
-          if grep -R -nE 'MKS SECURITY|mks_bash|\.config/mks' README.md SECURITY.md CONTRIBUTING.md CHANGELOG.md docs checks lib suites config tests presswarden install.sh uninstall.sh; then
-            echo 'Legacy MKS branding/path detected.' >&2
+          if grep -R -nE 'MKS SECURITY|mks_bash|\.config/mks|runall-(fast|full)(\.sh)?' README.md SECURITY.md CONTRIBUTING.md CHANGELOG.md docs checks lib suites config tests presswarden install.sh uninstall.sh; then
+            echo 'Legacy MKS branding/path or stale runall command detected.' >&2
             exit 1
           fi
 
