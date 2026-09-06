@@ -9,21 +9,57 @@ _make_validator() {
   local f="$1"
   cat > "$f" <<'PRESSWARDEN_JS_VALIDATOR'
 <?php
+function pw_js_decoded_remote_expr($expr) {
+    $expr=trim((string)$expr);
+    if (preg_match('~^atob\s*\(\s*([\'\"])([A-Za-z0-9+/=]{8,})\1\s*\)$~i',$expr,$m)) {
+        $d=base64_decode($m[2],true);
+        return $d!==false && (bool)preg_match('~https?://~i',$d);
+    }
+    if (preg_match('~^String\.fromCharCode\s*\(([^)]*)\)$~i',$expr,$m)) {
+        $parts=preg_split('~\s*,\s*~',trim($m[1]));
+        if (!is_array($parts) || count($parts)<8) return false;
+        $out='';
+        foreach ($parts as $p) {
+            if (preg_match('~^0x([0-9a-f]{1,2})$~i',$p,$x)) $n=hexdec($x[1]);
+            elseif (preg_match('~^[0-9]{1,3}$~',$p)) $n=(int)$p;
+            else return false;
+            if ($n<0 || $n>255) return false;
+            $out.=chr($n);
+        }
+        return (bool)preg_match('~https?://~i',$out);
+    }
+    if (preg_match('~^(?:decodeURIComponent|unescape)\s*\(\s*([\'\"])([^\'\"]{3,})\1\s*\)$~i',$expr,$m)) {
+        return (bool)preg_match('~https?://~i',rawurldecode($m[2]));
+    }
+    return false;
+}
+
 while (($line=fgets(STDIN))!==false) {
     $file=rtrim($line,"\r\n"); if($file===''||!is_file($file))continue;
     $s=@file_get_contents($file); if($s===false)continue;
     $low=strtolower($s);
     $decoder='(?:atob|String\.fromCharCode|decodeURIComponent|unescape)';
+    $decoderExpr='(?:atob\s*\(\s*[\'\"][A-Za-z0-9+/=]{8,}[\'\"]\s*\)|String\.fromCharCode\s*\([^)]{8,}\)|(?:decodeURIComponent|unescape)\s*\(\s*[\'\"][^\'\"]{3,}[\'\"]\s*\))';
     $decode=(bool)preg_match('~\b'.$decoder.'\s*\(~i',$s);
     $directExec=(bool)preg_match('~\b(?:eval|Function)\s*\(\s*'.$decoder.'\s*\(~i',$s);
     $scriptElement=(bool)preg_match('~createElement\s*\(\s*[\'\"]script[\'\"]\s*\)~i',$s);
     $domInsert=(bool)preg_match('~\b(?:appendChild|insertBefore|document\.write)\s*\(~i',$s);
     $remote=(bool)preg_match('~https?:\\?/\\?/|[\'\"](?:src|href)[\'\"]\s*[,=:]~i',$s);
-    $decodedSrc=(bool)preg_match('~(?:\.src\s*=|setAttribute\s*\(\s*[\'\"]src[\'\"]\s*,\s*)\s*'.$decoder.'\s*\(~i',$s);
-    if(!$decodedSrc && preg_match('~(?:var|let|const)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*'.$decoder.'\s*\(~i',$s,$m)){
-        $v=preg_quote($m[1],'~');
-        $decodedSrc=(bool)preg_match('~(?:\.src\s*=\s*'.$v.'\b|setAttribute\s*\(\s*[\'\"]src[\'\"]\s*,\s*'.$v.'\b)~i',$s);
+
+    $decodedRemoteSrc=false;
+    if (preg_match('~(?:\.src\s*=|setAttribute\s*\(\s*[\'\"]src[\'\"]\s*,\s*)\s*('.$decoderExpr.')~i',$s,$m)) {
+        $decodedRemoteSrc=pw_js_decoded_remote_expr($m[1]);
     }
+    if (!$decodedRemoteSrc && preg_match_all('~(?:var|let|const)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*('.$decoderExpr.')~i',$s,$vars,PREG_SET_ORDER)) {
+        foreach ($vars as $m) {
+            if (!pw_js_decoded_remote_expr($m[2])) continue;
+            $v=preg_quote($m[1],'~');
+            if (preg_match('~(?:\.src\s*=\s*'.$v.'\b|setAttribute\s*\(\s*[\'\"]src[\'\"]\s*,\s*'.$v.'\b)~i',$s)) {
+                $decodedRemoteSrc=true; break;
+            }
+        }
+    }
+
     $hiddenIframe=(bool)preg_match('~<iframe\b[^>]*(?:display\s*:\s*none|visibility\s*:\s*hidden|width\s*=\s*[\'\"]?0|height\s*=\s*[\'\"]?0)[^>]*>~i',$s);
     $iframeRemote=(bool)preg_match('~<iframe\b[^>]+https?://~i',$s);
 
@@ -37,7 +73,7 @@ while (($line=fgets(STDIN))!==false) {
     if ($directExec && ($domInsert || $remote || strlen($s)>4000)) {
         echo "ALERT\tPW-JS-001\t",$file,"\n"; continue;
     }
-    if ($scriptElement && $decodedSrc && $domInsert) {
+    if ($scriptElement && $decodedRemoteSrc && $domInsert) {
         echo "ALERT\tPW-JS-002\t",$file,"\n"; continue;
     }
     if (($redirectDirect || $redirectVar) && $decode) {
@@ -81,9 +117,9 @@ main() {
   sec "PW-JS-001 • decoded JavaScript execution" "eval/Function fed by atob/fromCharCode/decode routines + corroborating browser behavior"
   report "$A1" issue "no decoded JavaScript execution chains found"
 
-  sec "PW-JS-002 • obfuscated remote script-loader injection" "decoded value reaches script src + dynamic script creation + DOM insertion • Balada-like behavior"
-  report "$A2" issue "no obfuscated dynamic script-loader chains found"
-  note "String.fromCharCode or createElement(script) alone are not findings; PW-JS-002 now requires the decoded value to reach the script source."
+  sec "PW-JS-002 • obfuscated remote script-loader injection" "decoded literal reconstructs HTTP(S) script src + dynamic script creation + DOM insertion • Balada-like behavior"
+  report "$A2" issue "no obfuscated dynamic remote script-loader chains found"
+  note "Decoder or createElement(script) alone are not findings; PW-JS-002 requires a literal decoder expression that reconstructs an HTTP(S) target and reaches the script source."
 
   sec "PW-JS-004 • decoded browser redirect target" "decoded/character-reconstructed value reaches location assignment/replace/assign • redirect-malware behavior"
   report "$A4" issue "no decoded browser redirect chains found"
