@@ -1,8 +1,15 @@
 #!/usr/bin/env bash
 set -uo pipefail
 PRESSWARDEN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VERSION="1.0.2"
-CONFIG_FILE="${PRESSWARDEN_CONFIG_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/presswarden/config}"
+VERSION="1.0.3"
+PRESSWARDEN_PORTABLE=0
+[ -f "$PRESSWARDEN_DIR/.presswarden-portable" ] && PRESSWARDEN_PORTABLE=1
+
+if [ "$PRESSWARDEN_PORTABLE" = 1 ]; then
+  CONFIG_FILE="${PRESSWARDEN_CONFIG_FILE:-$PRESSWARDEN_DIR/config/config}"
+else
+  CONFIG_FILE="${PRESSWARDEN_CONFIG_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/presswarden/config}"
+fi
 
 # Preserve explicitly exported PressWarden/API values so one-shot environment
 # overrides win over persistent config values.
@@ -14,6 +21,7 @@ if [ -n "$_pw_env_overrides" ]; then
   done <<< "$_pw_env_overrides"
 fi
 unset _pw_env_overrides _pw_k _pw_v 2>/dev/null || true
+export PRESSWARDEN_PORTABLE
 
 logo() {
 cat <<'EOF'
@@ -33,28 +41,37 @@ usage() {
 PressWarden v$VERSION
 
 Usage:
-  presswarden fast [path]          High-signal routine audit
-  presswarden full [path]          Comprehensive audit + deep integrity/DB maintenance
-  presswarden db [path]            Database-only audit + maintenance
-  presswarden scan [path]          Alias for fast
-  presswarden cleanup [path]       Logs + disposable metadata/inode cleanup
-  presswarden doctor [path]        Dependencies, config, integrations, discovery
-  presswarden lock [path]          Lock WordPress file modifications across discovered sites
-  presswarden unlock [path]        Unlock WordPress file modifications for updates/maintenance
-  presswarden lock-status [path]   Show DISALLOW_FILE_MODS status across discovered sites
-  presswarden file-mods ACTION [path]  Legacy/advanced status|on|off interface
-  presswarden config               Show sanitized effective configuration
-  presswarden --version
-  presswarden help
+  ./presswarden fast [path]          High-signal routine audit
+  ./presswarden full [path]          Comprehensive audit + deep integrity/DB maintenance
+  ./presswarden db [path]            Database-only audit + maintenance
+  ./presswarden scan [path]          Alias for fast
+  ./presswarden cleanup [path]       Logs + disposable metadata/inode cleanup
+  ./presswarden doctor [path]        Dependencies, config, integrations, discovery
+  ./presswarden lock [path]          Lock WordPress file modifications across discovered sites
+  ./presswarden unlock [path]        Unlock WordPress file modifications for updates/maintenance
+  ./presswarden lock-status [path]   Show DISALLOW_FILE_MODS status across discovered sites
+  ./presswarden file-mods ACTION [path]  Legacy/advanced status|on|off interface
+  ./presswarden config               Show sanitized effective configuration
+  ./presswarden --version
+  ./presswarden help
 
-Path is optional. Resolution order: explicit path → PRESSWARDEN_SCAN_ROOT → common hosting roots → current directory.
+Installed user-wide? The same commands also work as: presswarden fast, presswarden full, etc.
+Path is optional. Portable installs automatically scan outside the PressWarden program folder.
 EOF
 }
 
 resolve_root() {
-  local explicit="${1:-}" c
-  if [ -n "$explicit" ]; then c="$explicit"
-  elif [ -n "${PRESSWARDEN_SCAN_ROOT:-}" ]; then c="$PRESSWARDEN_SCAN_ROOT"
+  local explicit="${1:-}" c parent
+  if [ -n "$explicit" ]; then
+    c="$explicit"
+  elif [ -n "${PRESSWARDEN_SCAN_ROOT:-}" ]; then
+    c="$PRESSWARDEN_SCAN_ROOT"
+  elif [ "$PRESSWARDEN_PORTABLE" = 1 ]; then
+    parent=$(cd "$PRESSWARDEN_DIR/.." 2>/dev/null && pwd -P || dirname "$PRESSWARDEN_DIR")
+    if [ -d "$parent/domains" ]; then c="$parent/domains"
+    elif [ -d "$parent/public_html" ]; then c="$parent/public_html"
+    else c="$parent"
+    fi
   elif [ -d "$HOME/domains" ]; then c="$HOME/domains"
   elif [ -d "$HOME/public_html" ]; then c="$HOME/public_html"
   elif [ -d /var/www ]; then c=/var/www
@@ -64,8 +81,20 @@ resolve_root() {
 }
 
 show_config() {
-  local r; r=$(resolve_root '')
+  local r mode state cache
+  r=$(resolve_root '')
+  if [ "$PRESSWARDEN_PORTABLE" = 1 ]; then
+    mode='portable/local'
+    state="${PRESSWARDEN_STATE_DIR:-$PRESSWARDEN_DIR/var}"
+    cache="${PRESSWARDEN_CACHE_DIR:-$PRESSWARDEN_DIR/var/cache}"
+  else
+    mode='user/system'
+    state="${PRESSWARDEN_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/presswarden}"
+    cache="${PRESSWARDEN_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/presswarden}"
+  fi
   printf 'PressWarden v%s\n\n' "$VERSION"
+  printf 'Install mode:       %s\n' "$mode"
+  printf 'Program directory:  %s\n' "$PRESSWARDEN_DIR"
   printf 'Config:             %s\n' "$CONFIG_FILE"
   printf 'Scan root:          %s\n' "$r"
   printf 'Discovery depth:    %s\n' "${PRESSWARDEN_DISCOVERY_DEPTH:-8}"
@@ -74,8 +103,8 @@ show_config() {
   printf 'Deep upload scan:   %s\n' "${PRESSWARDEN_UPLOADS_DEEP:-ask in FULL}"
   printf 'WPScan API:         %s\n' "$([ -n "${WPSCAN_API_TOKEN:-}" ] && printf configured || printf 'not configured')"
   printf 'Hostinger API:      %s\n' "$([ -n "${HOSTINGER_API_TOKEN:-}" ] && printf 'configured (optional)' || printf 'not configured')"
-  printf 'State directory:    %s\n' "${PRESSWARDEN_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/presswarden}"
-  printf 'Cache directory:    %s\n' "${PRESSWARDEN_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/presswarden}"
+  printf 'State directory:    %s\n' "$state"
+  printf 'Cache directory:    %s\n' "$cache"
 }
 
 confirm_fleet_file_mods() {
