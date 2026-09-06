@@ -12,7 +12,7 @@
 
 **Fleet-scale WordPress security auditing from the shell.**
 
-![Version](https://img.shields.io/badge/version-1.0.1-2ea44f)
+![Version](https://img.shields.io/badge/version-1.0.2-2ea44f)
 ![Bash](https://img.shields.io/badge/bash-4%2B-4EAA25?logo=gnubash&logoColor=white)
 ![WordPress](https://img.shields.io/badge/WordPress-security-21759B?logo=wordpress&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Linux-FCC624?logo=linux&logoColor=black)
@@ -37,6 +37,7 @@ PressWarden indexes the filesystem first, validates every WordPress root it find
 
 - 🔎 **Host-agnostic WordPress discovery** — finds validated WordPress roots and nested installations below any directory.
 - ⚡ **Fast + Full profiles** — frequent high-signal audits or deeper incident-response sweeps.
+- 🔒 **Fleet lock / unlock** — toggle `DISALLOW_FILE_MODS` across every discovered WordPress installation with one confirmation.
 - 🧬 **Official integrity checks** — WordPress core manifests and WordPress.org plugin checksums.
 - 🛡️ **Context-aware malware detection** — compound evidence instead of noisy single-token regexes.
 - 🧱 **Hardening review** — `.htaccess`, `wp-config.php`, PHP runtime, permissions, salts, debug settings, file modification controls, uploads, and persistence.
@@ -80,6 +81,9 @@ presswarden fast
 presswarden full
 presswarden db
 presswarden cleanup
+presswarden lock-status
+presswarden lock
+presswarden unlock
 ```
 
 Scan an explicit filesystem tree:
@@ -88,6 +92,7 @@ Scan an explicit filesystem tree:
 presswarden fast /var/www
 presswarden full /home/example/websites
 presswarden fast ~/domains
+presswarden lock ~/domains
 ```
 
 Other commands:
@@ -99,6 +104,45 @@ presswarden file-mods on
 presswarden file-mods off
 presswarden --version
 ```
+
+### Fleet locking with DISALLOW_FILE_MODS
+
+PressWarden can lock WordPress dashboard file modifications across every discovered installation by setting the WordPress `DISALLOW_FILE_MODS` constant.
+
+```bash
+presswarden lock-status
+presswarden lock
+presswarden unlock
+```
+
+`presswarden lock` sets:
+
+```php
+define('DISALLOW_FILE_MODS', true);
+```
+
+This prevents WordPress administrators from installing, updating, or editing plugins/themes from inside WordPress while the site is locked. `presswarden unlock` sets the constant to `false` so normal update/maintenance workflows can run again.
+
+A common maintenance workflow is:
+
+```bash
+presswarden unlock
+# run trusted WordPress/plugin/theme updates
+presswarden lock
+presswarden lock-status
+```
+
+For a large fleet, `lock` and `unlock` ask for **one fleet-level confirmation** and then apply the setting to all discovered WordPress installations. Before each `wp-config.php` change, PressWarden creates a quarantine-backed copy. If WP-CLI fails to update a site, the original config is restored automatically.
+
+For automation, explicitly disable interactive mode:
+
+```bash
+PRESSWARDEN_INTERACTIVE=0 presswarden unlock /var/www
+# maintenance automation
+PRESSWARDEN_INTERACTIVE=0 presswarden lock /var/www
+```
+
+The older `presswarden file-mods status|on|off` interface remains available for compatibility and advanced workflows.
 
 ### Automatic root selection
 
@@ -169,7 +213,7 @@ PressWarden intentionally avoids treating ordinary `base64_decode()`, `chmod(077
 ### Configuration and hardening
 
 - `wp-config.php` malware/obfuscation indicators.
-- `DISALLOW_FILE_MODS` and interactive enable/disable workflow.
+- `DISALLOW_FILE_MODS` detection and fleet-wide `lock` / `unlock` workflow.
 - WordPress debug/query constants.
 - placeholder/reused salts without printing secrets.
 - `FORCE_SSL_ADMIN` posture.
@@ -256,6 +300,7 @@ PressWarden defaults to **detect first, explain, then remediate interactively**.
 - File deletion candidates are quarantined first.
 - Critical WordPress files are protected from generic delete prompts.
 - Core repair backs up the existing file, retrieves the exact official package, verifies the source file against the official manifest, replaces only the failed path, and verifies the result again.
+- Fleet lock/unlock creates a backup of each site's `wp-config.php` and restores the original automatically if WP-CLI fails.
 - Database maintenance checks tables first and only attempts repair where appropriate before final verification.
 - Slow or optional inventory checks can be skipped explicitly rather than silently consuming hours on large fleets.
 - Non-interactive execution can disable remediation prompts with `PRESSWARDEN_INTERACTIVE=0`.
