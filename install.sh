@@ -36,43 +36,32 @@ fetch_archive() {
 }
 
 install_portable() {
-  local target="${PRESSWARDEN_INSTALL_DIR:-$PWD/PressWarden}"
+  local target
+  if [ -n "${PRESSWARDEN_INSTALL_DIR:-}" ]; then
+    target="$PRESSWARDEN_INSTALL_DIR"
+  elif [ -f "$PWD/.presswarden-portable" ] && [ -f "$PWD/presswarden" ]; then
+    target="$PWD"
+  else
+    target="$PWD/PressWarden"
+  fi
   case "$target" in /*) : ;; *) target="$PWD/$target" ;; esac
   target=${target%/}
 
-  mkdir -p "$(dirname "$target")"
+  mkdir -p "$target"
   fetch_archive
 
-  # Preserve private local configuration and runtime state across upgrades.
-  if [ -f "$target/config/config" ]; then
-    mkdir -p "$TMP/preserve/config"
-    cp -p "$target/config/config" "$TMP/preserve/config/config"
-  fi
-  if [ -d "$target/var" ]; then
-    mkdir -p "$TMP/preserve"
-    cp -a "$target/var" "$TMP/preserve/var"
-  fi
-
-  rm -rf "$target.new"
-  mv "$TMP/src" "$target.new"
-  : > "$target.new/.presswarden-portable"
-  mkdir -p "$target.new/config" "$target.new/var/reports" "$target.new/var/cache" "$target.new/var/quarantine"
-
-  if [ -f "$TMP/preserve/config/config" ]; then
-    cp -p "$TMP/preserve/config/config" "$target.new/config/config"
-  elif [ ! -f "$target.new/config/config" ]; then
-    cp "$target.new/config/config.example" "$target.new/config/config"
-  fi
-  if [ -d "$TMP/preserve/var" ]; then
-    rm -rf "$target.new/var"
-    cp -a "$TMP/preserve/var" "$target.new/var"
+  # Copy program files in place. config/config and var/ are not part of the
+  # repository, so an existing portable install keeps its private settings,
+  # reports, cache, and quarantine during upgrades.
+  cp -a "$TMP/src/." "$target/"
+  : > "$target/.presswarden-portable"
+  mkdir -p "$target/config" "$target/var/reports" "$target/var/cache" "$target/var/quarantine"
+  if [ ! -f "$target/config/config" ]; then
+    cp "$target/config/config.example" "$target/config/config"
   fi
 
-  chmod +x "$target.new/presswarden" "$target.new/install.sh" "$target.new/uninstall.sh" "$target.new"/checks/*.sh "$target.new"/suites/*.sh
-  chmod 600 "$target.new/config/config" 2>/dev/null || true
-
-  rm -rf "$target"
-  mv "$target.new" "$target"
+  chmod +x "$target/presswarden" "$target/install.sh" "$target/uninstall.sh" "$target"/checks/*.sh "$target"/suites/*.sh
+  chmod 600 "$target/config/config" 2>/dev/null || true
 
   logo
   printf '\n%s\n' 'PressWarden v1.0.3 • portable shared-host install'
