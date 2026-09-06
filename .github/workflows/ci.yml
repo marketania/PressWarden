@@ -1,0 +1,56 @@
+name: PressWarden CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Bash syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r file; do
+            bash -n "$file"
+          done < <(find . -type f \( -name '*.sh' -o -name 'presswarden' \) -not -path './.git/*' | sort)
+
+      - name: Host-agnostic discovery smoke test
+        shell: bash
+        run: bash tests/smoke.sh
+
+      - name: No runtime process substitution
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -R -nE '<[[:space:]]*<\(|>[[:space:]]*>\(' checks lib suites; then
+            echo 'Runtime process substitution detected; shared-host portability regression.' >&2
+            exit 1
+          fi
+
+      - name: No legacy branding
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -R -nE 'MKS SECURITY|mks_bash|\.config/mks' . --exclude-dir=.git; then
+            echo 'Legacy MKS branding/path detected.' >&2
+            exit 1
+          fi
+
+      - name: No hard-coded API token assignments
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -R -nE '(WPSCAN_API_TOKEN|HOSTINGER_API_TOKEN)="[^"$][^"]+"' checks lib suites config presswarden install.sh --exclude-dir=.git; then
+            echo 'Potential hard-coded API token assignment detected.' >&2
+            exit 1
+          fi
