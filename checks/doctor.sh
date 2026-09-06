@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-NAME=doctor; DESC="installation/config/dependency/discovery preflight"
-SCAN_DOES="Validates PressWarden, dependencies, config permissions, optional integrations, WordPress discovery, shell syntax, and restricted-hosting compatibility."
+NAME=doctor; DESC="installation/config/dependency/discovery/intelligence preflight"
+SCAN_DOES="Validates PressWarden, dependencies, config permissions, threat-intelligence readiness, optional integrations, WordPress discovery, shell syntax, and restricted-hosting compatibility."
 SCAN_WHY="Separates scanner/environment problems from real website findings before a security audit starts."
 . "$(cd "$(dirname "$0")/.." && pwd)/lib/_lib.sh"
+. "$PRESSWARDEN_DIR/lib/intel.sh"
 main() {
   banner
   sec "Runtime dependencies" "required and optional command availability"
@@ -38,6 +39,23 @@ main() {
     flag "DISCOVERY" "no WordPress installs found below $ROOT"
   fi
 
+  sec "Threat intelligence" "native knowledge base + local external-feed cache"
+  local idir native_count campaign_count kev_count wf_count
+  idir=$(pw_intel_state_dir)
+  native_count=$(grep -cvE '^[[:space:]]*(#|$)' "$PRESSWARDEN_DIR/intel/native-rules.tsv" 2>/dev/null || true); native_count=${native_count:-0}
+  campaign_count=$(grep -cvE '^[[:space:]]*(#|$)' "$PRESSWARDEN_DIR/intel/campaigns.tsv" 2>/dev/null || true); campaign_count=${campaign_count:-0}
+  kev_count=$(_pw_intel_count_json "$idir/cisa-kev.json" cisa); wf_count=$(_pw_intel_count_json "$idir/wordfence-production.json" wordfence)
+  [ "$native_count" -gt 0 ] && ok "NATIVE RULES" "$native_count behavior/campaign rules available" || flag "NATIVE RULES" "native rule catalog missing or empty"
+  printf '    %sℹ CAMPAIGNS%s   %s documented campaign family reference(s)\n' "$C" "$X" "$campaign_count"
+  if [ "$kev_count" -gt 0 ]; then ok "CISA KEV" "$kev_count record(s) cached • $(_pw_intel_age "$idir/cisa-kev.json")"; else printf '    %sℹ CISA KEV%s    not cached yet • run ./presswarden intel update\n' "$C" "$X"; fi
+  if [ -n "${PRESSWARDEN_WORDFENCE_TOKEN:-}" ]; then
+    if [ "$wf_count" -gt 0 ]; then ok "WORDFENCE" "$wf_count vulnerability record(s) cached • $(_pw_intel_age "$idir/wordfence-production.json")"; else printf '    %sℹ WORDFENCE%s   token configured; feed not cached yet • run ./presswarden intel update\n' "$C" "$X"; fi
+  else
+    printf '    %sℹ WORDFENCE%s   not configured (optional)\n' "$C" "$X"
+  fi
+  [ -n "${PRESSWARDEN_PATCHSTACK_KEY:-}" ] && ok "PATCHSTACK" "API key configured • lookups are deduplicated/cached" || printf '    %sℹ PATCHSTACK%s  not configured (optional)\n' "$C" "$X"
+  printf '    %sℹ INTEL DIR%s   %s\n' "$C" "$X" "$idir"
+
   sec "Optional integrations" "tokens are never printed"
   [ -n "${WPSCAN_API_TOKEN:-}" ] && ok "WPScan" "configured" || printf '    %sℹ WPSCAN%s      not configured\n' "$C" "$X"
   [ -n "${HOSTINGER_API_TOKEN:-}" ] && ok "Hostinger" "configured for optional PHP-details enrichment" || printf '    %sℹ HOSTINGER%s   not configured (not required)\n' "$C" "$X"
@@ -50,7 +68,6 @@ main() {
     total=$((total+1)); bash -n "$f" >/dev/null 2>&1 || { flag "SYNTAX" "$f"; bad=$((bad+1)); }
   done < "$listf"
   rm -f "$listf"
-  # doctor can use process substitution locally, but distributed scanner checks intentionally avoid it on shared hosts.
   if grep -R -nE '<[[:space:]]*<\(|>[[:space:]]*>\(' "$PRESSWARDEN_DIR/checks" "$PRESSWARDEN_DIR/lib" "$PRESSWARDEN_DIR/suites" >/dev/null 2>&1; then
     flag "PORTABILITY" "process substitution found in runtime scanner code"; bad=$((bad+1))
   else
