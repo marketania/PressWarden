@@ -1,5 +1,7 @@
-# PressWarden v1.0.2 configuration
-# Copy to ~/.config/presswarden/config and chmod 600.
+# PressWarden v1.0.3 configuration
+# Portable install: PressWarden/config/config
+# User install: ~/.config/presswarden/config
+# Keep this file private (chmod 600) if it contains API tokens.
 # Exported environment variables override values from this file.
 
 # Discovery. Empty means the CLI auto-detects a sensible root or uses the path argument.
