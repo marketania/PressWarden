@@ -38,7 +38,7 @@ uploads_deep_check_wanted() {
 }
 
 _run_checks() {
-  local c rc n out seen="" start elapsed force="" total_checks=0 current_check=0
+  local c rc n out seen="" start elapsed force="" total_checks=0 current_check=0 check_path
   [ -n "$C" ] && force=1
   total_checks=$(printf '%s\n' $CHECKS | sort -u | grep -c .)
 
@@ -57,7 +57,7 @@ _run_checks() {
 
   for c in $CHECKS; do
     case " $seen " in *" $c "*) continue ;; esac
-    seen="$seen $c"; current_check=$((current_check+1))
+    seen="$seen $c"; current_check=$((current_check+1)); check_path="$PRESSWARDEN_DIR/checks/$c.sh"
     if [ "$c" = "wp-access" ] && ! admin_check_wanted; then
       printf '\n%s%s▶ SKIP%s %s[%s/%s]%s  %s%s%s  %s(administrator checks skipped)%s\n' "$B" "$Y" "$X" "$B" "$current_check" "$total_checks" "$X" "$B" "$c" "$X" "$D" "$X"
       printf '%s|0|skipped|0\n' "$c" >> "$RES"; continue
@@ -66,13 +66,13 @@ _run_checks() {
       printf '\n%s%s▶ SKIP%s %s[%s/%s]%s  %s%s%s  %s(slow image-content scan skipped)%s\n' "$B" "$Y" "$X" "$B" "$current_check" "$total_checks" "$X" "$B" "$c" "$X" "$D" "$X"
       printf '%s|0|skipped|0\n' "$c" >> "$RES"; continue
     fi
-    if [ ! -x "$PRESSWARDEN_DIR/checks/$c.sh" ]; then
-      printf '\n%s%s▶ RUN%s  %s[%s/%s]%s  %s%s%s  %s(missing)%s\n' "$B" "$BL" "$X" "$B" "$current_check" "$total_checks" "$X" "$B" "$c" "$X" "$Y" "$X"
+    if [ ! -r "$check_path" ]; then
+      printf '\n%s%s▶ RUN%s  %s[%s/%s]%s  %s%s%s  %s(missing/unreadable)%s\n' "$B" "$BL" "$X" "$B" "$current_check" "$total_checks" "$X" "$B" "$c" "$X" "$Y" "$X"
       printf '%s|-|missing|0\n' "$c" >> "$RES"; continue
     fi
     printf '\n%s%s▶ RUN%s  %s[%s/%s]%s  %s%s%s\n' "$B" "$BL" "$X" "$B" "$current_check" "$total_checks" "$X" "$B" "$c" "$X"
     start=$(date +%s); out=$(tmpf)
-    if [ -n "$force" ]; then PRESSWARDEN_FORCE_COLOR=1 "$PRESSWARDEN_DIR/checks/$c.sh" 2>&1 | tee "$out"; else "$PRESSWARDEN_DIR/checks/$c.sh" 2>&1 | tee "$out"; fi
+    if [ -n "$force" ]; then PRESSWARDEN_FORCE_COLOR=1 bash "$check_path" 2>&1 | tee "$out"; else bash "$check_path" 2>&1 | tee "$out"; fi
     rc=${PIPESTATUS[0]}; elapsed=$(( $(date +%s) - start ))
     n=$(strip_ansi < "$out" | grep -oE 'findings:[[:space:]]*[0-9]+' | tail -1 | grep -oE '[0-9]+$')
     rm -f "$out"
