@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# wp-wordfence-intel — optional Wordfence Intelligence V3 vulnerability matching + CISA KEV correlation.
-NAME=wp-wordfence-intel; DESC="Wordfence Intelligence + CISA KEV correlation"
-SCAN_DOES="Matches locally installed WordPress core/plugins/themes against a locally cached Wordfence Intelligence V3 Production Feed and elevates matching CVEs present in CISA KEV."
-SCAN_WHY="Known-vulnerable installed versions are actionable even without local compromise evidence, and known exploitation should take priority over score alone."
+# wp-wordfence-intel — Wordfence V3 Scanner detection + Production/CISA enrichment.
+NAME=wp-wordfence-intel; DESC="Wordfence Scanner detection + Production/CISA enrichment"
+SCAN_DOES="Matches installed WordPress core/plugins/themes against the locally cached Wordfence V3 Scanner Feed, then enriches matching UUIDs from the Production Feed and elevates matching CVEs present in CISA KEV."
+SCAN_WHY="The Scanner Feed is purpose-built for detection; separating detection from enrichment preserves coverage while letting CVE/CVSS/known-exploitation data improve prioritization when available."
 . "$(cd "$(dirname "$0")/.." && pwd)/lib/_lib.sh"
 . "$PRESSWARDEN_DIR/lib/intel.sh"
 
@@ -14,6 +14,7 @@ _inventory_plugins() {
   fi
   rm -f "$f"
 }
+
 _inventory_themes() {
   local s="$1" site="$2" f
   f=$(tmpf)
@@ -27,40 +28,67 @@ _make_matcher() {
   local f="$1"
   cat > "$f" <<'PRESSWARDEN_WF_MATCHER'
 <?php
-[$feedFile,$invFile,$kevFile]=array_slice($argv,1);
-$feed=json_decode((string)@file_get_contents($feedFile),true); if(!is_array($feed))exit(30);
-$kev=[]; if(is_file($kevFile)){ $k=json_decode((string)@file_get_contents($kevFile),true); foreach((array)($k['vulnerabilities']??[]) as $r){$c=strtoupper((string)($r['cveID']??''));if($c!=='')$kev[$c]=true;} }
+[$scannerFile,$productionFile,$invFile,$kevFile]=array_slice($argv,1);
+$scanner=json_decode((string)@file_get_contents($scannerFile),true); if(!is_array($scanner))exit(30);
+$production=[];
+if(is_file($productionFile)){
+    $p=json_decode((string)@file_get_contents($productionFile),true);
+    if(is_array($p))foreach($p as $key=>$rec){if(!is_array($rec))continue;$id=(string)($rec['id']??$key);if($id!=='')$production[$id]=$rec;}
+}
+$kev=[];
+if(is_file($kevFile)){
+    $k=json_decode((string)@file_get_contents($kevFile),true);
+    foreach((array)($k['vulnerabilities']??[]) as $r){$c=strtoupper((string)($r['cveID']??''));if($c!=='')$kev[$c]=true;}
+}
 $inv=[];
-foreach(@file($invFile,FILE_IGNORE_NEW_LINES|FILE_SKIP_EMPTY_LINES)?:[] as $line){$p=explode('|',$line);if(count($p)<5)continue;[$site,$type,$slug,$version,$status]=$p;$key=strtolower($type).'|'.strtolower($slug);$inv[$key][]=[$site,$type,$slug,$version,$status];}
+foreach(@file($invFile,FILE_IGNORE_NEW_LINES|FILE_SKIP_EMPTY_LINES)?:[] as $line){
+    $p=explode('|',$line);if(count($p)<5)continue;[$site,$type,$slug,$version,$status]=$p;
+    $inv[strtolower($type).'|'.strtolower($slug)][]=[$site,$type,$slug,$version,$status];
+}
 function pw_bound($v,$b,$inclusive,$lower){if($b==='*'||$b==='')return true;$c=version_compare($v,$b);return $lower?($inclusive?$c>=0:$c>0):($inclusive?$c<=0:$c<0);}
 function pw_affected($v,$ranges){foreach((array)$ranges as $r){$from=(string)($r['from_version']??'*');$to=(string)($r['to_version']??'*');$fi=(bool)($r['from_inclusive']??true);$ti=(bool)($r['to_inclusive']??true);if(pw_bound($v,$from,$fi,true)&&pw_bound($v,$to,$ti,false))return true;}return false;}
-function pw_clean($s){$s=preg_replace('/[\r\n\t|]+/',' ',(string)$s);return trim($s);}
-foreach($feed as $rec){
-  if(!is_array($rec))continue;$title=pw_clean($rec['title']??'Wordfence vulnerability');$cve=strtoupper(pw_clean($rec['cve']??''));$info=(bool)($rec['informational']??false);$rating=strtolower((string)($rec['cvss']['rating']??''));$score=(string)($rec['cvss']['score']??'');$refs=(array)($rec['references']??[]);$ref=pw_clean($refs[0]??'');
-  foreach((array)($rec['software']??[]) as $sw){$type=strtolower((string)($sw['type']??''));$slug=strtolower((string)($sw['slug']??''));if($type==='core')$slug='wordpress';$key=$type.'|'.$slug;if(empty($inv[$key]))continue;
-    foreach($inv[$key] as $item){[$site,$itype,$islug,$version,$status]=$item;if($version===''||!pw_affected($version,$sw['affected_versions']??[]))continue;$isKev=$cve!==''&&isset($kev[$cve]);
-      $kind='REVIEW';if($info)$kind='INFO';elseif($isKev||$rating==='critical'||$rating==='high')$kind='ALERT';
-      $patched=implode(',',array_map('strval',(array)($sw['patched_versions']??[])));$rem=pw_clean($sw['remediation']??'');
-      echo $kind,"|",pw_clean($site),"|",pw_clean($itype),"|",pw_clean($islug),"|",pw_clean($version),"|",pw_clean($status),"|",$title,"|",$cve,"|",pw_clean($score),"|",($isKev?'1':'0'),"|",pw_clean($patched),"|",$rem,"|",$ref,"\n";
+function pw_clean($s){return trim(preg_replace('/[\r\n\t|]+/',' ',(string)$s));}
+foreach($scanner as $key=>$scanRec){
+    if(!is_array($scanRec))continue;
+    $id=pw_clean($scanRec['id']??$key); if($id==='')continue;
+    $prod=$production[$id]??[];
+    $info=(bool)($scanRec['informational']??false);
+    $cve=strtoupper(pw_clean($prod['cve']??''));
+    $rating=strtolower((string)($prod['cvss']['rating']??''));
+    $score=pw_clean($prod['cvss']['score']??'');
+    $refs=(array)($scanRec['references']??[]); if(!$refs&&is_array($prod))$refs=(array)($prod['references']??[]);
+    $ref=pw_clean($refs[0]??'');
+    $isKev=$cve!==''&&isset($kev[$cve]);
+    $enriched=is_array($prod)&&!empty($prod)?'1':'0';
+    foreach((array)($scanRec['software']??[]) as $sw){
+        $type=strtolower((string)($sw['type']??''));$slug=strtolower((string)($sw['slug']??''));if($type==='core')$slug='wordpress';
+        $invKey=$type.'|'.$slug;if(empty($inv[$invKey]))continue;
+        foreach($inv[$invKey] as $item){
+            [$site,$itype,$islug,$version,$status]=$item;
+            if($version===''||!pw_affected($version,$sw['affected_versions']??[]))continue;
+            $kind='REVIEW'; if($info)$kind='INFO'; elseif($isKev||$rating==='critical'||$rating==='high')$kind='ALERT';
+            $patched=implode(',',array_map('strval',(array)($sw['patched_versions']??[])));
+            echo $kind,"|",pw_clean($site),"|",pw_clean($itype),"|",pw_clean($islug),"|",pw_clean($version),"|",pw_clean($status),"|",$id,"|",$cve,"|",$score,"|",($isKev?'1':'0'),"|",pw_clean($patched),"|",$ref,"|",$enriched,"\n";
+        }
     }
-  }
 }
 PRESSWARDEN_WF_MATCHER
 }
 
 main() {
   require_wp; banner; discover_sites
-  local dir feed kev inv matcher out s d core rc line kind site type slug ver st title cve score iskev patched rem ref findings=0
-  dir=$(pw_intel_state_dir); feed="$dir/wordfence-production.json"; kev="$dir/cisa-kev.json"
+  local dir scanner production detection kev inv matcher out s d core rc line kind site type slug ver st id cve score iskev patched ref enriched findings=0 mode
+  dir=$(pw_intel_state_dir); scanner="$dir/wordfence-scanner.json"; production="$dir/wordfence-production.json"; kev="$dir/cisa-kev.json"; detection="$scanner"; mode='Scanner Feed'
   mkdir -p "$dir" 2>/dev/null || true
 
-  sec "Installed-version vulnerability intelligence" "Wordfence Intelligence V3 Production Feed • CISA KEV correlation"
-  if [ ! -s "$feed" ] && [ -n "${PRESSWARDEN_WORDFENCE_TOKEN:-}" ] && [ "${PRESSWARDEN_INTEL_AUTO_UPDATE:-1}" != "0" ]; then
-    note "Wordfence cache missing; attempting one intelligence update before matching."
+  sec "Installed-version vulnerability intelligence" "Wordfence V3 Scanner detection • Production enrichment • CISA KEV"
+  if [ ! -s "$scanner" ] && [ -n "${PRESSWARDEN_WORDFENCE_TOKEN:-}" ] && [ "${PRESSWARDEN_INTEL_AUTO_UPDATE:-1}" != "0" ]; then
+    note "Wordfence Scanner cache missing; attempting one intelligence update before matching."
     pw_intel_update >/dev/null 2>&1 || true
   fi
-  if [ ! -s "$feed" ]; then
-    note "SKIPPED: no cached Wordfence Intelligence feed. Configure PRESSWARDEN_WORDFENCE_TOKEN and run ./presswarden intel update."
+  if [ ! -s "$scanner" ] && [ -s "$production" ]; then detection="$production"; mode='Production fallback'; fi
+  if [ ! -s "$detection" ]; then
+    note "SKIPPED: no cached Wordfence feed. Configure PRESSWARDEN_WORDFENCE_TOKEN and run ./presswarden intel update."
     finish; return 0
   fi
 
@@ -72,28 +100,29 @@ main() {
   done
 
   matcher=$(tmpf); out=$(tmpf); _make_matcher "$matcher"
-  php "$matcher" "$feed" "$inv" "$kev" > "$out" 2>/dev/null; rc=$?
+  php "$matcher" "$detection" "$production" "$inv" "$kev" > "$out" 2>/dev/null; rc=$?
   if [ "$rc" -ne 0 ]; then
     flag "intelligence" "Wordfence feed could not be parsed/matched (rc=$rc)"
     rm -f "$inv" "$matcher" "$out"; finish; return 1
   fi
 
-  while IFS='|' read -r kind site type slug ver st title cve score iskev patched rem ref; do
+  while IFS='|' read -r kind site type slug ver st id cve score iskev patched ref enriched; do
     [ -n "$kind" ] || continue; findings=$((findings+1))
-    line="$type $slug v$ver (local: ${st:-unknown}) — $title"
-    [ -n "$cve" ] && line="$line [$cve]"
+    line="$type $slug v$ver (local: ${st:-unknown}) — Wordfence Intelligence match $id"
+    [ -n "$cve" ] && line="$line • $cve"
     [ "$iskev" = "1" ] && line="$line • CISA KEV / known exploited"
     [ -n "$score" ] && line="$line • CVSS $score"
     [ -n "$patched" ] && line="$line • patched: $patched"
-    case "$kind" in
-      ALERT) issue "$site" "$line" ;;
-      REVIEW) flag "$site" "$line" ;;
-      INFO) printf '    %sℹ INFO%s  %s%s%s  › %s\n' "$C" "$X" "$B$M" "$site" "$X" "$line" ;;
-    esac
+    [ "$enriched" = "0" ] && line="$line • Scanner-only record"
+    case "$kind" in ALERT) issue "$site" "$line" ;; REVIEW) flag "$site" "$line" ;; INFO) printf '    %sℹ INFO%s  %s%s%s  › %s\n' "$C" "$X" "$B$M" "$site" "$X" "$line" ;; esac
+    [ -n "$ref" ] && printf '      %sSOURCE%s  %s\n' "$D" "$X" "$ref"
   done < "$out"
-  [ "$findings" -eq 0 ] && printf '    %s✓ CLEAN%s  no installed versions matched the cached Wordfence vulnerability feed\n' "$G" "$X"
+
+  [ "$findings" -eq 0 ] && printf '    %s✓ CLEAN%s  no installed versions matched the cached Wordfence detection feed\n' "$G" "$X"
+  note "Detection source: $mode. Production data enriches matching UUIDs with CVE/CVSS when available."
   [ -s "$kev" ] && note "CISA KEV correlation active: matching CVEs are elevated as known-exploited." || note "CISA KEV cache not present; run ./presswarden intel update to add known-exploited prioritization."
-  note "Vulnerability data is locally cached from Wordfence Intelligence; PressWarden does not redistribute the feed. Review Wordfence Intelligence terms/copyright metadata for downstream display requirements."
+  note "Wordfence feed data stays in the local intel cache and is not redistributed by PressWarden; source references are shown for matched records."
+  note "Downstream users are responsible for Wordfence/CVE attribution and license requirements described in the feed's copyright metadata."
   rm -f "$inv" "$matcher" "$out"
   finish
 }
