@@ -36,6 +36,10 @@ jobs:
         shell: bash
         run: bash tests/smoke.sh
 
+      - name: Threat-intel behavior regressions
+        shell: bash
+        run: bash tests/threat-intel-regressions.sh
+
       - name: Threat-intel credential safety
         shell: bash
         run: bash tests/intel-security.sh
