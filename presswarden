@@ -1,9 +1,19 @@
 #!/usr/bin/env bash
 set -uo pipefail
 PRESSWARDEN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VERSION="1.0.0"
+VERSION="1.0.1"
 CONFIG_FILE="${PRESSWARDEN_CONFIG_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/presswarden/config}"
+
+# Preserve explicitly exported PressWarden/API values so one-shot environment
+# overrides win over persistent config values.
+_pw_env_overrides=$(env | grep -E '^(PRESSWARDEN_[A-Za-z0-9_]*|WPSCAN_API_TOKEN|HOSTINGER_API_TOKEN)=' || true)
 [ -r "$CONFIG_FILE" ] && . "$CONFIG_FILE"
+if [ -n "$_pw_env_overrides" ]; then
+  while IFS='=' read -r _pw_k _pw_v; do
+    case "$_pw_k" in PRESSWARDEN_*|WPSCAN_API_TOKEN|HOSTINGER_API_TOKEN) printf -v "$_pw_k" '%s' "$_pw_v"; export "$_pw_k" ;; esac
+  done <<< "$_pw_env_overrides"
+fi
+unset _pw_env_overrides _pw_k _pw_v 2>/dev/null || true
 
 logo() {
 cat <<'EOF'
@@ -58,6 +68,7 @@ show_config() {
   printf 'Discovery depth:    %s\n' "${PRESSWARDEN_DISCOVERY_DEPTH:-8}"
   printf 'Interactive:        %s\n' "${PRESSWARDEN_INTERACTIVE:-1}"
   printf 'JSON reports:       %s\n' "${PRESSWARDEN_OUTPUT_JSON:-1}"
+  printf 'Deep upload scan:   %s\n' "${PRESSWARDEN_UPLOADS_DEEP:-ask in FULL}"
   printf 'WPScan API:         %s\n' "$([ -n "${WPSCAN_API_TOKEN:-}" ] && printf configured || printf 'not configured')"
   printf 'Hostinger API:      %s\n' "$([ -n "${HOSTINGER_API_TOKEN:-}" ] && printf 'configured (optional)' || printf 'not configured')"
   printf 'State directory:    %s\n' "${PRESSWARDEN_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/presswarden}"
