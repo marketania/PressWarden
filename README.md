@@ -19,7 +19,7 @@
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Host](https://img.shields.io/badge/hosting-host--agnostic-8A2BE2)
 
-PressWarden scans one WordPress site or an entire hosting account for malware, suspicious persistence, integrity problems, risky configuration, vulnerable components, and database threats.
+PressWarden scans one WordPress site or an entire hosting account for malware, suspicious persistence, integrity problems, risky configuration, vulnerable components, database threats, and unexpected changes.
 
 Created and maintained by Mustafa Sharif with support from [Marketania](https://marketania.com/).
 
@@ -51,6 +51,9 @@ PressWarden focuses on **high-signal findings**. A PHP function such as `base64_
 - 🌐 **JavaScript malware detection** including injected scripts and suspicious redirects
 - 🗄️ **Database malware scanning** for stored scripts, PHP payloads, persistence, and suspicious administrator accounts
 - 🧬 **WordPress integrity checks** for core and plugins
+- 🧭 **Baseline + change detection** for security-relevant files, plugins, themes, administrators, and cron state
+- 🚑 **Incident response mode** for evidence-first compromise and reinfection investigations
+- 🔗 **Fleet correlation** for repeated new or changed artifacts appearing across multiple WordPress sites
 - 🧠 **Threat Intelligence** with native rules and optional external providers
 - 🚨 **CISA KEV correlation** for known-exploited vulnerabilities
 - 🧳 **Portable shared-hosting install** with no sudo or PATH changes required
@@ -100,7 +103,8 @@ That is the recommended starting point for most users.
 | Command | Best for |
 |---|---|
 | `./presswarden fast` | Regular security checks across your sites |
-| `./presswarden full` | Deeper audits, incident response, and periodic assurance |
+| `./presswarden full` | Deep periodic assurance including DB maintenance |
+| `./presswarden incident` | Investigating a suspected compromise or reinfection |
 | `./presswarden intel scan` | Focused malware + threat-intelligence investigation |
 | `./presswarden db` | Database security, stored malware, and DB maintenance |
 | `./presswarden doctor` | Checking setup, dependencies, discovery, and integrations |
@@ -112,10 +116,10 @@ For routine use, start with:
 ./presswarden fast
 ```
 
-If something looks suspicious or you want the deepest available scan:
+If you suspect a compromise:
 
 ```bash
-./presswarden full
+./presswarden incident
 ```
 
 ---
@@ -151,6 +155,57 @@ These IDs make findings easier to identify across reports and future scanner ver
 
 ---
 
+## Track what changed
+
+After you have validated a known-good state, create a security baseline:
+
+```bash
+./presswarden baseline create
+```
+
+Later, compare the current fleet with it:
+
+```bash
+./presswarden changes
+```
+
+PressWarden tracks hashes for security-relevant code and configuration plus plugin, theme, administrator, and cron state when WP-CLI is available. It does **not** save file contents, passwords, API keys, or database payloads in the baseline.
+
+Uploads, caches, logs, backups, and other highly volatile directories are excluded from baseline change tracking to avoid routine noise. They remain covered by their normal security checks.
+
+Useful baseline commands:
+
+```bash
+./presswarden baseline status
+./presswarden baseline diff
+```
+
+Creating a new baseline preserves the previous one locally for future history and reinfection workflows.
+
+---
+
+## Incident response and fleet correlation
+
+Use Incident Mode when a site may be compromised or keeps becoming reinfected:
+
+```bash
+./presswarden incident
+```
+
+Incident Mode combines baseline changes, fleet correlation, persistence checks, malware detection, administrator inspection, integrity verification, vulnerability intelligence, upload checks, and database threat inspection.
+
+It is intentionally **evidence-first**: database repair and optimization are not run automatically during an incident investigation.
+
+Fleet correlation can also be run by itself:
+
+```bash
+./presswarden correlate
+```
+
+PressWarden does not flag ordinary duplicate WordPress or plugin files merely because they exist on several sites. Correlation is limited to **new or changed baseline artifacts/state** that repeat across multiple WordPress installations, and those signals are shown as `REVIEW` until corroborated by other evidence.
+
+---
+
 ## What PressWarden checks
 
 ### Malware and persistence
@@ -172,7 +227,7 @@ These IDs make findings easier to identify across reports and future scanner ver
 - official WordPress core checksums
 - missing or modified core files
 - unexpected files in core locations
-- WordPress.org plugin checksums in FULL scans
+- WordPress.org plugin checksums in FULL and incident scans
 - installed plugin provenance and lifecycle information
 
 Plugin **activation state** and **package provenance** are kept separate. For example, a premium or custom plugin that is not listed on WordPress.org may appear as `EXTERNAL` while still being locally `ACTIVE` or `INACTIVE`.
@@ -283,7 +338,7 @@ WPScan remains user-installed and user-token driven.
 
 ## Optional YARA scanning
 
-If you already maintain or license YARA rules, PressWarden can run them during `full` or `intel scan`.
+If you already maintain or license YARA rules, PressWarden can run them during `full`, `incident`, or `intel scan`.
 
 ```bash
 PRESSWARDEN_YARA_RULES="/home/example/security/wordpress.yar"
@@ -314,6 +369,7 @@ The default installer keeps PressWarden self-contained:
     ├── reports/
     ├── cache/
     ├── quarantine/
+    ├── baselines/
     └── intel/
 ```
 
@@ -343,6 +399,7 @@ Pass a path after the scan command:
 ```bash
 ./presswarden fast /var/www
 ./presswarden full /home/example/websites
+./presswarden incident /home/example/websites
 ./presswarden intel scan ~/domains
 ```
 
@@ -390,7 +447,7 @@ The older interface remains available for compatibility:
 
 ## Slow image-content scan
 
-`./presswarden full` includes an optional deep scan of image-like upload files for embedded PHP.
+`./presswarden full` and `./presswarden incident` include an optional deep scan of image-like upload files for embedded PHP.
 
 Because this can be slow on large hosting accounts, PressWarden asks before running it.
 
@@ -402,7 +459,7 @@ PRESSWARDEN_UPLOADS_DEEP=0   # always skip
 PRESSWARDEN_UPLOADS_DEEP=""  # ask interactively
 ```
 
-Noninteractive FULL scans skip this check unless it is explicitly enabled.
+Noninteractive FULL and incident scans skip this check unless it is explicitly enabled.
 
 ---
 
@@ -431,11 +488,13 @@ PressWarden is designed to detect first and remediate carefully.
 - critical WordPress files are protected from generic deletion prompts
 - core repair verifies official replacements
 - fleet lock/unlock backs up `wp-config.php`
+- baseline changes and fleet correlations are review-only signals
+- Incident Mode does not run database repair/optimization automatically
 - threat-intelligence matches do not automatically delete plugins or themes
 - external YARA matches are review-only
 - API failures do not become fake malware findings
 
-Quarantine and reports normally live under:
+Quarantine, baselines, and reports normally live under:
 
 ```text
 PressWarden/var/
@@ -461,6 +520,7 @@ PRESSWARDEN_DISCOVERY_CACHE_TTL=300
 
 PRESSWARDEN_INTERACTIVE=1
 PRESSWARDEN_OUTPUT_JSON=1
+PRESSWARDEN_BASELINE_MAX_CHANGES=100
 PRESSWARDEN_UPLOADS_DEEP=""
 
 PRESSWARDEN_INTEL_AUTO_UPDATE=1
