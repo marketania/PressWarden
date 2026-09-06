@@ -21,8 +21,6 @@ _pw_intel_curl_escape() {
 _pw_intel_fetch_php_auth() {
   local url="$1" out="$2" auth="$3"
   command -v php >/dev/null 2>&1 || return 127
-  # The secret is delivered over stdin, not argv/environment, so it does not
-  # appear in the child process command line on shared hosts.
   printf '%s' "$auth" | php -r '
     $auth=trim(stream_get_contents(STDIN)); $url=$argv[1]; $out=$argv[2];
     $ctx=stream_context_create(["http"=>[
@@ -40,8 +38,6 @@ _pw_intel_fetch() {
   local url="$1" out="$2" auth="${3:-}" escaped
   if command -v curl >/dev/null 2>&1; then
     if [ -n "$auth" ]; then
-      # Feed the header through curl's stdin config. This prevents Bearer/API
-      # credentials from appearing in `ps`/process argv as `curl -H SECRET`.
       escaped=$(_pw_intel_curl_escape "$auth")
       printf 'header = "%s"\n' "$escaped" | \
         curl -fsSL --config - --connect-timeout 10 --max-time 120 \
@@ -65,25 +61,39 @@ _pw_intel_fetch() {
 }
 
 _pw_intel_json_valid() {
-  local file="$1" kind="$2"
+  local file="$1" kind="$2" count
   command -v php >/dev/null 2>&1 || return 1
   case "$kind" in
     cisa)
       php -r '$j=json_decode((string)@file_get_contents($argv[1]),true);exit(is_array($j)&&isset($j["vulnerabilities"])&&is_array($j["vulnerabilities"])?0:1);' "$file" >/dev/null 2>&1
       ;;
     wordfence)
-      php -r '$j=json_decode((string)@file_get_contents($argv[1]),true);if(!is_array($j)||count($j)<1)exit(1);foreach($j as $id=>$r){if(!is_array($r)||!isset($r["software"])||!is_array($r["software"]))continue;exit(0);}exit(1);' "$file" >/dev/null 2>&1
+      count=$(php "$PRESSWARDEN_DIR/lib/json-object-stream.php" validate-wordfence "$file" 2>/dev/null) || return 1
+      case "$count" in ''|*[!0-9]*) return 1 ;; esac
+      [ "$count" -gt 0 ] || return 1
+      printf '%s\n' "$count" > "${file}.count"
+      chmod 600 "${file}.count" 2>/dev/null || true
       ;;
     *) return 1 ;;
   esac
 }
 
 _pw_intel_count_json() {
-  local file="$1" kind="$2"
+  local file="$1" kind="$2" countf count
   [ -s "$file" ] || { printf '0'; return; }
   case "$kind" in
     cisa) php -r '$j=json_decode((string)@file_get_contents($argv[1]),true);echo is_array($j["vulnerabilities"]??null)?count($j["vulnerabilities"]):0;' "$file" 2>/dev/null || printf '0' ;;
-    wordfence) php -r '$j=json_decode((string)@file_get_contents($argv[1]),true);echo is_array($j)?count($j):0;' "$file" 2>/dev/null || printf '0' ;;
+    wordfence)
+      countf="${file}.count"
+      if [ -s "$countf" ]; then
+        count=$(head -n 1 "$countf" 2>/dev/null || true)
+        case "$count" in ''|*[!0-9]*) printf '0' ;; *) printf '%s' "$count" ;; esac
+      else
+        # Do not parse a potentially 100+ MB feed merely to render status.
+        # Running `intel update` validates it once and writes this sidecar.
+        printf '0'
+      fi
+      ;;
     *) printf '0' ;;
   esac
 }
@@ -101,15 +111,18 @@ _pw_intel_age() {
 }
 
 _pw_intel_update_wordfence_feed() {
-  local label="$1" endpoint="$2" dest="$3" token="$4" tmp
+  local label="$1" endpoint="$2" dest="$3" token="$4" tmp count
   tmp="${dest}.tmp.$$"
   printf '  %-25s ' "$label"
   if _pw_intel_fetch "$endpoint" "$tmp" "Authorization: Bearer $token" && _pw_intel_json_valid "$tmp" wordfence; then
-    mv -f "$tmp" "$dest"; chmod 600 "$dest" 2>/dev/null || true
-    printf '✓ %s records\n' "$(_pw_intel_count_json "$dest" wordfence)"
+    count=$(head -n 1 "${tmp}.count" 2>/dev/null || printf '0')
+    mv -f "$tmp" "$dest"
+    mv -f "${tmp}.count" "${dest}.count" 2>/dev/null || true
+    chmod 600 "$dest" "${dest}.count" 2>/dev/null || true
+    printf '✓ %s records\n' "$count"
     return 0
   fi
-  rm -f "$tmp"
+  rm -f "$tmp" "${tmp}.count"
   printf '⚠ update failed; existing cache preserved\n'
   return 1
 }
@@ -128,6 +141,9 @@ pw_intel_status() {
   if [ -n "${PRESSWARDEN_WORDFENCE_TOKEN:-}" ] || [ -s "$wfscan" ] || [ -s "$wfprod" ]; then
     printf '  Wordfence Scanner       %s  (%s)\n' "$nscan" "$(_pw_intel_age "$wfscan")"
     printf '  Wordfence Production    %s  (%s)\n' "$nprod" "$(_pw_intel_age "$wfprod")"
+    if { [ -s "$wfscan" ] && [ ! -s "${wfscan}.count" ]; } || { [ -s "$wfprod" ] && [ ! -s "${wfprod}.count" ]; }; then
+      printf '  Wordfence counts        refresh with ./presswarden intel update to build streaming count metadata\n'
+    fi
   else
     printf '  Wordfence Intelligence  not configured\n'
   fi
