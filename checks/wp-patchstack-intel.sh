@@ -35,7 +35,7 @@ _inventory_records() {
 
 main() {
   require_wp; banner; discover_sites
-  local key="${PRESSWARDEN_PATCHSTACK_KEY:-}" dir cache ttl max inv uniq s d core type slug ver sites statuses id cachef tmp http rc lookups=0 unknown=0 vulns=0 kevf
+  local key="${PRESSWARDEN_PATCHSTACK_KEY:-}" dir cache ttl max inv uniq s d core type slug ver sites statuses id cachef tmp http rc lookups=0 unknown=0 vulns=0 kevf pf kind title cve exploited score priority fixed url iskev
   sec "Patchstack vulnerability intelligence" "optional • deduplicated component/version lookup • cached • exploit-aware"
   if [ -z "$key" ]; then note "SKIPPED: no PRESSWARDEN_PATCHSTACK_KEY configured."; finish; return 0; fi
   command -v php >/dev/null 2>&1 || { flag "Patchstack" "PHP CLI is required to parse intelligence results"; finish; return 1; }
@@ -70,16 +70,19 @@ main() {
     if php -r '$j=json_decode((string)@file_get_contents($argv[1]),true);exit(!empty($j["presswarden_unknown_product"])?0:1);' "$cachef" >/dev/null 2>&1; then unknown=$((unknown+1)); continue; fi
     sites=$(awk -F'|' -v t="$type" -v s="$slug" -v v="$ver" '$1==t&&$2==s&&$3==v&&!seen[$4]++{if(n++)printf ", ";printf "%s",$4}END{print ""}' "$inv")
     statuses=$(awk -F'|' -v t="$type" -v s="$slug" -v v="$ver" '$1==t&&$2==s&&$3==v{print $5}' "$inv" | sort -u | paste -sd, -)
+    pf=$(tmpf)
     php -r '
       $j=json_decode((string)@file_get_contents($argv[1]),true);$kev=[];if(is_file($argv[2])){$k=json_decode((string)@file_get_contents($argv[2]),true);foreach((array)($k["vulnerabilities"]??[]) as $r){$c=strtoupper((string)($r["cveID"]??""));if($c)$kev[$c]=1;}}
       foreach((array)($j["vulnerabilities"]??[]) as $r){$title=preg_replace("/[\\r\\n\\t|]+/"," ",(string)($r["title"]??"Patchstack vulnerability"));$c=$r["cve"]??"";if(is_array($c))$c=implode(",",$c);$c=strtoupper(trim((string)$c));if($c!==""&&strpos($c,"CVE-")!==0&&preg_match("/^\\d{4}-\\d+$/",$c))$c="CVE-".$c;$expl=!empty($r["is_exploited"]);$score=$r["cvss_score"]??($r["cvss"]["score"]??"");$prio=$r["patch_priority"]??"";$fixed=$r["matched_range"]["fixed_in"]??($r["fixed_in"]??($r["version_info"]["fixed"]??""));$url=$r["direct_url"]??($r["url"]??"");$iskev=$c!==""&&isset($kev[$c]);$kind=($expl||$iskev||(is_numeric($score)&&$score>=7)||(is_numeric($prio)&&$prio>=3))?"ALERT":"REVIEW";echo $kind,"|",$title,"|",$c,"|",($expl?1:0),"|",$score,"|",$prio,"|",$fixed,"|",$url,"|",($iskev?1:0),"\n";}
-    ' "$cachef" "$kevf" 2>/dev/null | while IFS='|' read -r kind title cve exploited score priority fixed url iskev; do
-      [ -n "$kind" ] || continue; vulns=$((vulns+1));
+    ' "$cachef" "$kevf" > "$pf" 2>/dev/null || true
+    while IFS='|' read -r kind title cve exploited score priority fixed url iskev; do
+      [ -n "$kind" ] || continue; vulns=$((vulns+1))
       printf '\n      %s%s%s PATCHSTACK%s  %s%s%s v%s  %s(local: %s)%s\n' "$B" "$([ "$kind" = ALERT ] && printf "$R" || printf "$Y")" "$([ "$kind" = ALERT ] && printf '✖' || printf '⚠')" "$X" "$B" "$slug" "$X" "$ver" "$D" "${statuses:-unknown}" "$X"
       printf '        %s\n' "$title"; [ -n "$cve" ] && printf '        CVE: %s%s%s' "$B" "$cve" "$X"; [ "$iskev" = 1 ] && printf '  %s• CISA KEV%s' "$R" "$X"; [ "$exploited" = 1 ] && printf '  %s• Patchstack observed exploitation%s' "$R" "$X"; printf '\n'
       [ -n "$score" ] && printf '        CVSS: %s\n' "$score"; [ -n "$fixed" ] && printf '        Fixed: %s\n' "$fixed"; _meta_field 12 WEBSITES "$sites"
       if [ "$kind" = ALERT ]; then ALERTS=$((ALERTS+1)); TOTAL=$((TOTAL+1)); else REVIEWS=$((REVIEWS+1)); TOTAL=$((TOTAL+1)); fi
-    done
+    done < "$pf"
+    rm -f "$pf"
   done < "$uniq"
 
   [ "$TOTAL" -eq 0 ] && printf '    %s✓ CLEAN%s  no actionable Patchstack vulnerability matches in checked components\n' "$G" "$X"
