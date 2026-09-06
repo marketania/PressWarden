@@ -64,6 +64,22 @@ if printf '%s\n' "$loader_out" | grep -q 'normal-plugin.php'; then
   exit 1
 fi
 
+stage 'DB unsupported CHECK regression'
+# The exact Granada/Wordfence-style response must remain an informational SKIP path,
+# never a BAD/unresolved table path.
+grep -q "doesn't support check" "$ROOTDIR/checks/wp-db-maintenance.sh"
+grep -q 'return \[.unsupported.' "$ROOTDIR/checks/wp-db-maintenance.sh"
+grep -q 'echo "SKIP\\t"' "$ROOTDIR/checks/wp-db-maintenance.sh"
+grep -q 'Unsupported CHECK TABLE operations are informational' "$ROOTDIR/checks/wp-db-maintenance.sh"
+
+stage 'output wording regression'
+if grep -R -nE 'runall-(fast|full)\.sh|mks_bash' "$ROOTDIR/checks" "$ROOTDIR/lib" "$ROOTDIR/suites" "$ROOTDIR/README.md" >/dev/null 2>&1; then
+  printf 'stale pre-PressWarden command/path wording found\n' >&2
+  exit 1
+fi
+grep -q 'local activation is shown separately' "$ROOTDIR/checks/wp-plugins.sh"
+grep -q 'recognized provider/service MU summarized' "$ROOTDIR/checks/wp-plugins.sh"
+
 stage 'environment precedence'
 cat > "$TMP/config" <<'EOF'
 PRESSWARDEN_UPLOADS_DEEP=0
