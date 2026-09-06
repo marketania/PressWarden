@@ -6,27 +6,39 @@ All notable changes to PressWarden are documented here.
 
 Threat Intelligence release.
 
-- Added a native threat-intelligence knowledge base with stable `PW-*` rule IDs, severity/confidence metadata, campaign references, and source documentation.
+- Added a native threat-intelligence knowledge base with stable `PW-*` rule IDs, category/severity/confidence/type metadata, source/reference fields, and added/updated dates.
+- Added [`intel/README.md`](intel/README.md) defining the native manifest-plus-detector architecture, rule contract, evidence standards, and contribution requirements.
 - Added `./presswarden intel status`, `./presswarden intel update`, and `./presswarden intel scan`.
 - Added `php-threat-intel` for request-controlled dynamic function execution and high-confidence credential-capture/exfiltration chains.
-- Added `js-threat-intel` for decoded JavaScript execution, obfuscated dynamic script-loader injection, and hidden external iframe behavior.
-- Added `wp-db-malware` to inspect prefiltered `wp_options` and `wp_posts` rows for high-signal stored browser malware without printing stored payload content.
+- Added `PW-PHP-006` behavior coverage for admin-targeted remote browser payloads requiring WordPress-admin context, `manage_options`, Windows User-Agent gating, remote retrieval, decoding, and browser-output behavior.
+- Added `js-threat-intel` for decoded JavaScript execution, obfuscated dynamic script-loader injection, hidden external iframe behavior, and decoded browser redirect targets.
+- Tightened `PW-JS-002` so decoding elsewhere in a file is no longer enough: the decoded/reconstructed value must reach the dynamic script source in addition to script creation and DOM insertion.
+- Added `PW-JS-004` for decoded/reconstructed values that flow into `location`, `location.assign()`, or `location.replace()` redirect sinks; ordinary static redirects remain clean.
+- Expanded `wp-db-malware` beyond stored browser JavaScript to include database-resident PHP execution payloads, encoded redirect/reinfector-style options, and suspicious administrator persistence identities without printing stored payload bodies.
+- Added `PW-DB-004`, `PW-DB-005`, and `PW-DB-006` with conservative alert/review thresholds. Generic unusual admin names, PHP snippets, or hexadecimal option names are not sufficient by themselves.
+- Added a reusable pure PHP database-threat classifier so database detection logic can be regression-tested without requiring a live WordPress database.
+- The `db` suite now runs `wp-db-malware` between database security/isolation checks and maintenance, so database-only scans include stored-threat and privileged-persistence inspection.
 - Added `wp-campaign-intel` with high-specificity WP-VCD and SocGholish/NDSW markers plus separate behavior-based coverage for Balada/Sign1-like techniques.
-- FAST now includes native PHP/JavaScript/campaign/database threat intelligence with no API keys required.
+- Expanded campaign knowledge with VexTrio/redirect-like persistence and admin-targeted fake-browser-update behavior while retaining attribution restraint for generic techniques.
+- FAST includes native PHP/JavaScript/campaign/database threat intelligence with no API keys required.
 - Added a focused `intel` suite for threat investigation without the entire FULL maintenance sweep.
+- Added optional external YARA compatibility through `PRESSWARDEN_YARA_RULES`. PressWarden bundles no third-party YARA collections; external matches are review-only and never trigger automatic remediation.
+- External YARA runs only in FULL and `intel scan`, not FAST, and scans validated outermost WordPress roots to avoid duplicate nested-site work.
+- `presswarden doctor`, `presswarden config`, and `presswarden intel status` report external YARA readiness without exposing rule content or secrets.
 - Added local CISA Known Exploited Vulnerabilities caching and CVE correlation for known-exploitation prioritization, with the official CISA GitHub mirror as a fallback for feed retrieval.
 - Added optional Wordfence Intelligence V3 dual-feed support using a user-supplied `PRESSWARDEN_WORDFENCE_TOKEN`: the Scanner Feed drives installed-version detection, while matching Production Feed UUIDs add CVE/CVSS enrichment when available.
 - Wordfence matches are correlated with CISA KEV; known-exploited CVEs are elevated. Feed data remains local and is not redistributed by PressWarden.
 - Large Wordfence feeds are validated and matched with a bounded-memory streaming JSON reader instead of whole-feed `json_decode()`, keeping intelligence usable on constrained shared hosting.
 - Wordfence Scanner matching retains only installed-version matches in memory; Production is streamed only to enrich matching vulnerability UUIDs.
-- Wordfence match output now shows available source/copyright attribution metadata supplied by the feed.
-- Added optional Patchstack product/version intelligence using `PRESSWARDEN_PATCHSTACK_KEY`, with fleet-wide component/version deduplication, local TTL caching, configurable lookup caps, exploitation awareness, and CISA KEV correlation.
-- Authenticated Wordfence and Patchstack requests no longer place API credentials in external process command arguments; curl authentication is supplied through private stdin configuration with a PHP HTTPS fallback.
-- Existing WPScan vulnerability intelligence remains optional/user-token driven.
-- External vulnerability feeds are not bundled or redistributed with PressWarden; downloaded data stays in the user's local intelligence directory.
-- `presswarden doctor` now reports native-rule counts, campaign references, CISA KEV cache state, separate Wordfence Scanner/Production cache state, Patchstack readiness, and the intelligence data path.
-- Added malicious + benign regression fixtures for White-Engine-style XOR loaders, decoded JavaScript loaders, NDSW/SocGholish markers, dynamic PHP execution, and credential exfiltration.
-- Added CI coverage for PHP helper syntax, authenticated-intel credential handling, and a 12+ MB synthetic Wordfence feed parsed/matched under a 12 MB PHP memory limit.
+- Wordfence match output shows available source/copyright attribution metadata supplied by the feed.
+- Added optional Patchstack product/version intelligence using `PRESSWARDEN_PATCHSTACK_KEY`, with fleet-wide component/version deduplication, local operational TTL caching, configurable lookup caps, exploitation awareness, and CISA KEV correlation.
+- Authenticated Wordfence and Patchstack requests do not place API credentials in external process command arguments; curl authentication is supplied through private stdin configuration with a PHP HTTPS fallback.
+- Existing WPScan vulnerability intelligence remains optional/user-token driven and does not build or cache a local WPScan vulnerability database.
+- Rechecked third-party intelligence/licensing boundaries for Wordfence, CISA KEV, Patchstack, WPScan, and external YARA; details are documented in `intel/SOURCES.md` rather than copying third-party databases into the MIT repository.
+- `presswarden doctor` reports native-rule counts, campaign references, CISA KEV cache state, separate Wordfence Scanner/Production cache state, Patchstack readiness, external YARA readiness, and the intelligence data path.
+- Added malicious + benign regression fixtures for White-Engine-style XOR loaders, decoded JavaScript loaders, decoded redirects, NDSW/SocGholish markers, dynamic PHP execution, credential exfiltration, admin-targeted remote payloads, and database threat classifiers.
+- Added external-YARA regression coverage with a synthetic YARA executable and an explicit CI guard that no `.yar`/`.yara` collections are bundled under `intel/`.
+- Added CI coverage for PHP helper syntax, authenticated-intel credential handling, external YARA behavior, and a 12+ MB synthetic Wordfence feed parsed/matched under a 12 MB PHP memory limit.
 - Extended portable-mode tests to verify local threat-intelligence paths and `intel status` behavior.
 
 ## 1.0.4 — 2026-09-06
