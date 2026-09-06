@@ -21,7 +21,7 @@ function pw_clean_msg($value) { $value = preg_replace('/[\r\n\t]+/', ' ', (strin
 function pw_tables($wpdb) { $wpdb->last_error=''; $tables=$wpdb->get_col('SHOW TABLES'); if(!is_array($tables)||$wpdb->last_error){fwrite(STDERR,"PRESSWARDEN_DB_ERROR\tSHOW TABLES failed: ".pw_clean_msg($wpdb->last_error)."\n");exit(31);} return array_values(array_filter($tables,'strlen')); }
 function pw_check_unsupported($text) {
     $text = strtolower((string)$text);
-    return str_contains($text, "doesn't support check") || str_contains($text, 'does not support check') || str_contains($text, 'not support check');
+    return strpos($text, "doesn't support check") !== false || strpos($text, 'does not support check') !== false || strpos($text, 'not support check') !== false;
 }
 function pw_check_one($wpdb,$table){
     $wpdb->last_error='';
