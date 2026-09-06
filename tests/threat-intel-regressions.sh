@@ -81,4 +81,9 @@ grep -q 'PW-CAMP-005' "$ROOTDIR/intel/campaigns.tsv"
 grep -q 'PW-CAMP-006' "$ROOTDIR/intel/campaigns.tsv"
 grep -q 'wp-db-malware' "$ROOTDIR/suites/db.sh"
 
+status=$(PRESSWARDEN_CONFIG_FILE="$TMP/no-config" PRESSWARDEN_STATE_DIR="$TMP/state-status" "$ROOTDIR/presswarden" intel status)
+printf '%s\n' "$status" | grep -qE 'Native behavior rules[[:space:]]+16$'
+printf '%s\n' "$status" | grep -qE 'Campaign families[[:space:]]+6$'
+printf '%s\n' "$status" | grep -qE 'Native rule IDs[[:space:]]+22 total$'
+
 printf 'PressWarden threat-intel regressions: PASS\n'
