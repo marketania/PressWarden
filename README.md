@@ -12,7 +12,7 @@
 
 **Fleet-scale WordPress security auditing from the shell.**
 
-![Version](https://img.shields.io/badge/version-1.0.0-2ea44f)
+![Version](https://img.shields.io/badge/version-1.0.1-2ea44f)
 ![Bash](https://img.shields.io/badge/bash-4%2B-4EAA25?logo=gnubash&logoColor=white)
 ![WordPress](https://img.shields.io/badge/WordPress-security-21759B?logo=wordpress&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Linux-FCC624?logo=linux&logoColor=black)
@@ -20,6 +20,8 @@
 ![Host](https://img.shields.io/badge/hosting-host--agnostic-8A2BE2)
 
 A high-signal, exception-first security and integrity auditor for one WordPress site or an entire hosting fleet.
+
+Developed and maintained with support from [Marketania](https://marketania.com/).
 
 </div>
 
@@ -115,9 +117,32 @@ This preserves fast behavior on common shared-hosting accounts while remaining p
 | Profile | Intended use | Major checks |
 |---|---|---|
 | `fast` | Frequent fleet audit | persistence, targeted permissions, `.htaccess`, config, PHP runtime, high-signal PHP malware, sensitive files/cleanup, admin opt-in, core, root anomalies, plugins, themes, uploads, lean DB |
-| `full` | Periodic assurance / incident response | everything in fast plus recursive permissions, deep PHP, WordPress.org plugin checksums, image-extension payload inspection, full DB isolation checks, DB maintenance |
+| `full` | Periodic assurance / incident response | everything in fast plus recursive permissions, deep PHP, WordPress.org plugin checksums, **optional slow image-extension payload inspection**, full DB isolation checks, DB maintenance |
 | `db` | Database-only | database security/isolation plus conditional repair, optimize, final verification |
 | `cleanup` | Inode housekeeping | public logs and conservative disposable metadata candidates, quarantine-backed |
+
+### Slow image-extension scan
+
+The FULL profile contains a deliberately expensive check that reads image-like files in WordPress upload trees and looks for embedded PHP. On large fleets this can take a long time, so PressWarden **asks before running it**:
+
+```text
+SLOW CHECK  Scan image-like uploads for embedded PHP? This can take a long time on large fleets. [y/N]:
+```
+
+Press Enter or answer `n` to skip it. To set a permanent preference:
+
+```bash
+PRESSWARDEN_UPLOADS_DEEP=1   # always run in FULL
+PRESSWARDEN_UPLOADS_DEEP=0   # always skip in FULL
+```
+
+Or force it for a single run:
+
+```bash
+PRESSWARDEN_UPLOADS_DEEP=1 presswarden full
+```
+
+Non-interactive FULL runs skip the slow scan unless `PRESSWARDEN_UPLOADS_DEEP=1` is explicitly set. The check can still be run directly by advanced users from `checks/wp-uploads-deep.sh`.
 
 ## What PressWarden checks
 
@@ -186,11 +211,18 @@ PRESSWARDEN_DISCOVERY_CACHE_TTL=300
 PRESSWARDEN_INTERACTIVE=1
 PRESSWARDEN_ADMINS_CHECK=""
 PRESSWARDEN_OUTPUT_JSON=1
+PRESSWARDEN_UPLOADS_DEEP=""   # empty=ask, 1=always run, 0=always skip
 
 # Optional integrations
 WPSCAN_API_TOKEN=""
 HOSTINGER_API_TOKEN=""
 PRESSWARDEN_HOSTINGER_USERNAME=""
+```
+
+Exported environment variables override the same setting in the persistent config, which makes one-shot commands such as this reliable:
+
+```bash
+PRESSWARDEN_UPLOADS_DEEP=1 presswarden full
 ```
 
 If the file contains API credentials:
@@ -225,6 +257,7 @@ PressWarden defaults to **detect first, explain, then remediate interactively**.
 - Critical WordPress files are protected from generic delete prompts.
 - Core repair backs up the existing file, retrieves the exact official package, verifies the source file against the official manifest, replaces only the failed path, and verifies the result again.
 - Database maintenance checks tables first and only attempts repair where appropriate before final verification.
+- Slow or optional inventory checks can be skipped explicitly rather than silently consuming hours on large fleets.
 - Non-interactive execution can disable remediation prompts with `PRESSWARDEN_INTERACTIVE=0`.
 
 Quarantine and reports live outside the program directory under the user's state directory (normally `~/.local/state/presswarden`).
@@ -255,6 +288,7 @@ PressWarden is intended to scale beyond a single site:
 - WordPress.org plugin lifecycle metadata is deduplicated by slug and cached.
 - Plugin checksums batch verification per site rather than launching WP-CLI for each plugin.
 - Heavy/deep scans are separated from the frequent `fast` profile.
+- The slow upload image-content scan is opt-in during FULL runs.
 - No Bash process substitution is used in runtime scanner paths, avoiding `/dev/fd` issues seen on restricted shared hosting.
 
 Force discovery refresh:
@@ -329,6 +363,12 @@ Issues and pull requests are welcome. Before submitting scanner logic, prioritiz
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
 
+## About Marketania
+
+PressWarden was created and is maintained by Mustafa Sharif with support from [Marketania](https://marketania.com/), a digital agency working across WordPress development, website maintenance, security, SEO, and business technology. PressWarden grew out of real-world fleet maintenance and WordPress security work across many client environments.
+
+If your organization needs professional WordPress, web, or digital services, visit [Marketania.com](https://marketania.com/).
+
 ## License
 
-MIT © 2026 Mustafa Sharif / Marketania.
+MIT © 2026 Mustafa Sharif / [Marketania](https://marketania.com/).
