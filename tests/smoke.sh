@@ -94,6 +94,15 @@ phpintel_out=$(ROOT="$TMP/sites" PRESSWARDEN_CONFIG_FILE="$TMP/no-config" PRESSW
 printf '%s\n' "$phpintel_out" | grep -q 'credential-test/stealer.php' || { printf '%s\n' "$phpintel_out" >&2; printf 'credential exfiltration fixture was not detected\n' >&2; exit 1; }
 printf '%s\n' "$phpintel_out" | grep -q 'credential-test/dynamic.php' || { printf '%s\n' "$phpintel_out" >&2; printf 'request-controlled dynamic execution fixture was not detected\n' >&2; exit 1; }
 
+stage 'Wordfence dual-feed architecture regression'
+grep -q '/vulnerabilities/scanner' "$ROOTDIR/lib/intel.sh"
+grep -q '/vulnerabilities/production' "$ROOTDIR/lib/intel.sh"
+grep -q 'wordfence-scanner.json' "$ROOTDIR/lib/intel.sh"
+grep -q 'wordfence-production.json' "$ROOTDIR/lib/intel.sh"
+grep -q 'Scanner Feed' "$ROOTDIR/checks/wp-wordfence-intel.sh"
+grep -q 'Production enrichment' "$ROOTDIR/checks/wp-wordfence-intel.sh"
+grep -q 'Scanner-only record' "$ROOTDIR/checks/wp-wordfence-intel.sh"
+
 stage 'DB unsupported CHECK regression'
 grep -q "doesn't support check" "$ROOTDIR/checks/wp-db-maintenance.sh"
 grep -q 'return \[.unsupported.' "$ROOTDIR/checks/wp-db-maintenance.sh"
