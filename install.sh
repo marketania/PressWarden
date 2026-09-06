@@ -79,7 +79,8 @@ install_portable() {
   printf '  cd %q\n' "$target"
   printf '  ./presswarden doctor\n'
   printf '  ./presswarden fast\n'
-  printf '\nTip: use ./presswarden full for the comprehensive audit.\n'
+  printf '\nFuture upgrades: ./presswarden update\n'
+  printf 'Tip: use ./presswarden full for the comprehensive audit.\n'
 }
 
 install_user() {
@@ -107,6 +108,7 @@ install_user() {
   printf '✓ CLI:    %s/presswarden\n' "$bin_dir"
   printf '✓ Config: %s/config\n' "$config_dir"
   printf '\nNext steps:\n  presswarden doctor\n  presswarden fast\n'
+  printf '\nFuture upgrades: presswarden update\n'
 }
 
 case "$MODE" in
