@@ -2,7 +2,13 @@
 set -uo pipefail
 
 PRESSWARDEN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PRESSWARDEN_CONFIG_FILE="${PRESSWARDEN_CONFIG_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/presswarden/config}"
+PRESSWARDEN_PORTABLE="${PRESSWARDEN_PORTABLE:-0}"
+[ -f "$PRESSWARDEN_DIR/.presswarden-portable" ] && PRESSWARDEN_PORTABLE=1
+if [ "$PRESSWARDEN_PORTABLE" = 1 ]; then
+  PRESSWARDEN_CONFIG_FILE="${PRESSWARDEN_CONFIG_FILE:-$PRESSWARDEN_DIR/config/config}"
+else
+  PRESSWARDEN_CONFIG_FILE="${PRESSWARDEN_CONFIG_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/presswarden/config}"
+fi
 PRESSWARDEN_CONFIG_LOADED=0
 _presswarden_env_overrides=$(env | grep -E '^(PRESSWARDEN_[A-Za-z0-9_]*|WPSCAN_API_TOKEN|HOSTINGER_API_TOKEN)=' || true)
 if [ -r "$PRESSWARDEN_CONFIG_FILE" ]; then
@@ -22,12 +28,32 @@ if [ -n "$_presswarden_env_overrides" ]; then
   done <<< "$_presswarden_env_overrides"
 fi
 unset _presswarden_env_overrides _presswarden_k _presswarden_v 2>/dev/null || true
+export PRESSWARDEN_PORTABLE
 
-ROOT="${ROOT:-${PRESSWARDEN_SCAN_ROOT:-$PWD}}"
-PRESSWARDEN_STATE_DIR="${PRESSWARDEN_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/presswarden}"
-PRESSWARDEN_CACHE_DIR="${PRESSWARDEN_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/presswarden}"
+if [ -n "${ROOT:-}" ]; then
+  :
+elif [ -n "${PRESSWARDEN_SCAN_ROOT:-}" ]; then
+  ROOT="$PRESSWARDEN_SCAN_ROOT"
+elif [ "$PRESSWARDEN_PORTABLE" = 1 ]; then
+  _presswarden_parent=$(cd "$PRESSWARDEN_DIR/.." 2>/dev/null && pwd -P || dirname "$PRESSWARDEN_DIR")
+  if [ -d "$_presswarden_parent/domains" ]; then ROOT="$_presswarden_parent/domains"
+  elif [ -d "$_presswarden_parent/public_html" ]; then ROOT="$_presswarden_parent/public_html"
+  else ROOT="$_presswarden_parent"
+  fi
+  unset _presswarden_parent
+else
+  ROOT="$PWD"
+fi
+
+if [ "$PRESSWARDEN_PORTABLE" = 1 ]; then
+  PRESSWARDEN_STATE_DIR="${PRESSWARDEN_STATE_DIR:-$PRESSWARDEN_DIR/var}"
+  PRESSWARDEN_CACHE_DIR="${PRESSWARDEN_CACHE_DIR:-$PRESSWARDEN_DIR/var/cache}"
+else
+  PRESSWARDEN_STATE_DIR="${PRESSWARDEN_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/presswarden}"
+  PRESSWARDEN_CACHE_DIR="${PRESSWARDEN_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/presswarden}"
+fi
 REPORTS="${REPORTS:-$PRESSWARDEN_STATE_DIR/reports}"
-PRESSWARDEN_VERSION="1.0.2"
+PRESSWARDEN_VERSION="1.0.3"
 PRESSWARDEN_MAX="${PRESSWARDEN_MAX:-60}"
 PRESSWARDEN_INTERACTIVE="${PRESSWARDEN_INTERACTIVE:-1}"
 QUARANTINE="${QUARANTINE:-$PRESSWARDEN_STATE_DIR/quarantine}"
