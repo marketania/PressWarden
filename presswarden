@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -uo pipefail
 PRESSWARDEN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VERSION="$(cat "$PRESSWARDEN_DIR/VERSION" 2>/dev/null || printf '1.0.4')"
+VERSION="$(cat "$PRESSWARDEN_DIR/VERSION" 2>/dev/null || printf '1.1.0')"
 PRESSWARDEN_PORTABLE=0
 [ -f "$PRESSWARDEN_DIR/.presswarden-portable" ] && PRESSWARDEN_PORTABLE=1
 
@@ -45,6 +45,7 @@ Usage:
   ./presswarden full [path]          Comprehensive audit + deep integrity/DB maintenance
   ./presswarden db [path]            Database-only audit + maintenance
   ./presswarden scan [path]          Alias for fast
+  ./presswarden intel ACTION [path]  status|update|scan threat intelligence
   ./presswarden cleanup [path]       Logs + disposable metadata/inode cleanup
   ./presswarden doctor [path]        Dependencies, config, integrations, discovery
   ./presswarden lock [path]          Lock WordPress file modifications across discovered sites
@@ -81,7 +82,7 @@ resolve_root() {
 }
 
 show_config() {
-  local r mode state cache
+  local r mode state cache intel
   r=$(resolve_root '')
   if [ "$PRESSWARDEN_PORTABLE" = 1 ]; then
     mode='portable/local'
@@ -92,6 +93,7 @@ show_config() {
     state="${PRESSWARDEN_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/presswarden}"
     cache="${PRESSWARDEN_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/presswarden}"
   fi
+  intel="${PRESSWARDEN_INTEL_DIR:-$state/intel}"
   printf 'PressWarden v%s\n\n' "$VERSION"
   printf 'Install mode:       %s\n' "$mode"
   printf 'Program directory:  %s\n' "$PRESSWARDEN_DIR"
@@ -102,9 +104,12 @@ show_config() {
   printf 'JSON reports:       %s\n' "${PRESSWARDEN_OUTPUT_JSON:-1}"
   printf 'Deep upload scan:   %s\n' "${PRESSWARDEN_UPLOADS_DEEP:-ask in FULL}"
   printf 'WPScan API:         %s\n' "$([ -n "${WPSCAN_API_TOKEN:-}" ] && printf configured || printf 'not configured')"
+  printf 'Wordfence Intel:    %s\n' "$([ -n "${PRESSWARDEN_WORDFENCE_TOKEN:-}" ] && printf configured || printf 'not configured')"
+  printf 'Patchstack Intel:   %s\n' "$([ -n "${PRESSWARDEN_PATCHSTACK_KEY:-}" ] && printf configured || printf 'not configured')"
   printf 'Hostinger API:      %s\n' "$([ -n "${HOSTINGER_API_TOKEN:-}" ] && printf 'configured (optional)' || printf 'not configured')"
   printf 'State directory:    %s\n' "$state"
   printf 'Cache directory:    %s\n' "$cache"
+  printf 'Intel directory:    %s\n' "$intel"
 }
 
 confirm_fleet_file_mods() {
@@ -129,6 +134,20 @@ case "$cmd" in
     ROOT=$(resolve_root "${1:-}"); export ROOT PRESSWARDEN_DIR
     suite="$cmd"; [ "$suite" = scan ] && suite=fast
     exec "$PRESSWARDEN_DIR/suites/$suite.sh"
+    ;;
+  intel)
+    action="${1:-status}"; [ "$#" -gt 0 ] && shift || true
+    # shellcheck disable=SC1090
+    . "$PRESSWARDEN_DIR/lib/intel.sh"
+    case "$action" in
+      status) pw_intel_status ;;
+      update) pw_intel_update ;;
+      scan)
+        ROOT=$(resolve_root "${1:-}"); export ROOT PRESSWARDEN_DIR
+        exec "$PRESSWARDEN_DIR/suites/intel.sh"
+        ;;
+      *) printf 'Unknown intel action: %s (use status, update, or scan)\n' "$action" >&2; exit 2 ;;
+    esac
     ;;
   cleanup)
     ROOT=$(resolve_root "${1:-}"); export ROOT PRESSWARDEN_DIR
