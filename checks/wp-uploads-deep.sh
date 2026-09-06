@@ -2,7 +2,7 @@
 # wp-uploads-deep — slow content inspection for PHP hidden inside image extensions
 NAME=wp-uploads-deep; DESC="uploads image-content scan (slow • full only)"
 SCAN_DOES="Reads image-like upload files and checks whether PHP code has been hidden behind an image extension."
-SCAN_WHY="Extension-only checks can miss a backdoor named .jpg or .png, so this slower content scan is reserved for FULL runs."
+SCAN_WHY="Extension-only checks can miss a backdoor named .jpg or .png, so this slower content scan is optional during FULL runs."
 . "$(cd "$(dirname "$0")/.." && pwd)/lib/_lib.sh"
 main() {
   banner
@@ -15,7 +15,7 @@ main() {
   done
 
   sec "PHP disguised with an image extension" "$n site upload tree(s) • slow content scan"
-  note "Full-only check: reads image-like files looking for embedded PHP; intentionally omitted from normal fast/WP runs."
+  note "Slow check: FULL asks before running it. Set PRESSWARDEN_UPLOADS_DEEP=1 to always run or =0 to always skip."
   L=$(tmpf)
   find "${SCAN_ROOTS[@]/%//wp-content/uploads}" -type f \
     \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' \
