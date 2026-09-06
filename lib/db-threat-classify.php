@@ -103,7 +103,7 @@ function presswarden_db_classify_admin($login, $email, $capabilities)
     if (!preg_match('/^([a-f0-9]{24,40})@[^@]+$/', $email, $m) || $m[1] !== $login) {
         return null;
     }
-    if (!preg_match('/[\"\']administrator[\"\']\s*;\s*b:1\b/i', $capabilities)) {
+    if (!preg_match('~"administrator"\s*;\s*b:1\b~i', $capabilities)) {
         return null;
     }
 
