@@ -1,10 +1,41 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOTDIR="$(cd "$(dirname "$0")/.." && pwd)"
+EXPECTED_VERSION=$(cat "$ROOTDIR/VERSION")
 TMP="${TMPDIR:-/tmp}/presswarden-smoke.$$"; trap 'rm -rf "$TMP"' EXIT
-mkdir -p "$TMP/sites/example.com/public_html/wp-admin" "$TMP/sites/example.com/public_html/wp-content" "$TMP/sites/example.com/public_html/wp-includes"
+mkdir -p "$TMP/sites/example.com/public_html/wp-admin" "$TMP/sites/example.com/public_html/wp-content/plugins/white-engine" "$TMP/sites/example.com/public_html/wp-content/plugins/normal-plugin" "$TMP/sites/example.com/public_html/wp-includes"
 touch "$TMP/sites/example.com/public_html/wp-settings.php" "$TMP/sites/example.com/public_html/wp-load.php"
 printf '<?php $wp_version = "7.1";\n' > "$TMP/sites/example.com/public_html/wp-includes/version.php"
+
+cat > "$TMP/sites/example.com/public_html/wp-content/plugins/white-engine/white-engine.php" <<'PHP'
+<?php
+final class Test_Packed_Loader {
+    private static function unpack_bytes($bytes, $key) {
+        $out = '';
+        $m = strlen($key);
+        foreach ($bytes as $i => $value) {
+            $out .= chr($value ^ ord($key[$i % $m]));
+        }
+        return $out;
+    }
+    private static function hidden_source() {
+        $key = implode('', array_map('chr', [8,236,224,129,47,94,245,219,207,206]));
+        $rows = [[96,152,148,241,92,100,218,244,161,161,122,137,132,232,78,51,219,184,160,163,39,162,133,246,112,14,135,180,163,167,126,195,129,241,70]];
+        return self::unpack_bytes($rows[0], $key);
+    }
+    public static function boot() {
+        $src = self::hidden_source();
+        wp_enqueue_script('test-packed-loader', $src, [], '1.0.0', true);
+    }
+}
+PHP
+
+cat > "$TMP/sites/example.com/public_html/wp-content/plugins/normal-plugin/normal-plugin.php" <<'PHP'
+<?php
+function normal_plugin_assets() {
+    wp_enqueue_script('normal-plugin', plugin_dir_url(__FILE__) . 'assets/app.js', [], '1.0.0', true);
+}
+PHP
 
 for f in "$ROOTDIR/presswarden" "$ROOTDIR/install.sh" "$ROOTDIR/uninstall.sh" "$ROOTDIR"/lib/*.sh "$ROOTDIR"/checks/*.sh "$ROOTDIR"/suites/*.sh; do bash -n "$f"; done
 
@@ -19,8 +50,17 @@ bash -c '
   . "$1/lib/_lib.sh"
   [ "${#SCAN_ROOTS[@]}" -eq 1 ]
   [ "$(site_label_from_root "${SCAN_ROOTS[0]}")" = "example.com" ]
-  [ "$PRESSWARDEN_VERSION" = "1.0.3" ]
-' _ "$ROOTDIR"
+  [ "$PRESSWARDEN_VERSION" = "$2" ]
+' _ "$ROOTDIR" "$EXPECTED_VERSION"
+
+# The White-Engine-style packed/XOR remote loader must be detected, while a
+# normal local wp_enqueue_script() call must remain clean.
+loader_out=$(ROOT="$TMP/sites" PRESSWARDEN_CONFIG_FILE="$TMP/no-config" PRESSWARDEN_STATE_DIR="$TMP/state-loader" PRESSWARDEN_CACHE_DIR="$TMP/cache-loader" PRESSWARDEN_NOCOLOR=1 "$ROOTDIR/checks/php-obfuscated-loader.sh" 2>&1 || true)
+printf '%s\n' "$loader_out" | grep -q 'white-engine.php'
+if printf '%s\n' "$loader_out" | grep -q 'normal-plugin.php'; then
+  printf 'normal wp_enqueue_script fixture was falsely flagged\n' >&2
+  exit 1
+fi
 
 # Exported one-shot values must override persistent config values.
 cat > "$TMP/config" <<'EOF'
@@ -30,7 +70,7 @@ cfg=$(PRESSWARDEN_CONFIG_FILE="$TMP/config" PRESSWARDEN_UPLOADS_DEEP=1 "$ROOTDIR
 printf '%s\n' "$cfg" | grep -qE 'Deep upload scan:[[:space:]]+1$'
 
 # CLI version and fleet-lock aliases must stay discoverable.
-[ "$($ROOTDIR/presswarden --version)" = "PressWarden 1.0.3" ]
+[ "$($ROOTDIR/presswarden --version)" = "PressWarden $EXPECTED_VERSION" ]
 help=$($ROOTDIR/presswarden help)
 printf '%s\n' "$help" | grep -q '\./presswarden lock \[path\]'
 printf '%s\n' "$help" | grep -q '\./presswarden unlock \[path\]'
@@ -42,7 +82,7 @@ PORTABLE="$HOST/PressWarden"
 mkdir -p "$HOST/domains/example.com/public_html/wp-admin" "$HOST/domains/example.com/public_html/wp-content" "$HOST/domains/example.com/public_html/wp-includes" "$PORTABLE/config"
 touch "$HOST/domains/example.com/public_html/wp-settings.php" "$HOST/domains/example.com/public_html/wp-load.php"
 printf '<?php $wp_version = "7.1";\n' > "$HOST/domains/example.com/public_html/wp-includes/version.php"
-cp "$ROOTDIR/presswarden" "$PORTABLE/presswarden"
+cp "$ROOTDIR/presswarden" "$ROOTDIR/VERSION" "$PORTABLE/"
 cp -a "$ROOTDIR/lib" "$ROOTDIR/checks" "$ROOTDIR/suites" "$PORTABLE/"
 cp "$ROOTDIR/config/config.example" "$PORTABLE/config/config"
 touch "$PORTABLE/.presswarden-portable"
@@ -66,7 +106,8 @@ printf '%s\n' "$portable_cfg" | grep -Fq "Cache directory:    $PORTABLE/var/cach
     [ "$REPORTS" = "$2/var/reports" ]
     [ "$PRESSWARDEN_CACHE_DIR" = "$2/var/cache" ]
     [ "$QUARANTINE" = "$2/var/quarantine" ]
-  ' _ "$HOST" "$PORTABLE"
+    [ "$PRESSWARDEN_VERSION" = "$3" ]
+  ' _ "$HOST" "$PORTABLE" "$EXPECTED_VERSION"
 )
 
 if grep -R -nE '<[[:space:]]*<\(|>[[:space:]]*>\(' "$ROOTDIR/checks" "$ROOTDIR/lib" "$ROOTDIR/suites" >/dev/null 2>&1; then
