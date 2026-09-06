@@ -49,6 +49,7 @@ Usage:
   ./presswarden intel ACTION [path]  status|update|scan threat intelligence
   ./presswarden baseline ACTION [path]  create|status|diff security baseline
   ./presswarden changes [path]       Compare current state with the saved baseline
+  ./presswarden correlate [path]     Correlate new/changed artifacts across WordPress sites
   ./presswarden cleanup [path]       Logs + disposable metadata/inode cleanup
   ./presswarden doctor [path]        Dependencies, config, integrations, discovery
   ./presswarden lock [path]          Lock WordPress file modifications across discovered sites
@@ -172,6 +173,10 @@ case "$cmd" in
     # shellcheck disable=SC1090
     . "$PRESSWARDEN_DIR/lib/baseline.sh"
     pw_baseline_diff
+    ;;
+  correlate)
+    ROOT=$(resolve_root "${1:-}"); export ROOT PRESSWARDEN_DIR
+    exec "$PRESSWARDEN_DIR/checks/fleet-correlate.sh"
     ;;
   cleanup)
     ROOT=$(resolve_root "${1:-}"); export ROOT PRESSWARDEN_DIR
