@@ -2,6 +2,17 @@
 
 All notable changes to PressWarden are documented here.
 
+## 1.0.2 — 2026-09-06
+
+Fleet-lock usability release.
+
+- Added `presswarden lock [path]` to enable `DISALLOW_FILE_MODS=true` across all discovered WordPress installations.
+- Added `presswarden unlock [path]` to disable `DISALLOW_FILE_MODS` temporarily for updates and maintenance.
+- Added `presswarden lock-status [path]` for a read-only fleet status check.
+- `lock` and `unlock` use a single fleet-level confirmation instead of prompting once per site.
+- Existing `presswarden file-mods status|on|off` commands remain available for backward compatibility and advanced use.
+- Lock/unlock continue to use quarantine-backed `wp-config.php` backups and automatic rollback on WP-CLI failure.
+
 ## 1.0.1 — 2026-09-06
 
 Quality-of-life and documentation release.
