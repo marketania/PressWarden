@@ -40,6 +40,10 @@ jobs:
         shell: bash
         run: bash tests/threat-intel-regressions.sh
 
+      - name: External YARA integration
+        shell: bash
+        run: bash tests/yara-integration.sh
+
       - name: Threat-intel credential safety
         shell: bash
         run: bash tests/intel-security.sh
