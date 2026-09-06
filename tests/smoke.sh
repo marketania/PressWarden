@@ -19,6 +19,7 @@ bash -c '
   . "$1/lib/_lib.sh"
   [ "${#SCAN_ROOTS[@]}" -eq 1 ]
   [ "$(site_label_from_root "${SCAN_ROOTS[0]}")" = "example.com" ]
+  [ "$PRESSWARDEN_VERSION" = "1.0.2" ]
 ' _ "$ROOTDIR"
 
 # Exported one-shot values must override persistent config values.
@@ -27,6 +28,13 @@ PRESSWARDEN_UPLOADS_DEEP=0
 EOF
 cfg=$(PRESSWARDEN_CONFIG_FILE="$TMP/config" PRESSWARDEN_UPLOADS_DEEP=1 "$ROOTDIR/presswarden" config)
 printf '%s\n' "$cfg" | grep -qE 'Deep upload scan:[[:space:]]+1$'
+
+# CLI version and fleet-lock aliases must stay discoverable.
+[ "$($ROOTDIR/presswarden --version)" = "PressWarden 1.0.2" ]
+help=$($ROOTDIR/presswarden help)
+printf '%s\n' "$help" | grep -q 'presswarden lock \[path\]'
+printf '%s\n' "$help" | grep -q 'presswarden unlock \[path\]'
+printf '%s\n' "$help" | grep -q 'presswarden lock-status \[path\]'
 
 if grep -R -nE '<[[:space:]]*<\(|>[[:space:]]*>\(' "$ROOTDIR/checks" "$ROOTDIR/lib" "$ROOTDIR/suites" >/dev/null 2>&1; then
   printf 'runtime process substitution found\n' >&2; exit 1
