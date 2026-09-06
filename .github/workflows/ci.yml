@@ -36,6 +36,10 @@ jobs:
         shell: bash
         run: bash tests/smoke.sh
 
+      - name: Safe self update preservation
+        shell: bash
+        run: bash tests/update.sh
+
       - name: Baseline and change detection
         shell: bash
         run: bash tests/baseline.sh
