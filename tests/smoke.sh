@@ -3,6 +3,7 @@ set -euo pipefail
 ROOTDIR="$(cd "$(dirname "$0")/.." && pwd)"
 EXPECTED_VERSION=$(cat "$ROOTDIR/VERSION")
 TMP="${TMPDIR:-/tmp}/presswarden-smoke.$$"; trap 'rm -rf "$TMP"' EXIT
+stage() { printf 'SMOKE: %s\n' "$1"; }
 mkdir -p "$TMP/sites/example.com/public_html/wp-admin" "$TMP/sites/example.com/public_html/wp-content/plugins/white-engine" "$TMP/sites/example.com/public_html/wp-content/plugins/normal-plugin" "$TMP/sites/example.com/public_html/wp-includes"
 touch "$TMP/sites/example.com/public_html/wp-settings.php" "$TMP/sites/example.com/public_html/wp-load.php"
 printf '<?php $wp_version = "7.1";\n' > "$TMP/sites/example.com/public_html/wp-includes/version.php"
@@ -37,9 +38,10 @@ function normal_plugin_assets() {
 }
 PHP
 
+stage 'syntax'
 for f in "$ROOTDIR/presswarden" "$ROOTDIR/install.sh" "$ROOTDIR/uninstall.sh" "$ROOTDIR"/lib/*.sh "$ROOTDIR"/checks/*.sh "$ROOTDIR"/suites/*.sh; do bash -n "$f"; done
 
-# Test explicit-root discovery structurally rather than depending on formatted output.
+stage 'explicit discovery'
 ROOT="$TMP/sites" \
 PRESSWARDEN_CONFIG_FILE="$TMP/no-config" \
 PRESSWARDEN_STATE_DIR="$TMP/state" \
@@ -53,30 +55,30 @@ bash -c '
   [ "$PRESSWARDEN_VERSION" = "$2" ]
 ' _ "$ROOTDIR" "$EXPECTED_VERSION"
 
-# The White-Engine-style packed/XOR remote loader must be detected, while a
-# normal local wp_enqueue_script() call must remain clean.
-loader_out=$(ROOT="$TMP/sites" PRESSWARDEN_CONFIG_FILE="$TMP/no-config" PRESSWARDEN_STATE_DIR="$TMP/state-loader" PRESSWARDEN_CACHE_DIR="$TMP/cache-loader" PRESSWARDEN_NOCOLOR=1 "$ROOTDIR/checks/php-obfuscated-loader.sh" 2>&1 || true)
-printf '%s\n' "$loader_out" | grep -q 'white-engine.php'
+stage 'obfuscated loader regression'
+loader_out=$(ROOT="$TMP/sites" PRESSWARDEN_CONFIG_FILE="$TMP/no-config" PRESSWARDEN_STATE_DIR="$TMP/state-loader" PRESSWARDEN_CACHE_DIR="$TMP/cache-loader" PRESSWARDEN_NOCOLOR=1 bash "$ROOTDIR/checks/php-obfuscated-loader.sh" 2>&1 || true)
+printf '%s\n' "$loader_out" | grep -q 'white-engine.php' || { printf '%s\n' "$loader_out" >&2; printf 'White-Engine-style fixture was not detected\n' >&2; exit 1; }
 if printf '%s\n' "$loader_out" | grep -q 'normal-plugin.php'; then
+  printf '%s\n' "$loader_out" >&2
   printf 'normal wp_enqueue_script fixture was falsely flagged\n' >&2
   exit 1
 fi
 
-# Exported one-shot values must override persistent config values.
+stage 'environment precedence'
 cat > "$TMP/config" <<'EOF'
 PRESSWARDEN_UPLOADS_DEEP=0
 EOF
 cfg=$(PRESSWARDEN_CONFIG_FILE="$TMP/config" PRESSWARDEN_UPLOADS_DEEP=1 "$ROOTDIR/presswarden" config)
 printf '%s\n' "$cfg" | grep -qE 'Deep upload scan:[[:space:]]+1$'
 
-# CLI version and fleet-lock aliases must stay discoverable.
+stage 'CLI aliases/version'
 [ "$($ROOTDIR/presswarden --version)" = "PressWarden $EXPECTED_VERSION" ]
 help=$($ROOTDIR/presswarden help)
 printf '%s\n' "$help" | grep -q '\./presswarden lock \[path\]'
 printf '%s\n' "$help" | grep -q '\./presswarden unlock \[path\]'
 printf '%s\n' "$help" | grep -q '\./presswarden lock-status \[path\]'
 
-# Simulate a shared-host portable install in ~/PressWarden with sites in ~/domains.
+stage 'portable shared-host mode'
 HOST="$TMP/hosting-home"
 PORTABLE="$HOST/PressWarden"
 mkdir -p "$HOST/domains/example.com/public_html/wp-admin" "$HOST/domains/example.com/public_html/wp-content" "$HOST/domains/example.com/public_html/wp-includes" "$PORTABLE/config"
@@ -110,6 +112,7 @@ printf '%s\n' "$portable_cfg" | grep -Fq "Cache directory:    $PORTABLE/var/cach
   ' _ "$HOST" "$PORTABLE" "$EXPECTED_VERSION"
 )
 
+stage 'runtime portability'
 if grep -R -nE '<[[:space:]]*<\(|>[[:space:]]*>\(' "$ROOTDIR/checks" "$ROOTDIR/lib" "$ROOTDIR/suites" >/dev/null 2>&1; then
   printf 'runtime process substitution found\n' >&2; exit 1
 fi
