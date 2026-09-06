@@ -1,0 +1,16 @@
+# id	category	severity	confidence	name	owner
+PW-PHP-001	php	critical	high	Request-controlled execution sink	phpquick/phpdeep
+PW-PHP-002	php	critical	high	Remote payload write then include	phpquick/phpdeep
+PW-PHP-003	php	critical	high	Packed XOR browser loader	php-obfuscated-loader
+PW-PHP-004	php	high	high	Dynamic request-controlled function execution	php-threat-intel
+PW-PHP-005	php	critical	high	Credential capture with remote exfiltration	php-threat-intel
+PW-JS-001	javascript	high	high	Decoded JavaScript passed to eval or Function	js-threat-intel
+PW-JS-002	javascript	critical	high	Obfuscated remote script-loader injection	js-threat-intel
+PW-JS-003	javascript	high	medium	Hidden remote iframe with obfuscation	js-threat-intel
+PW-DB-001	database	critical	high	Obfuscated external script stored in WordPress data	wp-db-malware
+PW-DB-002	database	high	high	Hidden external iframe stored in WordPress data	wp-db-malware
+PW-DB-003	database	review	medium	Executable JavaScript stored in site-wide option	wp-db-malware
+PW-CAMP-001	campaign	critical	high	WP-VCD request/password controller marker	wp-campaign-intel
+PW-CAMP-002	campaign	critical	high	SocGholish NDSW/NDSJ/NDSX marker	wp-campaign-intel
+PW-CAMP-003	campaign	high	medium	Balada-style character-code remote script injection	js-threat-intel/wp-db-malware
+PW-CAMP-004	campaign	high	medium	Sign1-style obfuscated database JavaScript injection	wp-db-malware
