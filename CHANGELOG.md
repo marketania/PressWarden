@@ -2,6 +2,27 @@
 
 All notable changes to PressWarden are documented here.
 
+## 1.1.0 — 2026-09-06
+
+Threat Intelligence release.
+
+- Added a native threat-intelligence knowledge base with stable `PW-*` rule IDs, severity/confidence metadata, campaign references, and source documentation.
+- Added `./presswarden intel status`, `./presswarden intel update`, and `./presswarden intel scan`.
+- Added `php-threat-intel` for request-controlled dynamic function execution and high-confidence credential-capture/exfiltration chains.
+- Added `js-threat-intel` for decoded JavaScript execution, obfuscated dynamic script-loader injection, and hidden external iframe behavior.
+- Added `wp-db-malware` to inspect prefiltered `wp_options` and `wp_posts` rows for high-signal stored browser malware without printing stored payload content.
+- Added `wp-campaign-intel` with high-specificity WP-VCD and SocGholish/NDSW markers plus separate behavior-based coverage for Balada/Sign1-like techniques.
+- FAST now includes native PHP/JavaScript/campaign/database threat intelligence with no API keys required.
+- Added a focused `intel` suite for threat investigation without the entire FULL maintenance sweep.
+- Added local CISA Known Exploited Vulnerabilities caching and CVE correlation for known-exploitation prioritization.
+- Added optional Wordfence Intelligence V3 Production Feed support using a user-supplied `PRESSWARDEN_WORDFENCE_TOKEN`; installed core/plugin/theme versions are matched locally against affected version ranges.
+- Added optional Patchstack product/version intelligence using `PRESSWARDEN_PATCHSTACK_KEY`, with fleet-wide component/version deduplication, local TTL caching, configurable lookup caps, exploitation awareness, and CISA KEV correlation.
+- Existing WPScan vulnerability intelligence remains optional/user-token driven.
+- External vulnerability feeds are not bundled or redistributed with PressWarden; downloaded data stays in the user's local intelligence directory.
+- `presswarden doctor` now reports native-rule counts, campaign references, CISA KEV cache state, Wordfence cache/token state, Patchstack readiness, and the intelligence data path.
+- Added malicious + benign regression fixtures for White-Engine-style XOR loaders, decoded JavaScript loaders, NDSW/SocGholish markers, dynamic PHP execution, and credential exfiltration.
+- Extended portable-mode tests to verify local threat-intelligence paths and `intel status` behavior.
+
 ## 1.0.4 — 2026-09-06
 
 Detection-quality and output-polish release.
