@@ -44,6 +44,10 @@ jobs:
         shell: bash
         run: bash tests/incident.sh
 
+      - name: Fleet correlation
+        shell: bash
+        run: bash tests/fleet-correlate.sh
+
       - name: Threat-intel behavior regressions
         shell: bash
         run: bash tests/threat-intel-regressions.sh
