@@ -28,6 +28,10 @@ jobs:
         shell: bash
         run: bash tests/smoke.sh
 
+      - name: Threat-intel credential safety
+        shell: bash
+        run: bash tests/intel-security.sh
+
       - name: No runtime process substitution
         shell: bash
         run: |
