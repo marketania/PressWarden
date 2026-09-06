@@ -1,4 +1,4 @@
-# PressWarden v1.0.3 configuration
+# PressWarden configuration
 # Portable install: PressWarden/config/config
 # User install: ~/.config/presswarden/config
 # Keep this file private (chmod 600) if it contains API tokens.
