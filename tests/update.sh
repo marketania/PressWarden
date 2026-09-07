@@ -9,6 +9,7 @@ SRC="$TMP/update-source"
 BIN="$TMP/bin"
 ARCHIVE="$TMP/update.tar.gz"
 FAIL_ARCHIVE="$TMP/update-intel-fail.tar.gz"
+SAME_ARCHIVE="$TMP/update-same-version.tar.gz"
 BAD_ARCHIVE="$TMP/bad-update.tar.gz"
 CURRENT_VERSION="$(tr -d '[:space:]' < "$REPO/VERSION")"
 mkdir -p "$INSTALL" "$SRC" "$BIN"
@@ -123,10 +124,34 @@ grep -q 'program update succeeded, but one or more threat-intelligence feeds did
 [ "$(sha256sum "$INSTALL/var/baselines/fleet/current/manifest.tsv" | awk '{print $1}')" = "$before_baseline" ]
 [ "$(sha256sum "$INSTALL/var/intel/local-note.txt" | awk '{print $1}')" = "$before_intel_note" ]
 
+# Main can legitimately advance without a VERSION bump. A same-version refresh
+# should say exactly that instead of presenting a misleading X → X upgrade.
+SAME="$TMP/update-same-version-source"
+cp -a "$FAIL" "$SAME"
+cat >> "$SAME/lib/intel.sh" <<'EOF'
+
+pw_intel_update() {
+  printf '%s\n' 'synthetic same-version intel refresh succeeded'
+  return 0
+}
+EOF
+
+tar -czf "$SAME_ARCHIVE" -C "$TMP" "$(basename "$SAME")"
+PRESSWARDEN_UPDATE_ARCHIVE="$SAME_ARCHIVE" "$BIN/presswarden" update > "$TMP/same.out" 2>&1
+grep -q 'PressWarden code refreshed: v9.9.10-test (marketania/PressWarden @ main)' "$TMP/same.out"
+if grep -q '9.9.10-test → 9.9.10-test' "$TMP/same.out"; then
+  cat "$TMP/same.out" >&2
+  printf 'same-version refresh was presented as a version upgrade\n' >&2
+  exit 1
+fi
+grep -q 'Threat intelligence refreshed' "$TMP/same.out"
+[ "$(sha256sum "$INSTALL/config/config" | awk '{print $1}')" = "$before_config" ]
+[ "$(sha256sum "$INSTALL/var/quarantine/case-1/evidence.php" | awk '{print $1}')" = "$before_quarantine" ]
+
 # A malformed future archive must fail validation before modifying installed
 # code or any private state.
 BAD="$TMP/bad-source"
-cp -a "$FAIL" "$BAD"
+cp -a "$SAME" "$BAD"
 rm -f "$BAD/VERSION"
 tar -czf "$BAD_ARCHIVE" -C "$TMP" "$(basename "$BAD")"
 set +e
