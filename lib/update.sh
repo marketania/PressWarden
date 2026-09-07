@@ -216,7 +216,11 @@ pw_update() {
   fi
 
   rm -rf "$tmp"
-  printf '\n✓ PressWarden updated: %s → %s\n' "$old_version" "$new_version"
+  if [ "$old_version" = "$new_version" ]; then
+    printf '\n✓ PressWarden code refreshed: v%s (%s @ %s)\n' "$new_version" "$PRESSWARDEN_UPDATE_REPO" "$PRESSWARDEN_UPDATE_REF"
+  else
+    printf '\n✓ PressWarden updated: %s → %s\n' "$old_version" "$new_version"
+  fi
   printf '✓ Preserved: config/config, reports, quarantine, baselines, cache, and existing intel state\n'
   printf '✓ Program:   %s\n' "$PRESSWARDEN_DIR"
 
