@@ -48,20 +48,26 @@ function pw_js_script_target($value) {
     return (bool)preg_match('~^(?:(?:https?:)?//|javascript:|data:(?:text|application)/(?:javascript|ecmascript))~i',$value);
 }
 
+function pw_js_redirect_target($value) {
+    if (!is_string($value)) return false;
+    $value=ltrim($value);
+    return (bool)preg_match('~^(?:(?:https?:)?//|javascript:|data:(?:text/html|(?:text|application)/(?:javascript|ecmascript)))~i',$value);
+}
+
 function pw_js_high_risk_target($value) {
     if (!is_string($value)) return false;
     $v=ltrim($value);
-    if (preg_match('~^(?:javascript:|data:(?:text|application)/(?:javascript|ecmascript))~i',$v)) return true;
+    if (preg_match('~^(?:javascript:|data:(?:text/html|(?:text|application)/(?:javascript|ecmascript)))~i',$v)) return true;
     $url=strpos($v,'//')===0 ? 'https:'.$v : $v;
     $host=@parse_url($url,PHP_URL_HOST);
     return is_string($host) && filter_var($host,FILTER_VALIDATE_IP)!==false;
 }
 
 function pw_js_evasion_gate($s) {
-    // Require evidence that the loader is gated on visitor/environment state,
-    // rather than treating legitimate encoded CDN/chunk loaders as malware.
-    // The signal must occur in the same bounded neighborhood as the loader.
-    $subject='(?:document\.cookie|navigator\.(?:userAgent|platform|language)|document\.referrer|location\.(?:hostname|host|pathname|search)|(?:localStorage|sessionStorage)\.(?:getItem|key)|screen\.(?:width|height))';
+    // High-confidence injection/redirect rules require visitor/environment
+    // gating near the sink. Avoid generic pathname/query routing signals that
+    // are common in normal application bundles.
+    $subject='(?:document\.cookie|navigator\.(?:userAgent|platform)|document\.referrer|location\.(?:hostname|host)|(?:localStorage|sessionStorage)\.(?:getItem|key)|screen\.(?:width|height))';
     if (preg_match('~\bif\s*\(.{0,900}?'.$subject.'.{0,900}?\)\s*\{?~is',$s)) return true;
     if (preg_match('~'.$subject.'.{0,500}?(?:\.includes\s*\(|\.indexOf\s*\(|\.match\s*\(|\.test\s*\(|===|!==|==|!=)~is',$s)) return true;
     return false;
@@ -120,6 +126,49 @@ function pw_js_tied_obfuscated_loader($s) {
     return false;
 }
 
+function pw_js_tied_decoded_redirect($s) {
+    // Direct decoder -> location sink with a literal target. Each match is
+    // evaluated only inside a small neighborhood so unrelated bundle modules
+    // cannot satisfy the rule together.
+    $patterns=[
+        '~(?:window\.)?location(?:\.href)?\s*=\s*((?:window\.)?atob|(?:window\.)?decodeURIComponent|(?:window\.)?unescape)\s*\(\s*([\'\"])([^\'\"]{1,8192})\2\s*\)~i',
+        '~(?:window\.)?location\.(?:assign|replace)\s*\(\s*((?:window\.)?atob|(?:window\.)?decodeURIComponent|(?:window\.)?unescape)\s*\(\s*([\'\"])([^\'\"]{1,8192})\2\s*\)\s*\)~i',
+        '~(?:window\.)?location(?:\.href)?\s*=\s*(String\.fromCharCode)\s*\(\s*([0-9a-fx,\s]{3,8192})\s*\)~i',
+        '~(?:window\.)?location\.(?:assign|replace)\s*\(\s*(String\.fromCharCode)\s*\(\s*([0-9a-fx,\s]{3,8192})\s*\)\s*\)~i'
+    ];
+    foreach($patterns as $i=>$re){
+        if(!preg_match_all($re,$s,$matches,PREG_SET_ORDER|PREG_OFFSET_CAPTURE)) continue;
+        foreach($matches as $m){
+            $decoder=$m[1][0];
+            $arg=($i<2) ? $m[3][0] : $m[2][0];
+            $target=pw_js_decode_literal($decoder,$arg);
+            if(!pw_js_redirect_target($target)) continue;
+            $offset=$m[0][1]; $start=max(0,$offset-700); $window=substr($s,$start,3200);
+            if(pw_js_high_risk_target($target) || pw_js_evasion_gate($window)) return true;
+        }
+    }
+
+    // Literal decoder assignment -> same variable reaches location sink nearby.
+    $assignments=[
+        '~(?:^|[;,{(])\s*(?:(?:var|let|const)\s+)?([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*((?:window\.)?atob|(?:window\.)?decodeURIComponent|(?:window\.)?unescape)\s*\(\s*([\'\"])([^\'\"]{1,8192})\3\s*\)~im',
+        '~(?:^|[;,{(])\s*(?:(?:var|let|const)\s+)?([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*(String\.fromCharCode)\s*\(\s*([0-9a-fx,\s]{3,8192})\s*\)~im'
+    ];
+    foreach($assignments as $i=>$re){
+        if(!preg_match_all($re,$s,$matches,PREG_SET_ORDER|PREG_OFFSET_CAPTURE)) continue;
+        foreach($matches as $m){
+            $name=$m[1][0]; $decoder=$m[2][0];
+            $arg=($i===0) ? $m[4][0] : $m[3][0];
+            $target=pw_js_decode_literal($decoder,$arg);
+            if(!pw_js_redirect_target($target)) continue;
+            $offset=$m[0][1]; $start=max(0,$offset-700); $window=substr($s,$start,3200);
+            $v=preg_quote($name,'~');
+            $reaches=(bool)preg_match('~(?:window\.)?location(?:\.href)?\s*=\s*'.$v.'\b|(?:window\.)?location\.(?:assign|replace)\s*\(\s*'.$v.'\b~i',$window);
+            if($reaches && (pw_js_high_risk_target($target) || pw_js_evasion_gate($window))) return true;
+        }
+    }
+    return false;
+}
+
 while (($line=fgets(STDIN))!==false) {
     $file=rtrim($line,"\r\n"); if($file===''||!is_file($file))continue;
     $s=@file_get_contents($file); if($s===false)continue;
@@ -130,21 +179,9 @@ while (($line=fgets(STDIN))!==false) {
     $domInsert=(bool)preg_match('~\b(?:appendChild|insertBefore|document\.write)\s*\(~i',$s);
     $remote=(bool)preg_match('~https?:\\?/\\?/|[\'\"](?:src|href)[\'\"]\s*[,=:]~i',$s);
     $decodedSrc=pw_js_tied_obfuscated_loader($s);
+    $decodedRedirect=pw_js_tied_decoded_redirect($s);
     $hiddenIframe=(bool)preg_match('~<iframe\b[^>]*(?:display\s*:\s*none|visibility\s*:\s*hidden|width\s*=\s*[\'\"]?0|height\s*=\s*[\'\"]?0)[^>]*>~i',$s);
     $iframeRemote=(bool)preg_match('~<iframe\b[^>]+https?://~i',$s);
-
-    $redirectDirect=(bool)preg_match('~(?:window\.)?location(?:\.href)?\s*=\s*'.$decoder.'\s*\(|(?:window\.)?location\.(?:assign|replace)\s*\(\s*'.$decoder.'\s*\(~i',$s);
-    $redirectVar=false;
-    $decodedVars=[];
-    if(!$redirectDirect && preg_match_all('~(?:var|let|const)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*'.$decoder.'\s*\(~i',$s,$matches)){
-        $decodedVars=array_values(array_unique($matches[1]));
-        foreach($decodedVars as $name){
-            $v=preg_quote($name,'~');
-            if(preg_match('~(?:window\.)?location(?:\.href)?\s*=\s*'.$v.'\b|(?:window\.)?location\.(?:assign|replace)\s*\(\s*'.$v.'\b~i',$s)){
-                $redirectVar=true; break;
-            }
-        }
-    }
 
     if ($directExec && ($domInsert || $remote || strlen($s)>4000)) {
         echo "ALERT\tPW-JS-001\t",$file,"\n"; continue;
@@ -152,7 +189,7 @@ while (($line=fgets(STDIN))!==false) {
     if ($decodedSrc) {
         echo "ALERT\tPW-JS-002\t",$file,"\n"; continue;
     }
-    if (($redirectDirect || $redirectVar) && $decode) {
+    if ($decodedRedirect) {
         echo "ALERT\tPW-JS-004\t",$file,"\n"; continue;
     }
     if ($hiddenIframe && $iframeRemote && ($decode || strpos($low,'eval(')!==false)) {
@@ -195,12 +232,13 @@ main() {
 
   sec "PW-JS-002 • obfuscated remote script injection" "same script object + statically decoded target + DOM insertion + local visitor/environment evasion gate"
   report "$A2" issue "no high-confidence obfuscated remote script-injection chains found"
-  note "A statically encoded CDN/chunk URL is not malware by itself. PW-JS-002 now also requires nearby visitor/environment gating, except intrinsically high-risk javascript/data targets or IP-host targets."
+  note "A statically encoded CDN/chunk URL is not malware by itself. PW-JS-002 also requires nearby visitor/environment gating, except intrinsically high-risk javascript/data targets or IP-host targets."
   note "Elementor/Wordfence/core-style bundles are not allowlisted by name; the rule is behaviorally stricter so legitimate packages and generated LiteSpeed copies do not become alerts simply for loading scripts."
 
-  sec "PW-JS-004 • decoded browser redirect target" "decoded/character-reconstructed value reaches location assignment/replace/assign • redirect-malware behavior"
-  report "$A4" issue "no decoded browser redirect chains found"
-  note "Normal first-party redirects such as location.href='/account' are not findings because the redirect target must be reconstructed through a decoder."
+  sec "PW-JS-004 • obfuscated browser redirect" "local literal decode → same redirect sink + external/executable target + visitor/environment evasion gate"
+  report "$A4" issue "no high-confidence obfuscated browser redirect chains found"
+  note "PW-JS-004 no longer correlates decoder variables and location sinks across an entire minified bundle. Static encoded application redirects are not malware by themselves."
+  note "Normal first-party redirects and dynamic application routing remain clean; high-confidence alerts require a proven decoded external/executable target plus nearby evasion/gating, except intrinsically high-risk javascript/data or IP-host targets."
 
   sec "PW-JS-003 • hidden external iframe with obfuscation" "hidden iframe + remote URL + decode/eval evidence"
   report "$R3" review "no hidden external iframe with corroborating obfuscation found"
