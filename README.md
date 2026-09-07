@@ -1,4 +1,4 @@
-<div align="center">
+<div align="left">
 
 ```text
  ____                   __        __            _
