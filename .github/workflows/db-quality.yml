@@ -1,0 +1,20 @@
+name: Database Quality
+on:
+  push:
+    branches: [main, quality/database-evidence-1.1.5]
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: git archive --format=tar HEAD > /tmp/presswarden-db-source.tar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: presswarden-db-source
+          path: /tmp/presswarden-db-source.tar
+          retention-days: 1
