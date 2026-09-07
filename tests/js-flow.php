@@ -59,3 +59,14 @@ test('no gate inherited across callback', "if(document.cookie){function redirect
 test('plain normalization is not obfuscation', "if(document.cookie){const s=document.createElement('script');s.src=decodeURIComponent('https://cdn.example.com/file.js');document.head.appendChild(s);}");
 test('nested template expressions', 'const x=`text ${fn(`nested ${"x"}`)} more`;');
 test('template code stays opaque', 'const x=`${{text: "if(document.cookie){location.href=atob(1)}"}}`;');
+
+// Genuine upstream packages exposed regex literals inside template expressions.
+test('template regex quotes', <<<'JS'
+const html=`text ${value.replace(/'|"/g, "")}`;
+JS
+);
+test('template regex braces', 'const html=`text ${value.replace(/[{}]/g, "")}`;');
+test('template nested regex and callback', 'const html=`${value.replace(/["\\\\]/g, x=>`\\${x}`)}`;');
+test('irrelevant runtime bindings stay bounded', implode(";", array_map(function($i){return 'const ordinary'.$i.'=runtime()';},range(0,5000))).';'.$loader, 'PW-JS-002', 'REVIEW');
+test('alert cannot be downgraded by later review', "location.href=atob('".base64_encode('javascript:alert(1)')."');".$redirect, 'PW-JS-004', 'ALERT');
+test('outer decoder shadowing', "const atob=custom;function run(){if(document.cookie){location.href=atob('$url');}}");

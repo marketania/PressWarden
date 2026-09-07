@@ -62,4 +62,15 @@ grep -q PW-JS-004 "$TMP/js.out"
 ! grep -qE 'token=|private|aHR0' "$TMP/js.out"
 # A no-action contract, independent of global interactive/remediation settings.
 ! grep -E 'report .*\b(issue|review)\b' "$REPO/checks/js-threat-intel.sh" | grep -v noaction
+# Identical contents reuse a result but keep the correct per-site filename.
+cp "$TMP/fixture.js" "$TMP/duplicate.js"
+printf '%s\0' "$TMP/fixture.js" "$TMP/duplicate.js" | php "$REPO/lib/js-threat-cli.php" > "$TMP/cached.out" 2> "$TMP/cached.err"
+[ "$(grep -c PW-JS-004 "$TMP/cached.out")" -eq 2 ]
+grep -q '1 unique analyses; 1 identical-file results reused' "$TMP/cached.err"
+grep -q 'duplicate.js' "$TMP/cached.out"
+# The same basename with different bytes must not share a cached verdict.
+printf "location.href='/account'; const x=atob('aGVsbG8=');\n" > "$TMP/duplicate.js"
+printf '%s\0' "$TMP/fixture.js" "$TMP/duplicate.js" | php "$REPO/lib/js-threat-cli.php" > "$TMP/cached.out" 2> "$TMP/cached.err"
+[ "$(grep -c PW-JS-004 "$TMP/cached.out")" -eq 1 ]
+grep -q '2 unique analyses; 0 identical-file results reused' "$TMP/cached.err"
 printf 'PressWarden runtime reliability: PASS\n'

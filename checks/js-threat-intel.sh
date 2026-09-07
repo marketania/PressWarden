@@ -11,16 +11,23 @@ main() {
     printf '    INCOMPLETE: PHP is required for JavaScript validation; no clean verdict.\n' >&2
     return 2
   fi
-  local candidates results errors s rc=0 kind rule finding alert review id title
+  if [ "${#TREE_ROOTS[@]}" -eq 0 ]; then
+    printf '    INCOMPLETE: no validated WordPress installations found; no JavaScript scan performed.\n' >&2
+    return 2
+  fi
+  local candidates results errors s rc=0 kind rule finding alert review id title stats
   candidates=$(tmpf); results=$(tmpf); errors=$(tmpf)
   : > "$candidates"; : > "$results"; : > "$errors"
   for s in "${TREE_ROOTS[@]}"; do
     find "$s" -xdev \
       \( -type d \( -name vendor -o -name node_modules -o -name cache -o -name caches -o -name wflogs -o -name .git -o -name .private \) -prune \) -o \
-      \( -type f \( -name '*.js' -o -name '*.mjs' -o -name '*.cjs' -o -name '*.html' -o -name '*.htm' \) -size -6M -print0 \) \
+      \( -type f \( -name '*.js' -o -name '*.mjs' -o -name '*.cjs' -o -name '*.html' -o -name '*.htm' \) -size -6291457c -print0 \) \
       >> "$candidates" 2>> "$errors" || rc=2
   done
   php "$PRESSWARDEN_DIR/lib/js-threat-cli.php" < "$candidates" > "$results" 2>> "$errors" || rc=2
+
+  stats=$(grep '^JS ANALYSIS:' "$errors" | tail -1)
+  [ -z "$stats" ] || note "$stats"
 
   for id in PW-JS-001 PW-JS-002 PW-JS-004 PW-JS-003; do
     alert=$(tmpf); review=$(tmpf); : > "$alert"; : > "$review"
@@ -53,7 +60,7 @@ main() {
   rm -f "$candidates" "$results"
   if [ "$rc" -ne 0 ]; then
     printf '    INCOMPLETE: one or more paths could not be analyzed; check PHP and read permissions.\n' >&2
-    # The PHP helper emits bounded, payload-free diagnostics. Directory errors
+    # The PHP helper emits escaped, payload-free diagnostics. Directory errors
     # are not echoed because filenames may contain terminal control characters.
     grep '^INCOMPLETE:' "$errors" | head -n 5 >&2 || true
     rm -f "$errors"

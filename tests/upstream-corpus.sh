@@ -12,7 +12,7 @@ fetch() {
 fetch 'https://downloads.wordpress.org/plugin/elementor.4.2.4.zip' "$TMP/packages/elementor.zip"
 fetch 'https://downloads.wordpress.org/plugin/wordfence.9.0.0.zip' "$TMP/packages/wordfence.zip"
 fetch 'https://wordpress.org/wordpress-7.1.zip' "$TMP/packages/wordpress.zip"
-sha256sum "$TMP"/packages/*.zip
+(cd "$TMP/packages" && sha256sum -c "$REPO/tests/upstream-corpus.sha256")
 # Extract only JS as inert text into an isolated directory, never a WordPress
 # installation. Enforce path/type/size bounds before reading archive members.
 python3 - "$TMP" <<'PY'

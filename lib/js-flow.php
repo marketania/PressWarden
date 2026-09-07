@@ -10,10 +10,11 @@ final class PressWardenJsFlow
     private $objects = [];
     private $findings = [];
 
-    /** Streaming lexical tokens: kind, value, source line. */
-    private static function tokens($source)
+    /** Streaming lexical tokens: kind, value, source line, ending byte offset. */
+    private static function tokens($source, $offset = 0, $line = 1, $level = 0)
     {
-        $length = strlen($source); $i = 0; $line = 1; $previous = '';
+        if ($level > 32) throw new RuntimeException('JavaScript template nesting limit reached');
+        $length = strlen($source); $i = $offset; $previous = '';
         while ($i < $length) {
             $c = $source[$i];
             if (ctype_space($c)) { if ($c === "\n") ++$line; ++$i; continue; }
@@ -32,7 +33,7 @@ final class PressWardenJsFlow
                     $ch = $source[$i++];
                     if ($ch === $quote) { $closed = true; break; }
                     if ($quote === '`' && $ch === '$' && ($source[$i] ?? '') === '{') {
-                        ++$i; self::skipInterpolation($source, $i, $line);
+                        ++$i; self::skipInterpolation($source, $i, $line, $level);
                         $raw .= '${OPAQUE}'; continue;
                     }
                     if ($ch === "\n") ++$line;
@@ -41,10 +42,10 @@ final class PressWardenJsFlow
                         $ch = $source[$i++]; $raw .= $ch; if ($ch === "\n") ++$line;
                     }
                 }
-                if (!$closed) throw new RuntimeException('unterminated JavaScript string');
+                if (!$closed) throw new RuntimeException('unterminated JavaScript string at byte '.$start.' line '.$tokenLine);
                 // Interpolated templates are opaque, not treated as literal code.
                 $value = ($quote === '`' && strpos($raw, '${') !== false) ? null : self::stringValue($raw);
-                yield [$value === null ? 'unknown' : 'string', $value, $tokenLine];
+                yield [$value === null ? 'unknown' : 'string', $value, $tokenLine, $i];
                 $previous = 'literal'; continue;
             }
             // Ignore regex bodies rather than mistaking their examples for code.
@@ -59,52 +60,36 @@ final class PressWardenJsFlow
                 }
                 if ($closed) {
                     while ($i < $length && ctype_alpha($source[$i])) ++$i;
-                    yield ['unknown', '', $tokenLine]; $previous = 'literal'; continue;
+                    yield ['unknown', '', $tokenLine, $i]; $previous = 'literal'; continue;
                 }
                 $i = $start;
             }
             if (preg_match('~\G[A-Za-z_$][A-Za-z0-9_$]*~A', $source, $m, 0, $i)) {
-                $i += strlen($m[0]); $previous = $m[0]; yield ['id', $m[0], $tokenLine]; continue;
+                $i += strlen($m[0]); $previous = $m[0]; yield ['id', $m[0], $tokenLine, $i]; continue;
             }
             if (preg_match('~\G(?:0[xX][0-9a-fA-F]+|[0-9]+)~A', $source, $m, 0, $i)) {
-                $i += strlen($m[0]); $previous = 'literal'; yield ['number', $m[0], $tokenLine]; continue;
+                $i += strlen($m[0]); $previous = 'literal'; yield ['number', $m[0], $tokenLine, $i]; continue;
             }
             $operator = $c;
             foreach (['===', '!==', '=>', '==', '!=', '&&', '||', '+=', '-=', '++', '--', '?.', '<=', '>=', '??'] as $op) {
                 if (substr($source, $i, strlen($op)) === $op) { $operator = $op; break; }
             }
-            $i += strlen($operator); $previous = $operator; yield ['punct', $operator, $tokenLine];
+            $i += strlen($operator); $previous = $operator; yield ['punct', $operator, $tokenLine, $i];
         }
     }
 
-    /** Consume template expressions as opaque data, including nested templates. */
-    private static function skipInterpolation($s, &$i, &$line, $level = 0)
+    /** Consume opaque template expressions using the same lexer as source.
+     * Regex literals can contain quotes or braces: character-only brace counting
+     * would desynchronize at expressions such as ${value.replace(/'/g, "")}.
+     */
+    private static function skipInterpolation($source, &$i, &$line, $level = 0)
     {
-        if ($level > 32) throw new RuntimeException('JavaScript template nesting limit reached');
-        $depth = 1; $n = strlen($s);
-        while ($i < $n) {
-            $c = $s[$i++];
-            if ($c === "\n") ++$line;
-            if ($c === '{') ++$depth;
-            elseif ($c === '}' && --$depth === 0) return;
-            elseif ($c === "'" || $c === '"' || $c === '`') {
-                $quote = $c; $closed = false;
-                while ($i < $n) {
-                    $c = $s[$i++];
-                    if ($c === "\n") ++$line;
-                    if ($c === '\\' && $i < $n) { if ($s[$i++] === "\n") ++$line; continue; }
-                    if ($c === $quote) { $closed = true; break; }
-                    if ($quote === '`' && $c === '$' && ($s[$i] ?? '') === '{') {
-                        ++$i; self::skipInterpolation($s, $i, $line, $level + 1);
-                    }
-                }
-                if (!$closed) throw new RuntimeException('unterminated JavaScript template expression');
-            } elseif ($c === '/' && ($s[$i] ?? '') === '/') {
-                $end = strpos($s, "\n", $i + 1); $i = $end === false ? $n : $end;
-            } elseif ($c === '/' && ($s[$i] ?? '') === '*') {
-                $end = strpos($s, '*/', $i + 1);
-                if ($end === false) throw new RuntimeException('unterminated JavaScript template comment');
-                $line += substr_count(substr($s, $i, $end + 2 - $i), "\n"); $i = $end + 2;
+        $depth = 1;
+        foreach (self::tokens($source, $i, $line, $level + 1) as $token) {
+            if ($token[0] !== 'punct') continue;
+            if ($token[1] === '{') ++$depth;
+            elseif ($token[1] === '}' && --$depth === 0) {
+                $i = $token[3]; $line = $token[2]; return;
             }
         }
         throw new RuntimeException('unterminated JavaScript interpolation');
@@ -148,7 +133,8 @@ final class PressWardenJsFlow
     {
         for ($i = count($this->frames) - 1; $i >= 0; --$i) {
             if (array_key_exists($name, $this->frames[$i]['vars'])) return true;
-            if (!$this->frames[$i]['inherit']) break;
+            // Browser-global shadowing remains relevant across functions even
+            // though payload facts are intentionally not linked across them.
         }
         return false;
     }
@@ -162,6 +148,11 @@ final class PressWardenJsFlow
             if (!$this->frames[$i]['inherit']) break;
         }
         $frame = count($this->frames) - 1;
+        // Unrelated runtime values do not need a binding entry. Preserve only
+        // browser-global shadow markers when a value is unknown.
+        if ($value === null && !in_array($name, ['window', 'document', 'location', 'atob', 'String', 'eval', 'Function', 'decodeURIComponent', 'unescape'], true)) {
+            unset($this->frames[$frame]['vars'][$name]); return;
+        }
         if (count($this->frames[$frame]['vars']) >= 4096) throw new RuntimeException('JavaScript binding limit reached');
         $this->frames[$frame]['vars'][$name] = $value;
     }
@@ -268,6 +259,7 @@ final class PressWardenJsFlow
         if (!$executable && (!is_string($host) || $host === '' || !$gated)) return;
         // Visitor targeting + encoding is suspicious, not proof of a campaign.
         // IP hosts are not intrinsically malicious and receive no severity boost.
+        if (($this->findings[$rule]['kind'] ?? '') === 'ALERT' && !$executable) return;
         $this->findings[$rule] = [
             'rule'=>$rule, 'kind'=>$executable ? 'ALERT' : 'REVIEW', 'line'=>$line,
             'evidence'=>'literal decode -> '.$sink.($gated ? '; enclosing visitor condition' : '').'; target='.($executable ? 'executable URI' : preg_replace('~[^A-Za-z0-9.\[\]:_-]~', '?', substr($host, 0, 253)))
