@@ -3,8 +3,7 @@ NAME="${RUN_NAME:-runall}"; DESC="${RUN_DESC:-}"
 SUITE_DOES="${RUN_DOES:-}"
 SUITE_WHY="${RUN_WHY:-}"
 . "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
-# If the suite itself was launched with PRESSWARDEN_DISCOVERY_REFRESH=1, _lib refreshed once above.
-# Child scanners should now reuse that validated snapshot instead of rescanning the tree.
+# Refresh discovery once per suite; children reuse the validated snapshot.
 PRESSWARDEN_DISCOVERY_REFRESH=0; export PRESSWARDEN_DISCOVERY_REFRESH
 
 strip_ansi() { sed $'s/\033\\[[0-9;]*[[:alpha:]]//g'; }
@@ -14,7 +13,7 @@ admin_check_wanted() {
     1|y|Y|yes|YES|run|RUN|true|TRUE) return 0 ;;
     0|n|N|no|NO|skip|SKIP|false|FALSE) return 1 ;;
   esac
-  if [ -r /dev/tty ] && [ -w /dev/tty ]; then
+  if [ "${PRESSWARDEN_INTERACTIVE:-1}" != 0 ] && [ -t 0 ] && [ -r /dev/tty ] && [ -w /dev/tty ]; then
     local ans=''
     printf '\n  %s%sADMINS CHECK%s  Run administrator inventory + application-password inventory? %s[y/N]%s: ' "$B" "$Y" "$X" "$B" "$X" > /dev/tty
     IFS= read -r ans < /dev/tty || ans=''
@@ -28,7 +27,7 @@ uploads_deep_check_wanted() {
     1|y|Y|yes|YES|run|RUN|true|TRUE) return 0 ;;
     0|n|N|no|NO|skip|SKIP|false|FALSE) return 1 ;;
   esac
-  if [ "${PRESSWARDEN_INTERACTIVE:-1}" != "0" ] && [ -r /dev/tty ] && [ -w /dev/tty ]; then
+  if [ "${PRESSWARDEN_INTERACTIVE:-1}" != 0 ] && [ -t 0 ] && [ -r /dev/tty ] && [ -w /dev/tty ]; then
     local ans=''
     printf '\n  %s%sSLOW CHECK%s  Scan image-like uploads for embedded PHP? This can take a long time on large fleets. %s[y/N]%s: ' "$B" "$Y" "$X" "$B" "$X" > /dev/tty
     IFS= read -r ans < /dev/tty || ans=''
@@ -39,6 +38,7 @@ uploads_deep_check_wanted() {
 
 _run_checks() {
   local c rc n out seen="" start elapsed force="" total_checks=0 current_check=0 check_path
+  local -a pipeline_status
   [ -n "$C" ] && force=1
   total_checks=$(printf '%s\n' $CHECKS | sort -u | grep -c .)
 
@@ -54,6 +54,10 @@ _run_checks() {
   printf '  %s%-10s%s %s\n' "$D" "COUNT" "$X" "$total_checks"
   printf '  %s%-10s%s %s\n' "$D" "STARTED" "$X" "$(date '+%Y-%m-%d %H:%M:%S')"
   printf '%s%s' "$B" "$C"; _repeat '═' "$W"; printf '%s\n' "$X"
+  if [ "${#SCAN_ROOTS[@]}" -eq 0 ]; then
+    printf '  INCOMPLETE: no validated WordPress installations found; no site scan performed.\n' >&2
+    return 2
+  fi
 
   for c in $CHECKS; do
     case " $seen " in *" $c "*) continue ;; esac
@@ -72,39 +76,68 @@ _run_checks() {
     fi
     printf '\n%s%s▶ RUN%s  %s[%s/%s]%s  %s%s%s\n' "$B" "$BL" "$X" "$B" "$current_check" "$total_checks" "$X" "$B" "$c" "$X"
     start=$(date +%s); out=$(tmpf)
-    if [ -n "$force" ]; then PRESSWARDEN_FORCE_COLOR=1 bash "$check_path" 2>&1 | tee "$out"; else bash "$check_path" 2>&1 | tee "$out"; fi
-    rc=${PIPESTATUS[0]}; elapsed=$(( $(date +%s) - start ))
+    if [ -n "$force" ]; then
+      PRESSWARDEN_FORCE_COLOR=1 bash "$check_path" 2>&1 | tee "$out"
+      pipeline_status=("${PIPESTATUS[@]}")
+    else
+      bash "$check_path" 2>&1 | tee "$out"
+      pipeline_status=("${PIPESTATUS[@]}")
+    fi
+    rc=${pipeline_status[0]}
+    [ "${pipeline_status[1]:-0}" -eq 0 ] || rc=2
+    elapsed=$(( $(date +%s) - start ))
     n=$(strip_ansi < "$out" | grep -oE 'findings:[[:space:]]*[0-9]+' | tail -1 | grep -oE '[0-9]+$')
     rm -f "$out"
     case "$rc" in
       0) printf '%s|%s|clean|%s\n' "$c" "${n:-0}" "$elapsed" >> "$RES" ;;
       1) printf '%s|%s|findings|%s\n' "$c" "${n:-0}" "$elapsed" >> "$RES" ;;
-      *) printf '%s|-|ERROR rc=%s|%s\n' "$c" "$rc" "$elapsed" >> "$RES" ;;
+      *) printf '%s|%s|ERROR rc=%s|%s\n' "$c" "${n:--}" "$rc" "$elapsed" >> "$RES" ;;
     esac
   done
 
-  local el=$(( $(date +%s) - T0 )) grand=0 st col icon tm
+  local el=$(( $(date +%s) - T0 )) grand=0 st col icon tm failed=0 skipped=0 completed=0
   printf '\n\n%s%s  SUITE SUMMARY%s\n' "$B" "$C" "$X"; _rule
   printf '  %s%-20s %10s   %-12s   %s%s\n' "$D" "CHECK" "FINDINGS" "STATUS" "TIME" "$X"
   while IFS='|' read -r c n st tm; do
     [ -n "$c" ] || continue
-    case "$st" in clean) col="$G"; icon='✓' ;; findings) col="$R"; icon='✖'; grand=$((grand + n)) ;; skipped) col="$Y"; icon='↷' ;; *) col="$Y"; icon='⚠' ;; esac
+    case "$n" in ''|*[!0-9]*) : ;; *) grand=$((grand+n)) ;; esac
+    case "$st" in
+      clean) col="$G"; icon='✓'; completed=$((completed+1)) ;;
+      findings) col="$R"; icon='✖'; completed=$((completed+1)) ;;
+      skipped) col="$Y"; icon='↷'; skipped=$((skipped+1)) ;;
+      *) col="$Y"; icon='⚠'; failed=$((failed+1)) ;;
+    esac
     printf '  %-20s %10s   %s%s %-10s%s   %s\n' "$c" "$n" "$B" "$col" "$icon $st" "$X" "$(human_time "${tm:-0}")"
   done < "$RES"
   _rule
-  if [ "$grand" -eq 0 ]; then printf '  %s%s✓ ALL CLEAR%s  total findings: %s   elapsed: %s\n' "$B" "$G" "$X" "$grand" "$(human_time "$el")"; else printf '  %s%s✖ ATTENTION%s  total findings: %s   elapsed: %s\n' "$B" "$R" "$X" "$grand" "$(human_time "$el")"; fi
+  if [ "$failed" -gt 0 ] || [ "$completed" -eq 0 ]; then
+    printf '  %s%s⚠ INCOMPLETE%s  findings: %s   failed: %s   completed: %s   skipped: %s\n' "$B" "$Y" "$X" "$grand" "$failed" "$completed" "$skipped"
+  elif [ "$grand" -gt 0 ]; then
+    printf '  %s%s✖ ATTENTION%s  total findings: %s   skipped: %s   elapsed: %s\n' "$B" "$R" "$X" "$grand" "$skipped" "$(human_time "$el")"
+  elif [ "$skipped" -gt 0 ]; then
+    printf '  %s%s✓ NO FINDINGS IN COMPLETED CHECKS%s  completed: %s   skipped: %s   elapsed: %s\n' "$B" "$G" "$X" "$completed" "$skipped" "$(human_time "$el")"
+  else
+    printf '  %s%s✓ ALL CLEAR%s  total findings: %s   elapsed: %s\n' "$B" "$G" "$X" "$grand" "$(human_time "$el")"
+  fi
   printf '  %sindividual reports:%s %s\n\n' "$D" "$X" "$REPORTS"
+  [ "$failed" -eq 0 ] && [ "$completed" -gt 0 ] || return 2
   [ "$grand" -eq 0 ]
 }
 
 run_all() {
   mkdir -p "$REPORTS" 2>/dev/null || die "cannot create $REPORTS"
   local stamp json rc
+  local -a pipeline_status
   stamp=$(date +%Y%m%d-%H%M%S); LOG="$REPORTS/$NAME-$stamp.log"; RES=$(tmpf)
-  _run_checks 2>&1 | tee "$LOG"; rc=${PIPESTATUS[0]}
+  _run_checks 2>&1 | tee "$LOG"; pipeline_status=("${PIPESTATUS[@]}"); rc=${pipeline_status[0]}
+  if [ "${pipeline_status[1]:-0}" -ne 0 ]; then
+    printf 'INCOMPLETE: suite console log could not be written.\n' >&2; rc=2
+  fi
   if [ "${PRESSWARDEN_OUTPUT_JSON:-1}" != "0" ] && command -v php >/dev/null 2>&1; then
     json="$REPORTS/$NAME-$stamp-summary.json"
-    php -r '[$res,$out,$suite,$ver,$root,$sites,$domains,$rc,$log]=array_slice($argv,1);$checks=[];$total=0;foreach(@file($res,FILE_IGNORE_NEW_LINES|FILE_SKIP_EMPTY_LINES)?:[] as $line){$p=explode("|",$line);if(count($p)<4)continue;$n=is_numeric($p[1])?(int)$p[1]:null;if($n!==null)$total+=$n;$checks[]=["check"=>$p[0],"findings"=>$n,"status"=>$p[2],"elapsed_seconds"=>(int)$p[3]];}$j=["tool"=>"PressWarden","version"=>$ver,"suite"=>$suite,"generated_at"=>date(DATE_ATOM),"root"=>$root,"wordpress_sites"=>(int)$sites,"site_groups"=>(int)$domains,"exit_code"=>(int)$rc,"total_findings"=>$total,"console_log"=>$log,"checks"=>$checks];file_put_contents($out,json_encode($j,JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES)."\n");' "$RES" "$json" "$NAME" "$PRESSWARDEN_VERSION" "$ROOT" "$(count_sites)" "$(count_domains)" "$rc" "$LOG" 2>/dev/null || rm -f "$json"
+    if ! php "$PRESSWARDEN_DIR/lib/suite-summary.php" "$RES" "$json" "$NAME" "$PRESSWARDEN_VERSION" "$ROOT" "$(count_sites)" "$(count_domains)" "$rc" "$LOG"; then
+      rm -f "$json"; printf 'INCOMPLETE: suite JSON report could not be written.\n' >&2; rc=2
+    fi
     [ -s "$json" ] && cp -f "$json" "$REPORTS/$NAME-latest-summary.json" 2>/dev/null || true
   fi
   rm -f "$RES"

@@ -1,0 +1,30 @@
+name: Detection Quality
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  precision:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scoped JavaScript malicious and benign cases
+        run: php -d memory_limit=32M tests/js-flow.php
+      - name: Streaming JavaScript memory bound
+        run: php -d memory_limit=32M tests/js-memory.php
+      - name: Suite errors, skipped checks, and validator failures
+        run: bash tests/runtime-reliability.sh
+      - name: PHP 7.4 helper compatibility
+        run: docker run --rm --network=none -v "$PWD:/work:ro" -w /work php:7.4-cli php -d memory_limit=32M tests/js-flow.php
+  upstream:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Official packages and injected bundle controls
+        run: bash tests/upstream-corpus.sh
