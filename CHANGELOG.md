@@ -11,7 +11,11 @@ Detection precision and portability polish.
 - Dynamic application values such as `atob(configValue)` or `decodeURIComponent(runtimeUrl)` are not treated as malware merely because the same bundle also contains a normal dynamic chunk loader.
 - Added framework-bundle and generated/concatenated-asset regression fixtures while retaining malicious `String.fromCharCode` and base64-obfuscated remote-loader coverage.
 - Refined `PW-JS-002` metadata from critical to high severity while retaining high confidence for matches that meet the stronger evidence contract.
-- Tightened `PW-PHP-006` so hook registration alone is not considered browser injection; the rule now requires a concrete output/script sink.
+- Tightened `PW-JS-004` after repeated Elementor, Wordfence, CodeMirror and LiteSpeed false positives. Decoder assignments and `location` sinks are no longer correlated across an entire file or minified bundle.
+- `PW-JS-004` now requires local literal decode-to-redirect data flow, a statically proven external/executable target, and nearby visitor/environment evasion behavior; intrinsically high-risk `javascript:`/executable `data:` targets and IP-host targets remain high-confidence exceptions.
+- Static encoded application redirects, dynamic routing values, and short-variable reuse across independent bundle modules remain clean. Added dedicated bundle-collision and static encoded redirect regression fixtures.
+- Tightened `PW-PHP-006` so hook registration alone is not considered browser injection; the rule now requires a concrete remote-response → decode → same-variable browser/output chain inside the same local code region.
+- Added a Wordfence-style large utility-file regression proving that unrelated admin, User-Agent, Windows, HTTP, decoding and output helpers in one file do not combine into a malware alert.
 - Threat-intelligence HTTP requests now report the installed PressWarden version, cache-age/config-permission checks support GNU and BSD `stat`, same-version updater runs are described as code refreshes, and `doctor` reports baseline hashing/self-update readiness.
 
 ## 1.1.1 — 2026-09-06
