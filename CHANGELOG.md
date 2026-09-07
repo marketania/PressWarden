@@ -2,6 +2,18 @@
 
 All notable changes to PressWarden are documented here.
 
+## Unreleased
+
+Detection precision and portability polish.
+
+- Tightened `PW-JS-002` after real-world Elementor/LiteSpeed bundle false positives. The rule no longer correlates unrelated decoder and script-loader behavior across an entire minified asset.
+- `PW-JS-002` now requires local data-flow proof around the same created script object, the same inserted script object, and a decoder whose literal value can be statically shown to resolve to an external or executable script target.
+- Dynamic application values such as `atob(configValue)` or `decodeURIComponent(runtimeUrl)` are not treated as malware merely because the same bundle also contains a normal dynamic chunk loader.
+- Added framework-bundle and generated/concatenated-asset regression fixtures while retaining malicious `String.fromCharCode` and base64-obfuscated remote-loader coverage.
+- Refined `PW-JS-002` metadata from critical to high severity while retaining high confidence for matches that meet the stronger evidence contract.
+- Tightened `PW-PHP-006` so hook registration alone is not considered browser injection; the rule now requires a concrete output/script sink.
+- Threat-intelligence HTTP requests now report the installed PressWarden version, cache-age/config-permission checks support GNU and BSD `stat`, same-version updater runs are described as code refreshes, and `doctor` reports baseline hashing/self-update readiness.
+
 ## 1.1.1 — 2026-09-06
 
 Unified updater release.
