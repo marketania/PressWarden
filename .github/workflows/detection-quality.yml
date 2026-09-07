@@ -26,5 +26,18 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      - name: Save unmodified official reference packages
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/presswarden-reference"
+          curl -fsSL --max-time 120 https://downloads.wordpress.org/plugin/elementor.4.2.4.zip -o "$RUNNER_TEMP/presswarden-reference/elementor.zip"
+          curl -fsSL --max-time 120 https://downloads.wordpress.org/plugin/wordfence.9.0.0.zip -o "$RUNNER_TEMP/presswarden-reference/wordfence.zip"
+          curl -fsSL --max-time 120 https://wordpress.org/wordpress-7.1.zip -o "$RUNNER_TEMP/presswarden-reference/wordpress.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: official-reference-packages
+          path: ${{ runner.temp }}/presswarden-reference/*.zip
+          retention-days: 1
+          compression-level: 0
       - name: Official packages and injected bundle controls
         run: bash tests/upstream-corpus.sh
