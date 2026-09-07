@@ -45,6 +45,24 @@ if grep -q "$secret" "$TMP/args"; then
   printf 'Bearer credential leaked into curl argv\n' >&2
   exit 1
 fi
+expected_version=$(tr -d '[:space:]' < "$ROOTDIR/VERSION")
+grep -q "PressWarden/$expected_version Threat Intelligence" "$TMP/args"
 [ -s "$TMP/out.json" ]
 
-printf 'PressWarden intel credential test: PASS\n'
+# `_pw_intel_age` must work on BSD/macOS-style stat implementations too. This
+# shim deliberately rejects GNU `stat -c` and accepts only `stat -f %m`.
+cat > "$TMP/bin/stat" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "${1:-}" = '-c' ]; then exit 1; fi
+if [ "${1:-}" = '-f' ] && [ "${2:-}" = '%m' ] && [ -n "${3:-}" ]; then
+  exec /usr/bin/stat -c %Y "$3"
+fi
+exit 2
+SH
+chmod +x "$TMP/bin/stat"
+touch "$TMP/age-fixture"
+age=$(PATH="$TMP/bin:$PATH" _pw_intel_age "$TMP/age-fixture")
+case "$age" in unknown|never) printf 'BSD stat fallback did not produce cache age\n' >&2; exit 1 ;; esac
+
+printf 'PressWarden intel credential + portability test: PASS\n'
