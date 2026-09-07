@@ -5,10 +5,10 @@ PW-PHP-003	php	critical	high	behavior	Packed XOR browser loader	php-obfuscated-l
 PW-PHP-004	php	high	high	behavior	Dynamic request-controlled function execution	php-threat-intel	PressWarden native	intel/SOURCES.md	2026-09-06	2026-09-06
 PW-PHP-005	php	critical	high	behavior	Credential capture with remote exfiltration	php-threat-intel	PressWarden native	intel/SOURCES.md	2026-09-06	2026-09-06
 PW-PHP-006	php	high	high	behavior	Admin-targeted remote browser payload	php-threat-intel	Sucuri research	https://blog.sucuri.net/2026/01/fake-browser-updates-targeting-wordpress-administrators-via-malicious-plugin.html	2026-09-06	2026-09-07
-PW-JS-001	javascript	high	high	behavior	Decoded JavaScript passed to eval or Function	js-threat-intel	PressWarden native	intel/SOURCES.md	2026-09-06	2026-09-06
-PW-JS-002	javascript	high	high	behavior	Obfuscated remote script-loader injection	js-threat-intel	Sucuri research	intel/SOURCES.md	2026-09-06	2026-09-07
-PW-JS-003	javascript	high	medium	behavior	Hidden remote iframe with obfuscation	js-threat-intel	Sucuri research	intel/SOURCES.md	2026-09-06	2026-09-06
-PW-JS-004	javascript	high	high	behavior	Obfuscated browser redirect with local evasion gate	js-threat-intel	Sucuri research	intel/SOURCES.md	2026-09-06	2026-09-07
+PW-JS-001	javascript	high	high	behavior	Decoded JavaScript passed to eval or Function	js-threat-intel	PressWarden native	docs/DETECTION-QUALITY.md	2026-09-06	2026-09-07
+PW-JS-002	javascript	high	medium	behavior	Obfuscated browser script loading	js-threat-intel	PressWarden native	docs/DETECTION-QUALITY.md	2026-09-06	2026-09-07
+PW-JS-003	javascript	high	medium	behavior	Hidden remote iframe with decoded event handler	js-threat-intel	PressWarden native	docs/DETECTION-QUALITY.md	2026-09-06	2026-09-07
+PW-JS-004	javascript	high	medium	behavior	Obfuscated browser redirect	js-threat-intel	PressWarden native	docs/DETECTION-QUALITY.md	2026-09-06	2026-09-07
 PW-DB-001	database	critical	high	behavior	Obfuscated external script stored in WordPress data	wp-db-malware	Sucuri research	intel/SOURCES.md	2026-09-06	2026-09-06
 PW-DB-002	database	high	high	behavior	Hidden external iframe stored in WordPress data	wp-db-malware	PressWarden native	intel/SOURCES.md	2026-09-06	2026-09-06
 PW-DB-003	database	review	medium	behavior	Executable JavaScript stored in site-wide option	wp-db-malware	PressWarden native	intel/SOURCES.md	2026-09-06	2026-09-06

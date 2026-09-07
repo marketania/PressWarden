@@ -2,21 +2,26 @@
 
 All notable changes to PressWarden are documented here.
 
-## Unreleased
+## 1.1.2 — 2026-09-07
 
-Detection precision and portability polish.
+Detection quality and reliable scan results.
 
-- Tightened `PW-JS-002` after real-world Elementor/LiteSpeed bundle false positives. The rule no longer correlates unrelated decoder and script-loader behavior across an entire minified asset.
-- `PW-JS-002` now requires local data-flow proof around the same created script object, the same inserted script object, and a decoder whose literal value can be statically shown to resolve to an external or executable script target.
-- Dynamic application values such as `atob(configValue)` or `decodeURIComponent(runtimeUrl)` are not treated as malware merely because the same bundle also contains a normal dynamic chunk loader.
-- Added framework-bundle and generated/concatenated-asset regression fixtures while retaining malicious `String.fromCharCode` and base64-obfuscated remote-loader coverage.
-- Refined `PW-JS-002` metadata from critical to high severity while retaining high confidence for matches that meet the stronger evidence contract.
-- Tightened `PW-JS-004` after repeated Elementor, Wordfence, CodeMirror and LiteSpeed false positives. Decoder assignments and `location` sinks are no longer correlated across an entire file or minified bundle.
-- `PW-JS-004` now requires local literal decode-to-redirect data flow, a statically proven external/executable target, and nearby visitor/environment evasion behavior; intrinsically high-risk `javascript:`/executable `data:` targets and IP-host targets remain high-confidence exceptions.
-- Static encoded application redirects, dynamic routing values, and short-variable reuse across independent bundle modules remain clean. Added dedicated bundle-collision and static encoded redirect regression fixtures.
-- Tightened `PW-PHP-006` so hook registration alone is not considered browser injection; the rule now requires a concrete remote-response → decode → same-variable browser/output chain inside the same local code region.
-- Added a Wordfence-style large utility-file regression proving that unrelated admin, User-Agent, Windows, HTTP, decoding and output helpers in one file do not combine into a malware alert.
-- Threat-intelligence HTTP requests now report the installed PressWarden version, cache-age/config-permission checks support GNU and BSD `stat`, same-version updater runs are described as code refreshes, and `doctor` reports baseline hashing/self-update readiness.
+- Replaced JavaScript whole-file/proximity correlations with a bounded lexical recognizer. Comments, quoted examples, regex literals, and template text are not executable-code evidence.
+- JavaScript loader/redirect recognition now tracks supported same-scope values, simple aliases, assignment order, reassignment, browser-global shadowing, and the actual inserted script object. Independent functions and minified modules do not share payload facts.
+- Visitor targeting must belong to a recognized enclosing condition, not merely appear near a browser sink. Encoded HTTP URLs with visitor targeting are REVIEW, not proof of malware or campaign attribution; IP hosts receive no automatic severity increase.
+- Decoded executable-URI and decoded browser-code execution patterns can still produce ALERT. A later lower-confidence match cannot downgrade an alert already detected in the same file.
+- Corrected Unicode character reconstruction and nested-template/regex handling using actual upstream package cases. The recognizer is intentionally conservative, not a full ECMAScript parser or interprocedural taint engine.
+- JavaScript findings include rule IDs, source lines, sink evidence, and hostnames without exposing decoded URL credentials, query strings, or payload bodies. Control characters in filenames are escaped.
+- JavaScript behavioral findings no longer offer the generic bulk delete/quarantine prompt. Inspection and provenance verification come before remediation.
+- Added a bounded, process-local SHA-256 result cache for identical fleet files. Cache entries contain findings metadata, not source bodies; changed contents are reanalyzed and each site's filename remains visible.
+- Missing PHP, unreadable files, discovery traversal failures, and JavaScript validator failures return an incomplete result instead of a false clean verdict. JavaScript discovery uses NUL-delimited paths and includes `.mjs`/`.cjs` within the 6 MiB size scope.
+- Fixed suite summaries reporting ALL CLEAR when checks failed or were missing. Failed checks, no completed checks, empty site discovery, and report-write failures now return exit 2. Deliberately skipped checks are explicitly reported as partial coverage.
+- Added JSON coverage fields: `coverage_status`, `checks_completed`, `checks_skipped`, and `checks_failed`, while retaining existing report fields. Coverage describes execution of the selected checks, not universal malware-detection coverage.
+- Added 50 JavaScript precision regressions, a 5.6 MB bounded-memory test, suite-error/skip tests, URL-redaction and content-cache tests, and PHP 7.4 compatibility testing.
+- Added isolated, SHA-256-pinned official Elementor, Wordfence, and WordPress JavaScript corpus tests, plus actual upstream bundles with synthetic appended injections. No third-party source or signature collections are bundled into the distribution.
+- Documented evidence thresholds, execution completeness, test commands, and analysis limitations in [`docs/DETECTION-QUALITY.md`](docs/DETECTION-QUALITY.md).
+- Includes the preceding PHP utility-file false-positive reductions, GNU/BSD `stat` fallbacks, installed-version intelligence User-Agent, same-version code-refresh wording, and hashing/self-update readiness in `doctor`.
+- Private configuration, reports, quarantine, baseline state, intelligence-provider data handling, shared-host no-process-substitution support, and the existing WordPress/PHP/database safety regressions are retained.
 
 ## 1.1.1 — 2026-09-06
 
