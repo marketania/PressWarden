@@ -1,0 +1,30 @@
+name: Update Quality
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Archive validation and resource limits
+        run: php -d memory_limit=32M tests/update-guard.php
+      - name: Git archive compatibility
+        run: |
+          git archive --format=tar.gz --prefix=PressWarden-test/ HEAD > "$RUNNER_TEMP/update-source.tar.gz"
+          php lib/update-guard.php archive "$RUNNER_TEMP/update-source.tar.gz"
+      - name: Transactions, interruption, locks, and recovery
+        run: bash tests/update-hardening.sh
+      - name: Configuration advice without execution or value disclosure
+        run: bash tests/config-advice.sh
+      - name: Doctor excludes private evidence from code checks
+        run: bash tests/doctor-scope.sh
+      - name: PHP 7.4 archive helper compatibility
+        run: docker run --rm --network=none -v "$PWD:/work:ro" -w /work php:7.4-cli php -d memory_limit=32M tests/update-guard.php

@@ -2,6 +2,20 @@
 
 All notable changes to PressWarden are documented here.
 
+## 1.1.3 — 2026-09-07
+
+Update safety, recovery, and configuration guidance.
+
+- Validate update archives before extraction: reject unsafe paths, duplicate/conflicting entries, links, special files, unsafe PAX overrides, privileged modes, malformed headers, truncation, and excessive archive size/count. Use the installed validator, not downloaded code.
+- Add HTTPS-only downloads with timeouts, required-template checks, and pre/post-install shell/PHP-helper syntax validation.
+- Serialize updaters with an atomic local lock. Block new CLI scans while updating; administrators should finish existing scans first.
+- Handle catchable interruptions with rollback. Keep the complete recovery workspace and lock if restoration fails instead of silently deleting the last good code copy.
+- Refuse custom private data/config paths that overlap managed code and refuse symlinked managed directories.
+- Add `./presswarden config-new`: list unassigned template option names without displaying values, executing shell configuration, or rewriting either file. Updates show a brief advisory when applicable.
+- Limit `doctor` shell checks to distributed code, not quarantined scripts/reports; report required dependency/syntax failures with exit code 2 and check PHP/zlib update readiness.
+- Add offline archive/resource-limit, interrupted/overlapping-update, recovery-preservation, configuration-privacy, and doctor-scope regressions with PHP 7.4 compatibility coverage.
+- Document recovery procedures, supported archive limits, and trust/concurrency limitations in `docs/UPDATING.md`. Existing malware detection rules and private-state preservation remain unchanged.
+
 ## 1.1.2 — 2026-09-07
 
 Detection quality and reliable scan results.
@@ -42,7 +56,7 @@ Threat Intelligence and fleet-security release.
 - Baselines record SHA-256 + size for security-relevant executable/configuration files and, when WP-CLI is available, plugin/theme versions and state, administrator usernames, and cron hook/recurrence metadata.
 - Baselines intentionally exclude volatile uploads, caches, logs, backups, temporary trees, and similar high-churn paths from change tracking while normal security scans continue to inspect their relevant scopes.
 - Baseline manifests do not store file contents, passwords, API keys, database payloads, or other secret values; previous accepted baselines are retained locally for future history/reinfection workflows.
-- Added `./presswarden incident [path]`, an evidence-first compromise/reinfection suite combining baseline changes, fleet correlation, persistence, malware, administrator/application-password inventory, integrity, vulnerability intelligence, upload, and database-threat checks.
+- Added `./presswarden incident [path]`, an evidence-first compromise/reinfection suite combining baseline changes, fleet correlation, persistence, malware detection, administrator/application-password inventory, integrity verification, vulnerability intelligence, upload checks, and database threat inspection.
 - Incident Mode deliberately excludes `wp-db-maintenance`, so database repair/optimization does not alter state during evidence collection. The existing deep-upload preference remains unchanged: empty asks interactively, `1` runs, `0` skips, and noninteractive execution skips unless explicitly enabled.
 - Added `./presswarden correlate [path]` and the `fleet-correlate` check for cross-site outbreak signals. To avoid normal package duplication noise, correlation is restricted to file hashes, administrator identities, or cron state that are new/changed relative to the accepted baseline and repeat across multiple WordPress installations.
 - Baseline changes and fleet correlation are review-only evidence signals and never trigger automatic removal or quarantine by themselves.

@@ -11,7 +11,7 @@ while [ -L "$_pw_self" ] && command -v readlink >/dev/null 2>&1; do
 done
 PRESSWARDEN_DIR="$(cd -P "$(dirname "$_pw_self")" 2>/dev/null && pwd -P)"
 unset _pw_self _pw_self_dir _pw_link 2>/dev/null || true
-VERSION="$(cat "$PRESSWARDEN_DIR/VERSION" 2>/dev/null || printf '1.1.1')"
+VERSION="$(cat "$PRESSWARDEN_DIR/VERSION" 2>/dev/null || printf 'unknown')"
 PRESSWARDEN_PORTABLE=0
 [ -f "$PRESSWARDEN_DIR/.presswarden-portable" ] && PRESSWARDEN_PORTABLE=1
 
@@ -19,6 +19,21 @@ if [ "$PRESSWARDEN_PORTABLE" = 1 ]; then
   CONFIG_FILE="${PRESSWARDEN_CONFIG_FILE:-$PRESSWARDEN_DIR/config/config}"
 else
   CONFIG_FILE="${PRESSWARDEN_CONFIG_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/presswarden/config}"
+fi
+
+# New scans must not load half-replaced libraries during an update. Existing
+# running scans still need to finish before an administrator starts updating.
+if [ -e "$PRESSWARDEN_DIR/.presswarden-update.lock" ] || [ -L "$PRESSWARDEN_DIR/.presswarden-update.lock" ]; then
+  case "${1:-help}" in
+    update|help|-h|--help|-V|--version|version) : ;;
+    *) printf 'PressWarden update/recovery lock is present. Scans are blocked; see docs/UPDATING.md.\n' >&2; exit 2 ;;
+  esac
+fi
+
+# Config advice must work even with a broken config, without executing it.
+if [ "${1:-}" = config-new ]; then
+  command -v php >/dev/null 2>&1 || { printf 'config-new requires PHP CLI.\n' >&2; exit 2; }
+  exec php "$PRESSWARDEN_DIR/lib/config-options.php" "$PRESSWARDEN_DIR/config/config.example" "$CONFIG_FILE"
 fi
 
 # Preserve explicitly exported PressWarden/API values so one-shot environment
@@ -68,6 +83,7 @@ Usage:
   ./presswarden lock-status [path]   Show DISALLOW_FILE_MODS status across discovered sites
   ./presswarden file-mods ACTION [path]  Legacy/advanced status|on|off interface
   ./presswarden config               Show sanitized effective configuration
+  ./presswarden config-new           List template options absent from saved config
   ./presswarden --version
   ./presswarden help
 
