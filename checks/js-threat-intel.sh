@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # js-threat-intel — high-signal browser-side malware and injected-loader detection.
 NAME=js-threat-intel; DESC="JavaScript malware / injected-loader / redirect intelligence"
-SCAN_DOES="Prefilters JavaScript/HTML assets and validates compound browser-side behaviors such as decoded execution, obfuscated remote script loading, hidden external iframes, and decoded redirect targets."
+SCAN_DOES="Prefilters JavaScript/HTML assets and validates compound browser-side behaviors such as decoded execution, obfuscated remote script injection, hidden external iframes, and decoded redirect targets."
 SCAN_WHY="Balada, SocGholish, Sign1, VexTrio-like redirectors and unrelated compromises often live in JavaScript or stored HTML rather than obvious PHP webshells."
 . "$(cd "$(dirname "$0")/.." && pwd)/lib/_lib.sh"
 
@@ -48,16 +48,35 @@ function pw_js_script_target($value) {
     return (bool)preg_match('~^(?:(?:https?:)?//|javascript:|data:(?:text|application)/(?:javascript|ecmascript))~i',$value);
 }
 
+function pw_js_high_risk_target($value) {
+    if (!is_string($value)) return false;
+    $v=ltrim($value);
+    if (preg_match('~^(?:javascript:|data:(?:text|application)/(?:javascript|ecmascript))~i',$v)) return true;
+    $url=strpos($v,'//')===0 ? 'https:'.$v : $v;
+    $host=@parse_url($url,PHP_URL_HOST);
+    return is_string($host) && filter_var($host,FILTER_VALIDATE_IP)!==false;
+}
+
+function pw_js_evasion_gate($s) {
+    // Require evidence that the loader is gated on visitor/environment state,
+    // rather than treating legitimate encoded CDN/chunk loaders as malware.
+    // The signal must occur in the same bounded neighborhood as the loader.
+    $subject='(?:document\.cookie|navigator\.(?:userAgent|platform|language)|document\.referrer|location\.(?:hostname|host|pathname|search)|(?:localStorage|sessionStorage)\.(?:getItem|key)|screen\.(?:width|height))';
+    if (preg_match('~\bif\s*\(.{0,900}?'.$subject.'.{0,900}?\)\s*\{?~is',$s)) return true;
+    if (preg_match('~'.$subject.'.{0,500}?(?:\.includes\s*\(|\.indexOf\s*\(|\.match\s*\(|\.test\s*\(|===|!==|==|!=)~is',$s)) return true;
+    return false;
+}
+
 function pw_js_collect_literal_decoders($s) {
     $vars=[]; $patterns=[
         '~(?:^|[;,{(])\s*(?:(?:var|let|const)\s+)?([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*((?:window\.)?atob|(?:window\.)?decodeURIComponent|(?:window\.)?unescape)\s*\(\s*([\'\"])([^\'\"]{1,8192})\3\s*\)~im',
         '~(?:^|[;,{(])\s*(?:(?:var|let|const)\s+)?([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*(String\.fromCharCode)\s*\(\s*([0-9a-fx,\s]{3,8192})\s*\)~im'
     ];
     if (preg_match_all($patterns[0],$s,$m,PREG_SET_ORDER)) {
-        foreach($m as $x){$v=pw_js_decode_literal($x[2],$x[4]);if(pw_js_script_target($v))$vars[$x[1]]=true;}
+        foreach($m as $x){$v=pw_js_decode_literal($x[2],$x[4]);if(pw_js_script_target($v))$vars[$x[1]]=$v;}
     }
     if (preg_match_all($patterns[1],$s,$m,PREG_SET_ORDER)) {
-        foreach($m as $x){$v=pw_js_decode_literal($x[2],$x[3]);if(pw_js_script_target($v))$vars[$x[1]]=true;}
+        foreach($m as $x){$v=pw_js_decode_literal($x[2],$x[3]);if(pw_js_script_target($v))$vars[$x[1]]=$v;}
     }
     return $vars;
 }
@@ -66,31 +85,36 @@ function pw_js_direct_decoded_src($s,$scriptVar) {
     $sv=preg_quote($scriptVar,'~'); $m=[];
     $prefix='(?:'.$sv.'\.src\s*=\s*|'.$sv.'\.setAttribute\s*\(\s*[\'\"]src[\'\"]\s*,\s*)';
     if (preg_match('~'.$prefix.'((?:window\.)?atob|(?:window\.)?decodeURIComponent|(?:window\.)?unescape)\s*\(\s*([\'\"])([^\'\"]{1,8192})\2\s*\)~i',$s,$m)) {
-        return pw_js_script_target(pw_js_decode_literal($m[1],$m[3]));
+        $v=pw_js_decode_literal($m[1],$m[3]);
+        return pw_js_script_target($v) ? $v : null;
     }
     if (preg_match('~'.$prefix.'(String\.fromCharCode)\s*\(\s*([0-9a-fx,\s]{3,8192})\s*\)~i',$s,$m)) {
-        return pw_js_script_target(pw_js_decode_literal($m[1],$m[2]));
+        $v=pw_js_decode_literal($m[1],$m[2]);
+        return pw_js_script_target($v) ? $v : null;
     }
-    return false;
+    return null;
 }
 
 function pw_js_tied_obfuscated_loader($s) {
-    // Analyze a bounded neighborhood around each actual script element. This
-    // prevents minified bundles from correlating an unrelated atob() in one
-    // module with a normal chunk-loader variable of the same short name in a
-    // different module.
+    // Analyze a tight neighborhood around each actual script element. This
+    // prevents framework/minified bundles from combining unrelated decoder,
+    // visitor-state and chunk-loader modules merely because they share a file.
     if (!preg_match_all('~(?:^|[;,{(])\s*(?:(?:var|let|const)\s+)?([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*(?:window\.)?document\.createElement\s*\(\s*[\'\"]script[\'\"]\s*\)~im',$s,$scripts,PREG_SET_ORDER|PREG_OFFSET_CAPTURE)) return false;
     foreach($scripts as $sm){
         $scriptVar=$sm[1][0]; $offset=$sm[0][1];
-        $start=max(0,$offset-1000); $window=substr($s,$start,6000);
+        $start=max(0,$offset-700); $window=substr($s,$start,3600);
         $sv=preg_quote($scriptVar,'~');
         $inserted=(bool)preg_match('~\b(?:appendChild|insertBefore|append|prepend)\s*\(\s*'.$sv.'\b~i',$window);
         if(!$inserted) continue;
-        if(pw_js_direct_decoded_src($window,$scriptVar)) return true;
+
+        $target=pw_js_direct_decoded_src($window,$scriptVar);
+        if($target!==null && (pw_js_high_risk_target($target) || pw_js_evasion_gate($window))) return true;
+
         $dangerVars=pw_js_collect_literal_decoders($window);
-        foreach(array_keys($dangerVars) as $name){
+        foreach($dangerVars as $name=>$decodedTarget){
             $v=preg_quote($name,'~');
-            if(preg_match('~(?:'.$sv.'\.src\s*=\s*'.$v.'\b|'.$sv.'\.setAttribute\s*\(\s*[\'\"]src[\'\"]\s*,\s*'.$v.'\b)~i',$window)) return true;
+            $reaches=(bool)preg_match('~(?:'.$sv.'\.src\s*=\s*'.$v.'\b|'.$sv.'\.setAttribute\s*\(\s*[\'\"]src[\'\"]\s*,\s*'.$v.'\b)~i',$window);
+            if($reaches && (pw_js_high_risk_target($decodedTarget) || pw_js_evasion_gate($window))) return true;
         }
     }
     return false;
@@ -169,9 +193,10 @@ main() {
   sec "PW-JS-001 • decoded JavaScript execution" "eval/Function fed by atob/fromCharCode/decode routines + corroborating browser behavior"
   report "$A1" issue "no decoded JavaScript execution chains found"
 
-  sec "PW-JS-002 • obfuscated remote script-loader injection" "same script object + statically decoded external/executable target + DOM insertion"
-  report "$A2" issue "no high-confidence obfuscated remote script-loader chains found"
-  note "PW-JS-002 does not correlate unrelated decoder and script-loader code across a minified bundle. Dynamic application values such as atob(config) are not findings unless the decoded script target can be proven statically."
+  sec "PW-JS-002 • obfuscated remote script injection" "same script object + statically decoded target + DOM insertion + local visitor/environment evasion gate"
+  report "$A2" issue "no high-confidence obfuscated remote script-injection chains found"
+  note "A statically encoded CDN/chunk URL is not malware by itself. PW-JS-002 now also requires nearby visitor/environment gating, except intrinsically high-risk javascript/data targets or IP-host targets."
+  note "Elementor/Wordfence/core-style bundles are not allowlisted by name; the rule is behaviorally stricter so legitimate packages and generated LiteSpeed copies do not become alerts simply for loading scripts."
 
   sec "PW-JS-004 • decoded browser redirect target" "decoded/character-reconstructed value reaches location assignment/replace/assign • redirect-malware behavior"
   report "$A4" issue "no decoded browser redirect chains found"
