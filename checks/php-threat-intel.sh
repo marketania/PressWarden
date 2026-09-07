@@ -29,8 +29,11 @@ while(($line=fgets(STDIN))!==false){
   $windows=(bool)preg_match('~(?:Windows|Win32|Win64)~i',$raw);
   $decode=(bool)preg_match('~\bbase64_decode\s*\(~i',$raw);
   $remote=(bool)preg_match('~\b(?:wp_remote_get|wp_remote_post|curl_exec|file_get_contents)\s*\(~i',$raw);
-  $inject=(bool)preg_match('~\b(?:wp_add_inline_script|wp_enqueue_script|add_action)\s*\(|\b(?:echo|print)\b~i',$raw);
-  if($isAdmin&&$manage&&$ua&&$windows&&$decode&&$remote&&$inject)echo "ALERT\tPW-PHP-006\t",$file,"\n";
+  // A hook registration such as add_action() is orchestration, not evidence
+  // that a decoded remote payload reaches the browser. Require an actual
+  // script/output sink to keep this high-confidence rule conservative.
+  $browserSink=(bool)preg_match('~\b(?:wp_add_inline_script|wp_enqueue_script)\s*\(|\b(?:echo|print)\b~i',$raw);
+  if($isAdmin&&$manage&&$ua&&$windows&&$decode&&$remote&&$browserSink)echo "ALERT\tPW-PHP-006\t",$file,"\n";
 }
 PRESSWARDEN_PHP_INTEL
 }
@@ -65,10 +68,10 @@ main() {
   sec "PW-PHP-005 • credential capture with weakened-TLS exfiltration" "login + password POST capture + outbound request + certificate verification disabled"
   report "$A5" issue "no high-confidence credential-exfiltration chain found"
 
-  sec "PW-PHP-006 • admin-targeted remote browser payload" "wp-admin + manage_options + Windows UA gating + remote fetch + base64 decode + browser injection"
+  sec "PW-PHP-006 • admin-targeted remote browser payload" "wp-admin + manage_options + Windows UA gating + remote fetch + base64 decode + concrete browser/output sink"
   report "$A6" issue "no high-confidence admin-targeted remote browser payload chain found"
   note "PW-PHP-006 is behavior-based coverage informed by 2026 fake-browser-update malware research; it does not depend on a campaign domain or plugin name."
-  note "Login handling, outbound HTTP, base64_decode(), is_admin(), or User-Agent checks alone are not findings; rules require compound behavior."
+  note "Login handling, outbound HTTP, base64_decode(), is_admin(), User-Agent checks, or add_action() alone are not findings; the rule requires a concrete browser/output sink."
 
   rm -f "$CAND" "$V"
   finish
