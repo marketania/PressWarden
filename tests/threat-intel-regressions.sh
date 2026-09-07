@@ -8,6 +8,7 @@ mkdir -p "$SITE/wp-admin" \
   "$SITE/wp-content/plugins/malicious-js" \
   "$SITE/wp-content/plugins/multi-js" \
   "$SITE/wp-content/plugins/benign-js" \
+  "$SITE/wp-content/plugins/framework-bundle" \
   "$SITE/wp-content/plugins/admin-target" \
   "$SITE/wp-content/plugins/admin-hook-only" \
   "$SITE/wp-content/plugins/benign-admin" \
@@ -37,6 +38,21 @@ JS
 cat > "$SITE/wp-content/plugins/benign-js/redirect.js" <<'JS'
 window.location.href='/account';
 JS
+
+# Framework/minified bundles commonly reuse short variable names across
+# independent modules. Elementor, MailPoet, and similar applications may decode
+# runtime configuration in one module and dynamically load a normal chunk in
+# another. Those unrelated behaviors must never be combined into PW-JS-002.
+cat > "$SITE/wp-content/plugins/framework-bundle/elementor-like.js" <<'JS'
+(function(){const e=atob(window.elementorRuntimeSettings);window.consumeSettings(e);}());
+(function(){const e=window.elementorChunkUrl;const s=document.createElement('script');s.src=e;s.async=true;document.head.appendChild(s);}());
+JS
+cat > "$SITE/wp-content/plugins/framework-bundle/mailpoet-like.js" <<'JS'
+(function(){const e=decodeURIComponent(window.mailpoetAssetUrl);const s=document.createElement('script');s.src=e;document.body.appendChild(s);}());
+JS
+# A LiteSpeed-style generated/concatenated asset can place unrelated decoder
+# and loader modules in one file; variable reuse must still stay clean.
+cat "$SITE/wp-content/plugins/framework-bundle/elementor-like.js" "$SITE/wp-content/plugins/framework-bundle/mailpoet-like.js" > "$SITE/wp-content/plugins/framework-bundle/litespeed-like.js"
 
 cat > "$SITE/wp-content/plugins/admin-target/payload.php" <<'PHP'
 <?php
@@ -79,9 +95,9 @@ printf '%s\n' "$js_out" | grep -q 'multi-js/loader.js'
 printf '%s\n' "$js_out" | grep -q 'PW-JS-004'
 printf '%s\n' "$js_out" | grep -q 'malicious-js/redirect.js'
 printf '%s\n' "$js_out" | grep -q 'multi-js/redirect.js'
-if printf '%s\n' "$js_out" | grep -q 'benign-js/'; then
+if printf '%s\n' "$js_out" | grep -qE 'benign-js/|framework-bundle/'; then
   printf '%s\n' "$js_out" >&2
-  printf 'benign JavaScript lookalike was falsely flagged\n' >&2
+  printf 'benign JavaScript/framework bundle lookalike was falsely flagged\n' >&2
   exit 1
 fi
 
