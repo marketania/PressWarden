@@ -25,8 +25,10 @@ main() {
     flag "SHA-256" "sha256sum, shasum, or openssl not found • baseline/change commands unavailable"
   fi
 
-  if command -v tar >/dev/null 2>&1 && { command -v curl >/dev/null 2>&1 || command -v wget >/dev/null 2>&1; }; then
-    ok "SELF-UPDATE" "tar + download client available"
+  if ! command -v php >/dev/null 2>&1 || ! php -r 'exit(function_exists("gzopen") ? 0 : 2);' 2>/dev/null; then
+    flag "SELF-UPDATE" "PHP CLI with zlib is required for safe archive validation"
+  elif command -v tar >/dev/null 2>&1 && { command -v curl >/dev/null 2>&1 || command -v wget >/dev/null 2>&1; }; then
+    ok "SELF-UPDATE" "tar + PHP/zlib + download client available"
   elif ! command -v tar >/dev/null 2>&1; then
     flag "SELF-UPDATE" "tar not found • scans still work, but ./presswarden update is unavailable"
   else
@@ -96,7 +98,10 @@ main() {
   sec "Shell integrity" "all distributed shell scripts + no process substitution"
   local bad=0 f total=0
   local listf; listf=$(tmpf)
-  find "$PRESSWARDEN_DIR" -type f \( -name '*.sh' -o -name 'presswarden' \) 2>/dev/null | sort > "$listf"
+  # Check distributed program code, never quarantined scripts or user reports.
+  printf '%s\n' "$PRESSWARDEN_DIR/presswarden" "$PRESSWARDEN_DIR/install.sh" "$PRESSWARDEN_DIR/uninstall.sh" > "$listf"
+  find "$PRESSWARDEN_DIR/lib" "$PRESSWARDEN_DIR/checks" "$PRESSWARDEN_DIR/suites" "$PRESSWARDEN_DIR/tests" -type f -name '*.sh' -print 2>/dev/null >> "$listf" || bad=$((bad+1))
+  sort -u "$listf" -o "$listf"
   while IFS= read -r f; do
     total=$((total+1)); bash -n "$f" >/dev/null 2>&1 || { flag "SYNTAX" "$f"; bad=$((bad+1)); }
   done < "$listf"
@@ -108,7 +113,10 @@ main() {
   fi
   [ "$bad" -eq 0 ] && ok "SYNTAX" "$total shell entrypoint(s) parsed successfully"
 
+  if [ "$missing" -ne 0 ] || [ "$bad" -ne 0 ]; then
+    printf '\nINCOMPLETE: required dependencies or distributed shell checks failed.\n' >&2
+    return 2
+  fi
   finish
-  [ "$missing" -eq 0 ] && [ "$bad" -eq 0 ]
 }
 main

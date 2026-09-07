@@ -12,7 +12,7 @@
 
 **Fleet-scale WordPress security auditing from the shell.**
 
-![Version](https://img.shields.io/badge/version-1.1.2-2ea44f)
+![Version](https://img.shields.io/badge/version-1.1.3-2ea44f)
 ![Bash](https://img.shields.io/badge/bash-4%2B-4EAA25?logo=gnubash&logoColor=white)
 ![WordPress](https://img.shields.io/badge/WordPress-security-21759B?logo=wordpress&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Linux-FCC624?logo=linux&logoColor=black)
@@ -139,6 +139,14 @@ PressWarden first downloads and validates the new program version, creates a rol
 The code updater does **not** replace your private configuration, reports, quarantine, baselines, caches, or existing intel state. The final intelligence-refresh step may intentionally update provider cache files under the intel state directory.
 
 If an intelligence feed is temporarily unavailable, the validated program update remains installed and existing feed caches are preserved. The command reports the partial failure and exits `1` so automated maintenance can retry the intelligence refresh later.
+
+Finish running scans before updating. Updates use a private staging directory, validate archive contents, and keep recovery files if rollback fails. See [Update safety and recovery](docs/UPDATING.md).
+
+To review template settings without replacing your saved config or showing secret values:
+
+```bash
+./presswarden config-new
+```
 
 You can still refresh intelligence by itself when needed:
 
