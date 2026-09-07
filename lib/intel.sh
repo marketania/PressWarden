@@ -11,6 +11,13 @@ pw_intel_state_dir() {
   fi
 }
 
+_pw_intel_user_agent() {
+  local v="${VERSION:-}"
+  [ -n "$v" ] || v=$(tr -d '[:space:]' < "$PRESSWARDEN_DIR/VERSION" 2>/dev/null || true)
+  [ -n "$v" ] || v='unknown'
+  printf 'PressWarden/%s Threat Intelligence' "$v"
+}
+
 _pw_intel_curl_escape() {
   local v="$1"
   v=${v//\\/\\\\}
@@ -19,32 +26,34 @@ _pw_intel_curl_escape() {
 }
 
 _pw_intel_fetch_php_auth() {
-  local url="$1" out="$2" auth="$3"
+  local url="$1" out="$2" auth="$3" ua
   command -v php >/dev/null 2>&1 || return 127
+  ua=$(_pw_intel_user_agent)
   printf '%s' "$auth" | php -r '
-    $auth=trim(stream_get_contents(STDIN)); $url=$argv[1]; $out=$argv[2];
+    $auth=trim(stream_get_contents(STDIN)); $url=$argv[1]; $out=$argv[2]; $ua=$argv[3];
     $ctx=stream_context_create(["http"=>[
       "method"=>"GET", "timeout"=>120, "ignore_errors"=>true,
-      "header"=>$auth."\r\nUser-Agent: PressWarden/1.1 Threat Intelligence\r\n"
+      "header"=>$auth."\r\nUser-Agent: ".$ua."\r\n"
     ]]);
     $data=@file_get_contents($url,false,$ctx); if($data===false) exit(2);
     $status=0; foreach((array)($http_response_header??[]) as $h){if(preg_match("~^HTTP/\\S+\\s+(\\d{3})~i",$h,$m))$status=(int)$m[1];}
     if($status<200||$status>=300) exit(3);
     exit(@file_put_contents($out,$data)===false?4:0);
-  ' "$url" "$out"
+  ' "$url" "$out" "$ua"
 }
 
 _pw_intel_fetch() {
-  local url="$1" out="$2" auth="${3:-}" escaped
+  local url="$1" out="$2" auth="${3:-}" escaped ua
+  ua=$(_pw_intel_user_agent)
   if command -v curl >/dev/null 2>&1; then
     if [ -n "$auth" ]; then
       escaped=$(_pw_intel_curl_escape "$auth")
       printf 'header = "%s"\n' "$escaped" | \
         curl -fsSL --config - --connect-timeout 10 --max-time 120 \
-          -A 'PressWarden/1.1 Threat Intelligence' "$url" -o "$out"
+          -A "$ua" "$url" -o "$out"
     else
       curl -fsSL --connect-timeout 10 --max-time 120 \
-        -A 'PressWarden/1.1 Threat Intelligence' "$url" -o "$out"
+        -A "$ua" "$url" -o "$out"
     fi
     return $?
   fi
@@ -53,7 +62,7 @@ _pw_intel_fetch() {
     return $?
   fi
   if command -v wget >/dev/null 2>&1; then
-    wget -q -T 120 -O "$out" "$url"
+    wget -q -T 120 --user-agent="$ua" -O "$out" "$url"
     return $?
   fi
   printf 'PressWarden intel: curl or wget is required for public feeds; authenticated feeds can also use PHP HTTPS streams.\n' >&2
@@ -101,9 +110,12 @@ _pw_intel_count_json() {
 _pw_intel_age() {
   local file="$1" now mt age
   [ -e "$file" ] || { printf 'never'; return; }
-  now=$(date +%s); mt=$(stat -c %Y "$file" 2>/dev/null || printf '0')
+  now=$(date +%s)
+  # GNU/Linux uses `stat -c`; BSD/macOS uses `stat -f`.
+  mt=$(stat -c %Y "$file" 2>/dev/null || stat -f %m "$file" 2>/dev/null || printf '0')
   case "$mt" in ''|*[!0-9]*) printf 'unknown'; return ;; esac
   age=$((now-mt))
+  [ "$age" -lt 0 ] && { printf 'just now'; return; }
   if [ "$age" -lt 120 ]; then printf '%ss ago' "$age"
   elif [ "$age" -lt 7200 ]; then printf '%sm ago' "$((age/60))"
   elif [ "$age" -lt 172800 ]; then printf '%sh ago' "$((age/3600))"
