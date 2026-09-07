@@ -9,6 +9,59 @@ _make_validator() {
   local f="$1"
   cat > "$f" <<'PRESSWARDEN_PHP_INTEL'
 <?php
+function pw_php_admin_context($s) {
+  return (bool)preg_match('~\bis_admin\s*\(\s*\)~i',$s)
+      && (bool)preg_match('~\bcurrent_user_can\s*\(\s*[\'\"]manage_options[\'\"]~i',$s)
+      && (bool)preg_match('~\$_SERVER\s*\[\s*[\'\"]HTTP_USER_AGENT[\'\"]\s*\]~i',$s)
+      && (bool)preg_match('~(?:Windows|Win32|Win64)~i',$s);
+}
+
+function pw_php_browser_sink_uses($s,$var) {
+  $v=preg_quote($var,'~');
+  return (bool)preg_match('~\b(?:echo|print)\b[^;]{0,1200}\$'.$v.'\b~is',$s)
+      || (bool)preg_match('~\bwp_add_inline_script\s*\([^;]{0,1600}\$'.$v.'\b~is',$s)
+      || (bool)preg_match('~\bwp_enqueue_script\s*\([^;]{0,1600}\$'.$v.'\b~is',$s);
+}
+
+function pw_php_admin_payload_chain($raw) {
+  // PW-PHP-006 is deliberately data-flow based. Large security/framework files
+  // can legitimately contain admin checks, UA handling, Windows compatibility,
+  // remote HTTP, base64 decoding and output in unrelated methods. Those facts
+  // must never be combined at whole-file scope.
+  if (preg_match_all('~\$([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:wp_remote_get|wp_remote_post|file_get_contents|curl_exec)\s*\(~i',$raw,$remoteMatches,PREG_SET_ORDER|PREG_OFFSET_CAPTURE)) {
+    foreach($remoteMatches as $rm) {
+      $remoteVar=$rm[1][0]; $offset=$rm[0][1];
+      $start=max(0,$offset-1800); $window=substr($raw,$start,7000);
+      if(!pw_php_admin_context($window)) continue;
+      $rv=preg_quote($remoteVar,'~');
+
+      // Direct flow: remote response variable reaches base64_decode().
+      if(preg_match_all('~\$([A-Za-z_][A-Za-z0-9_]*)\s*=\s*base64_decode\s*\([^;]{0,1600}\$'.$rv.'\b[^;]{0,600}\)\s*;?~is',$window,$decoded,PREG_SET_ORDER)) {
+        foreach($decoded as $dm){if(pw_php_browser_sink_uses($window,$dm[1])) return true;}
+      }
+
+      // Common WordPress flow: wp_remote_retrieve_body($response), then decode.
+      if(preg_match_all('~\$([A-Za-z_][A-Za-z0-9_]*)\s*=\s*wp_remote_retrieve_body\s*\(\s*\$'.$rv.'\s*\)\s*;?~i',$window,$bodies,PREG_SET_ORDER)) {
+        foreach($bodies as $bm){
+          $bodyVar=preg_quote($bm[1],'~');
+          if(preg_match_all('~\$([A-Za-z_][A-Za-z0-9_]*)\s*=\s*base64_decode\s*\(\s*\$'.$bodyVar.'\b[^;]{0,500}\)\s*;?~is',$window,$decoded,PREG_SET_ORDER)) {
+            foreach($decoded as $dm){if(pw_php_browser_sink_uses($window,$dm[1])) return true;}
+          }
+        }
+      }
+    }
+  }
+
+  // Direct one-expression flow for file_get_contents()/curl_exec() payloads.
+  if(preg_match_all('~\$([A-Za-z_][A-Za-z0-9_]*)\s*=\s*base64_decode\s*\(\s*(?:file_get_contents|curl_exec)\s*\([^;]{0,1600}\)\s*\)\s*;?~is',$raw,$direct,PREG_SET_ORDER|PREG_OFFSET_CAPTURE)) {
+    foreach($direct as $dm){
+      $offset=$dm[0][1]; $start=max(0,$offset-1800); $window=substr($raw,$start,6000);
+      if(pw_php_admin_context($window) && pw_php_browser_sink_uses($window,$dm[1][0])) return true;
+    }
+  }
+  return false;
+}
+
 while(($line=fgets(STDIN))!==false){
   $file=rtrim($line,"\r\n");if($file===''||!is_file($file))continue;$s=@file_get_contents($file);if($s===false)continue;
   $tokens=@token_get_all($s);if(!is_array($tokens))continue;$code='';
@@ -23,17 +76,7 @@ while(($line=fgets(STDIN))!==false){
   $weakTls=(bool)preg_match('~CURLOPT_SSL_VERIFYPEER\s*,\s*(?:false|0)|[\'\"]sslverify[\'\"]\s*=>\s*false~i',$raw);
   if($login&&$pass&&$outbound&&$weakTls){echo "ALERT\tPW-PHP-005\t",$file,"\n";continue;}
 
-  $isAdmin=(bool)preg_match('~\bis_admin\s*\(\s*\)~i',$raw);
-  $manage=(bool)preg_match('~\bcurrent_user_can\s*\(\s*[\'\"]manage_options[\'\"]~i',$raw);
-  $ua=(bool)preg_match('~\$_SERVER\s*\[\s*[\'\"]HTTP_USER_AGENT[\'\"]\s*\]~i',$raw);
-  $windows=(bool)preg_match('~(?:Windows|Win32|Win64)~i',$raw);
-  $decode=(bool)preg_match('~\bbase64_decode\s*\(~i',$raw);
-  $remote=(bool)preg_match('~\b(?:wp_remote_get|wp_remote_post|curl_exec|file_get_contents)\s*\(~i',$raw);
-  // A hook registration such as add_action() is orchestration, not evidence
-  // that a decoded remote payload reaches the browser. Require an actual
-  // script/output sink to keep this high-confidence rule conservative.
-  $browserSink=(bool)preg_match('~\b(?:wp_add_inline_script|wp_enqueue_script)\s*\(|\b(?:echo|print)\b~i',$raw);
-  if($isAdmin&&$manage&&$ua&&$windows&&$decode&&$remote&&$browserSink)echo "ALERT\tPW-PHP-006\t",$file,"\n";
+  if(pw_php_admin_payload_chain($raw)) echo "ALERT\tPW-PHP-006\t",$file,"\n";
 }
 PRESSWARDEN_PHP_INTEL
 }
@@ -68,10 +111,10 @@ main() {
   sec "PW-PHP-005 • credential capture with weakened-TLS exfiltration" "login + password POST capture + outbound request + certificate verification disabled"
   report "$A5" issue "no high-confidence credential-exfiltration chain found"
 
-  sec "PW-PHP-006 • admin-targeted remote browser payload" "wp-admin + manage_options + Windows UA gating + remote fetch + base64 decode + concrete browser/output sink"
+  sec "PW-PHP-006 • admin-targeted remote browser payload" "same local admin/Windows gate + remote response → base64 decode → browser/output sink"
   report "$A6" issue "no high-confidence admin-targeted remote browser payload chain found"
-  note "PW-PHP-006 is behavior-based coverage informed by 2026 fake-browser-update malware research; it does not depend on a campaign domain or plugin name."
-  note "Login handling, outbound HTTP, base64_decode(), is_admin(), User-Agent checks, or add_action() alone are not findings; the rule requires a concrete browser/output sink."
+  note "PW-PHP-006 is behavior-based coverage informed by 2026 fake-browser-update malware research; it now requires data flow from a remote response through base64_decode() into a concrete browser/output sink inside the same local context."
+  note "Large utility files are not findings merely because admin checks, HTTP, User-Agent handling, Windows compatibility, decoding, and output exist in unrelated functions."
 
   rm -f "$CAND" "$V"
   finish
