@@ -12,7 +12,7 @@
 
 **Fleet-scale WordPress security auditing from the shell.**
 
-![Version](https://img.shields.io/badge/version-1.1.1-2ea44f)
+![Version](https://img.shields.io/badge/version-1.1.2-2ea44f)
 ![Bash](https://img.shields.io/badge/bash-4%2B-4EAA25?logo=gnubash&logoColor=white)
 ![WordPress](https://img.shields.io/badge/WordPress-security-21759B?logo=wordpress&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Linux-FCC624?logo=linux&logoColor=black)
@@ -153,13 +153,14 @@ You can still refresh intelligence by itself when needed:
 PressWarden is exception-first, so healthy items are kept concise while important findings stand out.
 
 ```text
-✖ ALERT    Strong evidence that needs investigation
-⚠ REVIEW   Suspicious or unusual behavior that should be checked
-ℹ INFO     Useful context that is not considered a security finding
-✓ CLEAN    No reportable issue found for that check
+✖ ALERT       Strong evidence that needs investigation
+⚠ REVIEW      Suspicious or unusual behavior that should be checked
+ℹ INFO        Useful context that is not considered a security finding
+✓ CLEAN       No reportable issue found within that check's scope
+⚠ INCOMPLETE  A check could not finish; this is not a clean verdict
 ```
 
-A finding is evidence for investigation, not automatic proof that a site is compromised.
+A finding is evidence for investigation, not automatic proof that a site is compromised. For JavaScript, an encoded external URL with visitor targeting is `REVIEW`; the report identifies the rule, source line, and browser operation without offering bulk deletion.
 
 Example:
 
@@ -175,7 +176,7 @@ PW-JS-002
 PW-DB-001
 ```
 
-These IDs make findings easier to identify across reports and future scanner versions.
+These IDs make findings easier to identify across reports and future scanner versions. See [detection quality and scan completeness](docs/DETECTION-QUALITY.md) for evidence thresholds and analysis limitations.
 
 ---
 
@@ -330,10 +331,12 @@ Optional integrations can add more vulnerability context:
 
 External vulnerability data is not bundled into the PressWarden repository. See [`intel/SOURCES.md`](intel/SOURCES.md) for provider-specific notes.
 
+For persistent credentials, edit your private `config/config`. The examples below use exported environment variables for a single shell session; do not place real keys in public scripts or reports.
+
 ### Wordfence Intelligence
 
 ```bash
-PRESSWARDEN_WORDFENCE_TOKEN="your-token"
+export PRESSWARDEN_WORDFENCE_TOKEN="your-token"
 ./presswarden intel update
 ./presswarden intel scan
 ```
@@ -343,7 +346,7 @@ Wordfence data is cached locally under the PressWarden runtime directory and mat
 ### Patchstack
 
 ```bash
-PRESSWARDEN_PATCHSTACK_KEY="your-key"
+export PRESSWARDEN_PATCHSTACK_KEY="your-key"
 ./presswarden intel scan
 ```
 
@@ -352,7 +355,7 @@ Patchstack lookups are deduplicated and cached to reduce unnecessary API request
 ### WPScan
 
 ```bash
-WPSCAN_API_TOKEN="your-token"
+export WPSCAN_API_TOKEN="your-token"
 ./presswarden full
 ```
 
@@ -365,8 +368,7 @@ WPScan remains user-installed and user-token driven.
 If you already maintain or license YARA rules, PressWarden can run them during `full`, `incident`, or `intel scan`.
 
 ```bash
-PRESSWARDEN_YARA_RULES="/home/example/security/wordpress.yar"
-./presswarden intel scan
+PRESSWARDEN_YARA_RULES="/home/example/security/wordpress.yar" ./presswarden intel scan
 ```
 
 PressWarden does **not** ship third-party YARA signature collections.
@@ -515,6 +517,7 @@ PressWarden is designed to detect first and remediate carefully.
 - baseline changes and fleet correlations are review-only signals
 - Incident Mode does not run database repair/optimization automatically
 - threat-intelligence matches do not automatically delete plugins or themes
+- JavaScript behavioral findings do not offer bulk deletion
 - external YARA matches are review-only
 - program self-update never replaces private config, reports, quarantine, baselines, or runtime history
 - API failures do not become fake malware findings
@@ -612,10 +615,12 @@ Suites can also generate JSON summaries for automation and downstream reporting.
 Exit codes:
 
 ```text
-0   scan completed with no reportable findings
+0   completed checks have no findings; optional skips may remain
 1   one or more ALERT / REVIEW findings were reported
-2+  scanner or dependency error
+2+  incomplete scan, missing/failed check, or scanner/reporting error
 ```
+
+Suite JSON reports include `coverage_status` (`complete`, `partial`, or `incomplete`) plus counts of completed, skipped, and failed checks. A skipped optional check is not a completed check, and an unsuccessful scan is never an ALL CLEAR result.
 
 For `./presswarden update`, exit `1` can also mean the program update succeeded but one or more threat-intelligence feeds could not refresh. The updater states this explicitly and preserves existing feed caches so `./presswarden intel update` can be retried later.
 
@@ -627,6 +632,7 @@ The main README focuses on using PressWarden. More detailed implementation infor
 
 - [`CONTRIBUTING.md`](CONTRIBUTING.md)
 - [`SECURITY.md`](SECURITY.md)
+- [`docs/DETECTION-QUALITY.md`](docs/DETECTION-QUALITY.md)
 - [`intel/README.md`](intel/README.md)
 - [`intel/SOURCES.md`](intel/SOURCES.md)
 - [`CHANGELOG.md`](CHANGELOG.md)

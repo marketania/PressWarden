@@ -73,4 +73,16 @@ printf "location.href='/account'; const x=atob('aGVsbG8=');\n" > "$TMP/duplicate
 printf '%s\0' "$TMP/fixture.js" "$TMP/duplicate.js" | php "$REPO/lib/js-threat-cli.php" > "$TMP/cached.out" 2> "$TMP/cached.err"
 [ "$(grep -c PW-JS-004 "$TMP/cached.out")" -eq 1 ]
 grep -q '2 unique analyses; 0 identical-file results reused' "$TMP/cached.err"
+
+# HTML examples are not live iframe execution; actual markup stays reviewable.
+cat > "$TMP/frame.html" <<'HTML'
+<div>Test</div>
+<iframe src="https://frame.invalid/" style="display:none" onload="eval(atob('Misy'))"></iframe>
+HTML
+printf '%s\0' "$TMP/frame.html" | php "$REPO/lib/js-threat-cli.php" > "$TMP/frame.out" 2> "$TMP/frame.err"
+grep -q 'PW-JS-003; line 2;' "$TMP/frame.out"
+printf '<!--\n%s\n-->\n' "$(cat "$TMP/frame.html")" > "$TMP/comment.html"
+printf '<textarea>%s</textarea>\n' "$(cat "$TMP/frame.html")" > "$TMP/example.html"
+printf '%s\0' "$TMP/comment.html" "$TMP/example.html" | php "$REPO/lib/js-threat-cli.php" > "$TMP/inert.out" 2> "$TMP/inert.err"
+[ ! -s "$TMP/inert.out" ]
 printf 'PressWarden runtime reliability: PASS\n'

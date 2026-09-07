@@ -37,18 +37,27 @@ while (($path = stream_get_line(STDIN, 1048576, "\0")) !== false) {
             }
             // The decoded handler must belong to the same hidden remote tag.
             // An unrelated decoder elsewhere in the file is not corroboration.
-            if (preg_match_all('~<iframe\b[^>]*>~i', $source, $frames)) foreach ($frames[0] as $tag) {
+            $frameSource = '';
+            if ($html) {
+                // Ignore inert examples in comments, scripts, and raw-text or
+                // template elements. Preserve offsets for evidence line numbers.
+                $frameSource = preg_replace_callback('~<!--[\s\S]*?-->|<(script|style|textarea|title|template)\b[^>]*>[\s\S]*?</\1\s*>~i', function ($m) {
+                    return preg_replace('~[^\r\n]~', ' ', $m[0]);
+                }, $source);
+            }
+            if (preg_match_all('~<iframe\b[^>]*>~i', $frameSource, $frames, PREG_OFFSET_CAPTURE)) foreach ($frames[0] as $frame) {
+                [$tag, $offset] = $frame;
                 if (preg_match('~\bsrc\s*=\s*[\'"](?:https?:)?//~i', $tag)
                     && preg_match('~display\s*:\s*none|visibility\s*:\s*hidden|(?:width|height)\s*=\s*[\'"]?0(?:[\'"\s>])~i', $tag)
                     && preg_match('~\bon(?:load|error)\s*=[^>]*\beval\s*\(\s*atob\s*\(~i', $tag)) {
-                    $found['PW-JS-003'] = ['kind'=>'REVIEW', 'rule'=>'PW-JS-003', 'line'=>0, 'evidence'=>'same iframe: hidden external src and decoded event-handler execution'];
+                    $found['PW-JS-003'] = ['kind'=>'REVIEW', 'rule'=>'PW-JS-003', 'line'=>1 + substr_count(substr($source, 0, $offset), "\n"), 'evidence'=>'same iframe: hidden external src and decoded event-handler execution'];
                 }
             }
         }
         $cache[$key] = $found;
         if (count($cache) > 512) array_shift($cache);
         foreach ($found as $f) {
-            $position = $html ? 'inline-script line ' : 'line ';
+            $position = $html && $f['rule'] !== 'PW-JS-003' ? 'inline-script line ' : 'line ';
             $evidence = $position.$f['line'].'; '.$f['evidence'];
             printf("%s\t%s\t%s [%s; %s]\n", $f['kind'], $f['rule'], pw_js_display_path($path), $f['rule'], $evidence);
         }
