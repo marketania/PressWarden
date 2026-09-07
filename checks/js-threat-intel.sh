@@ -19,19 +19,36 @@ while (($line=fgets(STDIN))!==false) {
     $scriptElement=(bool)preg_match('~createElement\s*\(\s*[\'\"]script[\'\"]\s*\)~i',$s);
     $domInsert=(bool)preg_match('~\b(?:appendChild|insertBefore|document\.write)\s*\(~i',$s);
     $remote=(bool)preg_match('~https?:\\?/\\?/|[\'\"](?:src|href)[\'\"]\s*[,=:]~i',$s);
+
+    // Track every decoder-assigned variable. Malware often places a harmless
+    // decoded value first so detectors that inspect only the first assignment
+    // miss the later value that actually reaches a browser sink.
+    $decodedVars=[];
+    if(preg_match_all('~(?:var|let|const)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*'.$decoder.'\s*\(~i',$s,$matches)){
+        $decodedVars=array_values(array_unique($matches[1]));
+    }
+
     $decodedSrc=(bool)preg_match('~(?:\.src\s*=|setAttribute\s*\(\s*[\'\"]src[\'\"]\s*,\s*)\s*'.$decoder.'\s*\(~i',$s);
-    if(!$decodedSrc && preg_match('~(?:var|let|const)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*'.$decoder.'\s*\(~i',$s,$m)){
-        $v=preg_quote($m[1],'~');
-        $decodedSrc=(bool)preg_match('~(?:\.src\s*=\s*'.$v.'\b|setAttribute\s*\(\s*[\'\"]src[\'\"]\s*,\s*'.$v.'\b)~i',$s);
+    if(!$decodedSrc){
+        foreach($decodedVars as $name){
+            $v=preg_quote($name,'~');
+            if(preg_match('~(?:\.src\s*=\s*'.$v.'\b|setAttribute\s*\(\s*[\'\"]src[\'\"]\s*,\s*'.$v.'\b)~i',$s)){
+                $decodedSrc=true; break;
+            }
+        }
     }
     $hiddenIframe=(bool)preg_match('~<iframe\b[^>]*(?:display\s*:\s*none|visibility\s*:\s*hidden|width\s*=\s*[\'\"]?0|height\s*=\s*[\'\"]?0)[^>]*>~i',$s);
     $iframeRemote=(bool)preg_match('~<iframe\b[^>]+https?://~i',$s);
 
     $redirectDirect=(bool)preg_match('~(?:window\.)?location(?:\.href)?\s*=\s*'.$decoder.'\s*\(|(?:window\.)?location\.(?:assign|replace)\s*\(\s*'.$decoder.'\s*\(~i',$s);
     $redirectVar=false;
-    if(!$redirectDirect && preg_match('~(?:var|let|const)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*'.$decoder.'\s*\(~i',$s,$m)){
-        $v=preg_quote($m[1],'~');
-        $redirectVar=(bool)preg_match('~(?:window\.)?location(?:\.href)?\s*=\s*'.$v.'\b|(?:window\.)?location\.(?:assign|replace)\s*\(\s*'.$v.'\b~i',$s);
+    if(!$redirectDirect){
+        foreach($decodedVars as $name){
+            $v=preg_quote($name,'~');
+            if(preg_match('~(?:window\.)?location(?:\.href)?\s*=\s*'.$v.'\b|(?:window\.)?location\.(?:assign|replace)\s*\(\s*'.$v.'\b~i',$s)){
+                $redirectVar=true; break;
+            }
+        }
     }
 
     if ($directExec && ($domInsert || $remote || strlen($s)>4000)) {
@@ -83,7 +100,7 @@ main() {
 
   sec "PW-JS-002 • obfuscated remote script-loader injection" "decoded value reaches script src + dynamic script creation + DOM insertion • Balada-like behavior"
   report "$A2" issue "no obfuscated dynamic script-loader chains found"
-  note "String.fromCharCode or createElement(script) alone are not findings; PW-JS-002 now requires the decoded value to reach the script source."
+  note "String.fromCharCode or createElement(script) alone are not findings; PW-JS-002 requires a decoded value to reach the script source."
 
   sec "PW-JS-004 • decoded browser redirect target" "decoded/character-reconstructed value reaches location assignment/replace/assign • redirect-malware behavior"
   report "$A4" issue "no decoded browser redirect chains found"
