@@ -6,8 +6,8 @@ SCAN_WHY="Separates scanner/environment problems from real website findings befo
 . "$PRESSWARDEN_DIR/lib/intel.sh"
 main() {
   banner
-  sec "Runtime dependencies" "required and optional command availability"
-  local c missing=0
+  sec "Runtime dependencies" "required commands + feature readiness"
+  local c missing=0 sha_tool=''
   for c in bash php find grep sed awk sort stat cksum; do
     if command -v "$c" >/dev/null 2>&1; then ok "$c" "$(command -v "$c")"; else issue "$c" "required command not found"; missing=$((missing+1)); fi
   done
@@ -15,9 +15,28 @@ main() {
     if command -v "$c" >/dev/null 2>&1; then ok "$c" "$(command -v "$c")"; else printf '    %sℹ OPTIONAL%s  %-8s not found\n' "$C" "$X" "$c"; fi
   done
 
+  if command -v sha256sum >/dev/null 2>&1; then sha_tool='sha256sum'
+  elif command -v shasum >/dev/null 2>&1; then sha_tool='shasum -a 256'
+  elif command -v openssl >/dev/null 2>&1; then sha_tool='openssl sha256'
+  fi
+  if [ -n "$sha_tool" ]; then
+    ok "SHA-256" "$sha_tool available for baseline/change hashing"
+  else
+    flag "SHA-256" "sha256sum, shasum, or openssl not found • baseline/change commands unavailable"
+  fi
+
+  if command -v tar >/dev/null 2>&1 && { command -v curl >/dev/null 2>&1 || command -v wget >/dev/null 2>&1; }; then
+    ok "SELF-UPDATE" "tar + download client available"
+  elif ! command -v tar >/dev/null 2>&1; then
+    flag "SELF-UPDATE" "tar not found • scans still work, but ./presswarden update is unavailable"
+  else
+    flag "SELF-UPDATE" "curl/wget not found • scans still work, but ./presswarden update is unavailable"
+  fi
+
   sec "Configuration" "private config + state paths"
   if [ -r "$PRESSWARDEN_CONFIG_FILE" ]; then
-    local mode; mode=$(stat -c %a "$PRESSWARDEN_CONFIG_FILE" 2>/dev/null || printf 'unknown')
+    local mode
+    mode=$(stat -c %a "$PRESSWARDEN_CONFIG_FILE" 2>/dev/null || stat -f %Lp "$PRESSWARDEN_CONFIG_FILE" 2>/dev/null || printf 'unknown')
     case "$mode" in 600|400) ok "CONFIG" "$PRESSWARDEN_CONFIG_FILE • mode $mode" ;; *) flag "CONFIG MODE" "$PRESSWARDEN_CONFIG_FILE • mode $mode (chmod 600 if it stores API keys)" ;; esac
   else
     printf '    %sℹ CONFIG%s  using built-in defaults; optional config: %s\n' "$C" "$X" "$PRESSWARDEN_CONFIG_FILE"
@@ -47,7 +66,7 @@ main() {
   kev_count=$(_pw_intel_count_json "$idir/cisa-kev.json" cisa)
   wf_scan_count=$(_pw_intel_count_json "$idir/wordfence-scanner.json" wordfence)
   wf_prod_count=$(_pw_intel_count_json "$idir/wordfence-production.json" wordfence)
-  [ "$native_count" -gt 0 ] && ok "NATIVE RULES" "$native_count behavior/campaign rules available" || flag "NATIVE RULES" "native rule catalog missing or empty"
+  [ "$native_count" -gt 0 ] && ok "NATIVE RULES" "$native_count rule ID(s) available" || flag "NATIVE RULES" "native rule catalog missing or empty"
   printf '    %sℹ CAMPAIGNS%s   %s documented campaign family reference(s)\n' "$C" "$X" "$campaign_count"
   if [ "$kev_count" -gt 0 ]; then ok "CISA KEV" "$kev_count record(s) cached • $(_pw_intel_age "$idir/cisa-kev.json")"; else printf '    %sℹ CISA KEV%s    not cached yet • run ./presswarden intel update\n' "$C" "$X"; fi
   if [ -n "${PRESSWARDEN_WORDFENCE_TOKEN:-}" ] || [ "$wf_scan_count" -gt 0 ] || [ "$wf_prod_count" -gt 0 ]; then
