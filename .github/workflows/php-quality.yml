@@ -1,0 +1,30 @@
+name: PHP Detection Quality
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  precision:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scoped PHP malicious and benign cases
+        run: php -d memory_limit=64M tests/php-flow.php
+      - name: PHP memory and resource boundaries
+        run: php -d memory_limit=64M tests/php-memory.php
+      - name: Read-only evidence, privacy, cache and scan failures
+        run: bash tests/php-intel-runtime.sh
+      - name: PHP 7.4 compatibility
+        run: docker run --rm --network=none -v "$PWD:/work:ro" -w /work php:7.4-cli php -d memory_limit=64M tests/php-flow.php
+  upstream:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Official PHP packages and injected controls
+        run: bash tests/php-upstream.sh
