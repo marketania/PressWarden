@@ -12,7 +12,7 @@
 
 **Fleet-scale WordPress security auditing from the shell.**
 
-![Version](https://img.shields.io/badge/version-1.1.3-2ea44f)
+![Version](https://img.shields.io/badge/version-1.1.4-2ea44f)
 ![Bash](https://img.shields.io/badge/bash-4%2B-4EAA25?logo=gnubash&logoColor=white)
 ![WordPress](https://img.shields.io/badge/WordPress-security-21759B?logo=wordpress&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Linux-FCC624?logo=linux&logoColor=black)
@@ -638,6 +638,7 @@ For `./presswarden update`, exit `1` can also mean the program update succeeded 
 
 The main README focuses on using PressWarden. More detailed implementation information lives in the project documentation:
 
+- [`docs/PHP-DETECTION.md`](docs/PHP-DETECTION.md) — PHP evidence and coverage
 - [`CONTRIBUTING.md`](CONTRIBUTING.md)
 - [`SECURITY.md`](SECURITY.md)
 - [`docs/DETECTION-QUALITY.md`](docs/DETECTION-QUALITY.md)

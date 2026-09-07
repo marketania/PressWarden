@@ -2,9 +2,9 @@
 PW-PHP-001	php	critical	high	behavior	Request-controlled execution sink	phpquick/phpdeep	PressWarden native	intel/SOURCES.md	2026-09-06	2026-09-06
 PW-PHP-002	php	critical	high	behavior	Remote payload write then include	phpquick/phpdeep	PressWarden native	intel/SOURCES.md	2026-09-06	2026-09-06
 PW-PHP-003	php	critical	high	behavior	Packed XOR browser loader	php-obfuscated-loader	PressWarden native	intel/SOURCES.md	2026-09-06	2026-09-06
-PW-PHP-004	php	high	high	behavior	Dynamic request-controlled function execution	php-threat-intel	PressWarden native	intel/SOURCES.md	2026-09-06	2026-09-06
-PW-PHP-005	php	critical	high	behavior	Credential capture with remote exfiltration	php-threat-intel	PressWarden native	intel/SOURCES.md	2026-09-06	2026-09-06
-PW-PHP-006	php	high	high	behavior	Admin-targeted remote browser payload	php-threat-intel	Sucuri research	https://blog.sucuri.net/2026/01/fake-browser-updates-targeting-wordpress-administrators-via-malicious-plugin.html	2026-09-06	2026-09-07
+PW-PHP-004	php	high	high	behavior	Dynamic request-controlled function execution	php-threat-intel	PressWarden native	intel/SOURCES.md	2026-09-06	2026-09-07
+PW-PHP-005	php	critical	high	behavior	Credential capture with remote exfiltration	php-threat-intel	PressWarden native	intel/SOURCES.md	2026-09-06	2026-09-07
+PW-PHP-006	php	high	medium	behavior	Admin-targeted remote browser payload	php-threat-intel	Sucuri research	https://blog.sucuri.net/2026/01/fake-browser-updates-targeting-wordpress-administrators-via-malicious-plugin.html	2026-09-06	2026-09-07
 PW-JS-001	javascript	high	high	behavior	Decoded JavaScript passed to eval or Function	js-threat-intel	PressWarden native	docs/DETECTION-QUALITY.md	2026-09-06	2026-09-07
 PW-JS-002	javascript	high	medium	behavior	Obfuscated browser script loading	js-threat-intel	PressWarden native	docs/DETECTION-QUALITY.md	2026-09-06	2026-09-07
 PW-JS-003	javascript	high	medium	behavior	Hidden remote iframe with decoded event handler	js-threat-intel	PressWarden native	docs/DETECTION-QUALITY.md	2026-09-06	2026-09-07

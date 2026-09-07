@@ -2,6 +2,18 @@
 
 All notable changes to PressWarden are documented here.
 
+## 1.1.4 — 2026-09-07
+
+Scoped PHP intelligence and reliable evidence release.
+
+- Replaced whole-file/proximity matching for PW-PHP-004/005/006 with a native token-based recognizer. Comments, quoted examples, unrelated methods, overwritten variables and wrong script arguments no longer supply false evidence.
+- Added ordered request-callable recognition, strict literal dispatch-allowlist handling, and same-request credential/TLS evidence with cURL handle and option tracking.
+- Admin-targeted decoded browser output is REVIEW, not a claim of confirmed malware. All three PHP intelligence rules are read-only, with rule/line/behavior evidence and no generic bulk deletion prompt.
+- Reused identical-content results through a bounded process-local cache without trusting paths, modification times, previous scans or plugin names.
+- PHP intelligence now returns incomplete status on dependency, discovery, read, validator or evidence-output failures, retaining prior findings rather than reporting false CLEAN sections.
+- Added malicious/benign, privacy, resource-boundary, runtime-failure, PHP 7.4 and SHA-256-pinned official PHP corpus tests, plus injected copies of Wordfence's real utility file.
+- Existing JavaScript, packed-XOR/White-Engine, PHP quick/deep, WordPress/database, updater recovery, private-state and configuration protections remain unchanged. Coverage limits are documented in `docs/PHP-DETECTION.md`.
+
 ## 1.1.3 — 2026-09-07
 
 Update safety, recovery, and configuration guidance.
