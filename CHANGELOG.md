@@ -2,6 +2,18 @@
 
 All notable changes to PressWarden are documented here.
 
+## 1.1.6 — 2026-09-07
+
+Conservative reporting and focused-recheck update.
+
+- Add `./presswarden inspect php|js|db [directory]` to run one existing read-only intelligence layer with discovery, exclusions and suite JSON. No feed refresh, generic file-removal prompt or database maintenance; PHP mode is the three scoped intelligence rules, not the complete PHP scanner.
+- Give each check/suite a uniquely reserved run ID instead of timestamp-only report names. Create new console/finding/deletion reports and new report directories with private permissions without changing the caller's umask or altering historical files.
+- Publish per-run JSON without replacing existing destinations, then publish the compatible `*-latest-summary.json` alias using a complete same-directory staged file. Refuse symlink/non-file destinations and surface publication failures while retaining available reports.
+- Include `run_id` in suite JSON and run headers. Existing fields, flat report-directory layout and summary aliases remain available.
+- Failed finding-detail writes disable generic file actions and finish with INCOMPLETE (2); bounded console output no longer claims an unavailable full findings log. Suite result-record write failures are also propagated.
+- Add focused-inspection, same-second concurrent allocation, private-permission, umask, symlink/history preservation, atomic JSON reader/writer, failed-evidence and latest-publication regressions, including PHP 7.4 helper compatibility.
+- Detection rules, severity thresholds, API/feed configuration, existing scan suites, updater recovery, private config, baselines and quarantine behavior are unchanged. No new API keys, Node.js or Composer dependencies.
+
 ## 1.1.5 — 2026-09-07
 
 Database evidence quality and honest scan coverage.

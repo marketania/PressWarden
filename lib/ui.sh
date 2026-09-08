@@ -38,6 +38,7 @@ banner() {
   printf '\n%s%s' "$B" "$C"; _repeat '═' "$W"; printf '%s\n' "$X"
   printf '%s%s  PRESSWARDEN SECURITY AUDIT%s  %sv%s%s\n' "$B" "$C" "$X" "$D" "$PRESSWARDEN_VERSION" "$X"
   printf '  %s%-11s%s %s%s%s\n' "$D" "CHECK" "$X" "$B" "$NAME" "$X"
+  [ -z "${PW_REPORT_ID:-}" ] || _meta_field 11 "RUN" "$PW_REPORT_ID"
   _meta_field 11 "PURPOSE" "$DESC"; _meta_field 11 "CHECKS" "$SCAN_DOES"; _meta_field 11 "WHY" "$SCAN_WHY"
   printf '  %s%-11s%s %s\n' "$D" "ROOT" "$X" "$ROOT"
   [ "$PRESSWARDEN_CONFIG_LOADED" -eq 1 ] && printf '  %s%-11s%s %s\n' "$D" "CONFIG" "$X" "$PRESSWARDEN_CONFIG_FILE"
@@ -50,4 +51,4 @@ banner() {
 
 sec() { SECN=$((SECN+1)); SEC_T0=$(date +%s); CURRENT_SECTION="$1"; printf '\n%s%s◆ %02d%s  %s%s%s' "$B" "$C" "$SECN" "$X" "$B" "$1" "$X"; [ $# -gt 1 ] && printf '  %s(%s)%s' "$D" "$2" "$X"; printf '\n'; }
 note() { printf '    %sℹ%s  %s\n' "$C" "$X" "$1"; }
-_save_details() { local f="$1" sev="$2"; [ -n "${DETAIL_LOG:-}" ] || return 0; { printf '\n[%02d] %s | severity=%s | matches=%s\n' "$SECN" "$CURRENT_SECTION" "$sev" "$(grep -c . "$f" 2>/dev/null || true)"; cat "$f"; } >> "$DETAIL_LOG"; }
+_save_details() { local f="$1" sev="$2"; [ -n "${DETAIL_LOG:-}" ] || return 0; { printf '\n[%02d] %s | severity=%s | matches=%s\n' "$SECN" "$CURRENT_SECTION" "$sev" "$(grep -c . "$f" 2>/dev/null || true)" && cat "$f"; } >> "$DETAIL_LOG"; }

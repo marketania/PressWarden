@@ -2,6 +2,8 @@
 _PRESSWARDEN_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/env-discovery.sh
 . "$_PRESSWARDEN_LIB_DIR/env-discovery.sh"
+# shellcheck source=lib/reports.sh
+. "$_PRESSWARDEN_LIB_DIR/reports.sh"
 # shellcheck source=lib/ui.sh
 . "$_PRESSWARDEN_LIB_DIR/ui.sh"
 # shellcheck source=lib/remediation.sh

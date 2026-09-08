@@ -1,5 +1,6 @@
 <?php
 /** Generate a PressWarden suite report without treating failed checks as clean. */
+require_once __DIR__.'/report-json.php';
 if ($argc !== 10) { fwrite(STDERR, "Invalid suite summary arguments\n"); exit(2); }
 [$res, $out, $suite, $version, $root, $sites, $domains, $rc, $log] = array_slice($argv, 1);
 $lines = @file($res, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
@@ -21,8 +22,11 @@ $data = ['tool'=>'PressWarden', 'version'=>$version, 'suite'=>$suite, 'generated
     'root'=>$root, 'wordpress_sites'=>(int)$sites, 'site_groups'=>(int)$domains,
     'exit_code'=>(int)$rc, 'total_findings'=>$total, 'coverage_status'=>$coverage,
     'checks_completed'=>$completed, 'checks_skipped'=>$skipped, 'checks_failed'=>$failed,
-    'console_log'=>$log, 'checks'=>$checks];
+    'run_id'=>basename($log, '.log'), 'console_log'=>$log, 'checks'=>$checks];
 $json = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
-if ($json === false || @file_put_contents($out, $json."\n") === false) {
+try {
+    if ($json === false) throw new RuntimeException('JSON encoding failed');
+    presswarden_report_json_write($out, $json."\n");
+} catch (Throwable $e) {
     fwrite(STDERR, "Cannot write suite JSON report\n"); exit(2);
 }

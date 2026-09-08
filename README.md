@@ -12,7 +12,7 @@
 
 **Fleet-scale WordPress security auditing from the shell.**
 
-![Version](https://img.shields.io/badge/version-1.1.5-2ea44f)
+![Version](https://img.shields.io/badge/version-1.1.6-2ea44f)
 ![Bash](https://img.shields.io/badge/bash-4%2B-4EAA25?logo=gnubash&logoColor=white)
 ![WordPress](https://img.shields.io/badge/WordPress-security-21759B?logo=wordpress&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Linux-FCC624?logo=linux&logoColor=black)
@@ -106,6 +106,7 @@ That is the recommended starting point for most users.
 | `./presswarden fast` | Regular security checks across your sites |
 | `./presswarden full` | Deep periodic assurance including DB maintenance |
 | `./presswarden incident` | Investigating a suspected compromise or reinfection |
+| `./presswarden inspect js` | Rechecking JavaScript intelligence without other checks |
 | `./presswarden intel scan` | Focused malware + threat-intelligence investigation |
 | `./presswarden db` | Database security, stored malware, and DB maintenance |
 | `./presswarden update` | Updating PressWarden code and refreshing threat intelligence |
@@ -123,6 +124,20 @@ If you suspect a compromise:
 ```bash
 ./presswarden incident
 ```
+
+---
+
+## Recheck one area
+
+Run just the existing PHP, JavaScript, or database threat-intelligence check:
+
+```bash
+./presswarden inspect php /home/example/public_html
+./presswarden inspect js /home/example/public_html
+./presswarden inspect db /home/example/public_html
+```
+
+The directory is optional. These commands reuse discovery, exclusions, and reports without refreshing feeds, offering file removal, or running database maintenance. They cover only the selected intelligence layer—not a complete security audit. Database inspection still loads WordPress through WP-CLI. Use `./presswarden inspect help` for scope details.
 
 ---
 
@@ -620,7 +635,7 @@ Reports are written under the PressWarden reports directory, normally:
 PressWarden/var/reports/
 ```
 
-Suites can also generate JSON summaries for automation and downstream reporting.
+Suites can also generate JSON summaries for automation and downstream reporting. New runs have unique identifiers and private report files, so starting the same check twice in one second does not replace an earlier report. The existing `*-latest-summary.json` alias is published only after complete JSON is ready; failures are reported rather than ignored. No historical reports are deleted or migrated. See [`docs/REPORTS.md`](docs/REPORTS.md) for naming, permissions, and automation details.
 
 Exit codes:
 

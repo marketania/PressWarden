@@ -44,6 +44,7 @@ _run_checks() {
 
   printf '\n%s%s' "$B" "$C"; _repeat '═' "$W"; printf '%s\n' "$X"
   printf '%s%s  PRESSWARDEN SUITE%s  %s%s%s\n' "$B" "$C" "$X" "$B" "$NAME" "$X"
+  [ -z "${PW_REPORT_ID:-}" ] || _meta_field 10 "RUN" "$PW_REPORT_ID"
   _meta_field 10 "MODE" "$DESC"
   _meta_field 10 "CHECKS" "$SUITE_DOES"
   _meta_field 10 "WHY" "$SUITE_WHY"
@@ -64,15 +65,15 @@ _run_checks() {
     seen="$seen $c"; current_check=$((current_check+1)); check_path="$PRESSWARDEN_DIR/checks/$c.sh"
     if [ "$c" = "wp-access" ] && ! admin_check_wanted; then
       printf '\n%s%s▶ SKIP%s %s[%s/%s]%s  %s%s%s  %s(administrator checks skipped)%s\n' "$B" "$Y" "$X" "$B" "$current_check" "$total_checks" "$X" "$B" "$c" "$X" "$D" "$X"
-      printf '%s|0|skipped|0\n' "$c" >> "$RES"; continue
+      printf '%s|0|skipped|0\n' "$c" >> "$RES" || return 2; continue
     fi
     if [ "$c" = "wp-uploads-deep" ] && ! uploads_deep_check_wanted; then
       printf '\n%s%s▶ SKIP%s %s[%s/%s]%s  %s%s%s  %s(slow image-content scan skipped)%s\n' "$B" "$Y" "$X" "$B" "$current_check" "$total_checks" "$X" "$B" "$c" "$X" "$D" "$X"
-      printf '%s|0|skipped|0\n' "$c" >> "$RES"; continue
+      printf '%s|0|skipped|0\n' "$c" >> "$RES" || return 2; continue
     fi
     if [ ! -r "$check_path" ]; then
       printf '\n%s%s▶ RUN%s  %s[%s/%s]%s  %s%s%s  %s(missing/unreadable)%s\n' "$B" "$BL" "$X" "$B" "$current_check" "$total_checks" "$X" "$B" "$c" "$X" "$Y" "$X"
-      printf '%s|-|missing|0\n' "$c" >> "$RES"; continue
+      printf '%s|-|missing|0\n' "$c" >> "$RES" || return 2; continue
     fi
     printf '\n%s%s▶ RUN%s  %s[%s/%s]%s  %s%s%s\n' "$B" "$BL" "$X" "$B" "$current_check" "$total_checks" "$X" "$B" "$c" "$X"
     start=$(date +%s); out=$(tmpf)
@@ -89,9 +90,9 @@ _run_checks() {
     n=$(strip_ansi < "$out" | grep -oE 'findings:[[:space:]]*[0-9]+' | tail -1 | grep -oE '[0-9]+$')
     rm -f "$out"
     case "$rc" in
-      0) printf '%s|%s|clean|%s\n' "$c" "${n:-0}" "$elapsed" >> "$RES" ;;
-      1) printf '%s|%s|findings|%s\n' "$c" "${n:-0}" "$elapsed" >> "$RES" ;;
-      *) printf '%s|%s|ERROR rc=%s|%s\n' "$c" "${n:--}" "$rc" "$elapsed" >> "$RES" ;;
+      0) printf '%s|%s|clean|%s\n' "$c" "${n:-0}" "$elapsed" >> "$RES" || return 2 ;;
+      1) printf '%s|%s|findings|%s\n' "$c" "${n:-0}" "$elapsed" >> "$RES" || return 2 ;;
+      *) printf '%s|%s|ERROR rc=%s|%s\n' "$c" "${n:--}" "$rc" "$elapsed" >> "$RES" || return 2 ;;
     esac
   done
 
@@ -125,23 +126,26 @@ _run_checks() {
 }
 
 run_all() {
-  mkdir -p "$REPORTS" 2>/dev/null || die "cannot create $REPORTS"
-  local stamp json rc
+  pw_report_init "$NAME" || return 2
+  local json rc json_written=0
   local -a pipeline_status
-  stamp=$(date +%Y%m%d-%H%M%S); LOG="$REPORTS/$NAME-$stamp.log"; RES=$(tmpf)
+  RES=$(tmpf) || { pw_report_remove_empty; return 2; }
   _run_checks 2>&1 | tee "$LOG"; pipeline_status=("${PIPESTATUS[@]}"); rc=${pipeline_status[0]}
   if [ "${pipeline_status[1]:-0}" -ne 0 ]; then
     printf 'INCOMPLETE: suite console log could not be written.\n' >&2; rc=2
   fi
   if [ "${PRESSWARDEN_OUTPUT_JSON:-1}" != "0" ] && command -v php >/dev/null 2>&1; then
-    json="$REPORTS/$NAME-$stamp-summary.json"
+    json="$PW_REPORT_PREFIX-summary.json"
     if ! php "$PRESSWARDEN_DIR/lib/suite-summary.php" "$RES" "$json" "$NAME" "$PRESSWARDEN_VERSION" "$ROOT" "$(count_sites)" "$(count_domains)" "$rc" "$LOG"; then
-      rm -f "$json"; printf 'INCOMPLETE: suite JSON report could not be written.\n' >&2; rc=2
+      printf 'INCOMPLETE: suite JSON report could not be written.\n' >&2; rc=2
+    else
+      json_written=1
+      php "$PRESSWARDEN_DIR/lib/report-json.php" latest "$json" "$REPORTS/$NAME-latest-summary.json" || rc=2
     fi
-    [ -s "$json" ] && cp -f "$json" "$REPORTS/$NAME-latest-summary.json" 2>/dev/null || true
   fi
   rm -f "$RES"
+  pw_report_remove_empty
   printf '%ssummary log:%s %s\n' "$D" "$X" "$LOG"
-  [ -n "${json:-}" ] && [ -s "$json" ] && printf '%sJSON summary:%s %s\n' "$D" "$X" "$json"
+  [ "$json_written" -eq 1 ] && printf '%sJSON summary:%s %s\n' "$D" "$X" "$json"
   return "$rc"
 }

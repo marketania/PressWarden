@@ -1,0 +1,25 @@
+name: Report Quality
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  preservation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Private JSON, symlink and history preservation
+        run: php tests/report-json.php
+      - name: Concurrent report writers and failed evidence
+        run: bash tests/report-preservation.sh
+      - name: Focused inspection scope, privacy and failure propagation
+        run: bash tests/inspect.sh
+      - name: PHP 7.4 reporting helper compatibility
+        run: docker run --rm --network=none -v "$PWD:/work:ro" -w /work php:7.4-cli php tests/report-json.php

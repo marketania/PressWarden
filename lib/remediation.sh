@@ -165,7 +165,7 @@ report() {
     rm -f "$f"; return 0
   fi
 
-  _save_details "$f" "$sev"
+  if ! _save_details "$f" "$sev"; then pw_report_failure; fi
   shown=0
   while IFS= read -r line; do
     [ -n "$line" ] || continue
@@ -175,8 +175,13 @@ report() {
     printf '\n'
   done < "$f"
 
-  [ "$n" -gt "$cap" ] && printf '    %s… %s more hidden; full list is in the findings log%s\n' \
-    "$D" "$((n-cap))" "$X"
+  if [ "$n" -gt "$cap" ]; then
+    if [ "${PW_REPORT_FAILED:-0}" -eq 0 ]; then
+      printf '    %s… %s more hidden; full list is in the findings log%s\n' "$D" "$((n-cap))" "$X"
+    else
+      printf '    INCOMPLETE: %s additional findings were not displayed; full evidence could not be saved.\n' "$((n-cap))" >&2
+    fi
+  fi
   printf '    %s%s%s %s match(es)%s  %s(%s)%s\n' \
     "$B" "$col" "$label" "$n" "$X" "$D" "$(human_time "$elapsed")" "$X"
 
@@ -188,14 +193,15 @@ report() {
   [ "$sev" != info ] && TOTAL=$((TOTAL+n))
 
   # Remediation happens only after the report is printed and fully logged.
-  [ "$action_mode" = noaction ] || _prompt_file_action "$f" "$sev"
+  [ "$action_mode" = noaction ] || [ "${PW_REPORT_FAILED:-0}" -ne 0 ] || _prompt_file_action "$f" "$sev"
   rm -f "$f"
 }
 
 finish() {
   local el=$(( $(date +%s) - T0 )) col status
   printf '\n'; _rule
-  if [ "$ALERTS" -gt 0 ]; then col="$R"; status='ATTENTION REQUIRED'
+  if [ "${PW_REPORT_FAILED:-0}" -ne 0 ]; then col="$Y"; status='INCOMPLETE'
+  elif [ "$ALERTS" -gt 0 ]; then col="$R"; status='ATTENTION REQUIRED'
   elif [ "$REVIEWS" -gt 0 ]; then col="$Y"; status='REVIEW RECOMMENDED'
   else col="$G"; status='CLEAN'; fi
   printf '  %s%s%s%s  %s%s%s\n' "$B" "$col" "$status" "$X" "$D" "$NAME" "$X"
@@ -208,19 +214,12 @@ finish() {
   [ -s "${DETAIL_LOG:-/dev/null}" ] && printf '  %sfull findings:%s %s\n' "$D" "$X" "$DETAIL_LOG"
   _rule
   printf '\n'
+  [ "${PW_REPORT_FAILED:-0}" -eq 0 ] || return 2
   [ "$TOTAL" -eq 0 ] && return 0 || return 1
 }
 
 run_logged() {
-  mkdir -p "$REPORTS" 2>/dev/null || die "cannot create $REPORTS"
-  local stamp; stamp=$(date +%Y%m%d-%H%M%S)
-  LOG="$REPORTS/$1-$stamp.log"
-  DETAIL_LOG="$REPORTS/$1-$stamp-findings.log"
-  DELETE_LOG="$REPORTS/$1-$stamp-deletions.log"
-  if ! { : > "$DETAIL_LOG" && : > "$DELETE_LOG"; }; then
-    printf 'INCOMPLETE: cannot initialize finding/deletion reports.\n' >&2
-    return 2
-  fi
+  pw_report_init "$1" || return 2
   local -a log_status
   main 2>&1 | tee "$LOG"
   log_status=("${PIPESTATUS[@]}")
@@ -229,7 +228,6 @@ run_logged() {
     printf 'INCOMPLETE: console report could not be written completely.\n' >&2
     rc=2
   fi
-  [ -s "$DETAIL_LOG" ] || rm -f "$DETAIL_LOG"
-  [ -s "$DELETE_LOG" ] || rm -f "$DELETE_LOG"
+  pw_report_remove_empty
   return "$rc"
 }
