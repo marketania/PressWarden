@@ -2,6 +2,21 @@
 
 All notable changes to PressWarden are documented here.
 
+## 1.1.5 — 2026-09-07
+
+Database evidence quality and honest scan coverage.
+
+- Replaced unbounded, silent `LIMIT 1000` database reads with ordered keyset pagination, bounded batches, per-value and per-site byte limits, and explicit incomplete results when limits or queries fail.
+- Stored PHP-serialized scalar/array values are read by a bounded inert reader, never PHP unserialization. JSON/widget/builder strings and inline script blocks are analyzed independently using the existing scoped JavaScript recognizer.
+- Ordinary iframe embeds, unrelated hidden elements, minification/decoding alone, and independent widget/script values no longer combine into database malware alerts. Hidden-frame findings require recognized behavior in that same frame's handler.
+- Stored PHP evidence requires a supported execution argument containing request/decode evidence; comments and isolated decoders do not suffice. Database PHP findings remain REVIEW.
+- Administrator identity checks validate the current-blog top-level administrator role key rather than relying on substring matches; identity-only indicators are REVIEW, not proof of account ownership. No account is modified.
+- Generic hex option names with encoded text/multiple URLs are no longer findings alone; PW-DB-006 requires recognized behavior in the decoded value. Custom site-wide script storage retains a narrowly scoped review.
+- Database evidence uses a validated output protocol and row IDs only. Raw WP-CLI/SQL diagnostics, stored payloads, post titles, usernames, and email addresses are not forwarded into reports. Early findings survive later incomplete inspection.
+- Shared check logging now returns exit 2 when report initialization or the console-log writer fails, rather than hiding logging failure behind a clean check.
+- Added malicious/benign, serialization/object-rejection, pagination, budget, partial-failure, privacy, PHP 7.4 and isolated MySQL SQL integration tests. Existing unsupported-CHECK TABLE, WordPress, PHP, JavaScript, updater and private-state protections remain unchanged.
+- Documented candidate scope, optional row/byte budgets, and the fact that WP-CLI bootstraps WordPress: SELECT-only inspection is not isolated from compromised MU plugins or drop-ins.
+
 ## 1.1.4 — 2026-09-07
 
 Scoped PHP intelligence and reliable evidence release.

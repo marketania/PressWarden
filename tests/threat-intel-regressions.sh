@@ -155,7 +155,7 @@ fi
 php -r '
 require $argv[1];
 $tests = [
-  [presswarden_db_classify_content("<script src=\"https://evil.invalid/x.js\"></script><script>eval(atob(\"QQ==\"))</script>", "option", "widget_text"), "PW-DB-001"],
+  [presswarden_db_classify_content("<script src=\"https://evil.invalid/x.js\"></script><script>eval(atob(\"ZG9jdW1lbnQud3JpdGUoMSk7\"))</script>", "option", "widget_text"), "PW-DB-001"],
   [presswarden_db_classify_content("<script src=\"https://cdn.example.com/app.js\"></script>", "option", "header_scripts"), "PW-DB-003"],
   [presswarden_db_classify_content("<?php eval(base64_decode(\$_POST[\"x\"]));", "post", "code"), "PW-DB-005"],
   [presswarden_db_classify_content("<script src=\"https://cdn.example.com/app.js\"></script>", "post", "page"), null],

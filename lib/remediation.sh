@@ -217,9 +217,18 @@ run_logged() {
   LOG="$REPORTS/$1-$stamp.log"
   DETAIL_LOG="$REPORTS/$1-$stamp-findings.log"
   DELETE_LOG="$REPORTS/$1-$stamp-deletions.log"
-  : > "$DETAIL_LOG"; : > "$DELETE_LOG"
+  if ! { : > "$DETAIL_LOG" && : > "$DELETE_LOG"; }; then
+    printf 'INCOMPLETE: cannot initialize finding/deletion reports.\n' >&2
+    return 2
+  fi
+  local -a log_status
   main 2>&1 | tee "$LOG"
-  local rc=${PIPESTATUS[0]}
+  log_status=("${PIPESTATUS[@]}")
+  local rc=${log_status[0]}
+  if [ "${log_status[1]}" -ne 0 ]; then
+    printf 'INCOMPLETE: console report could not be written completely.\n' >&2
+    rc=2
+  fi
   [ -s "$DETAIL_LOG" ] || rm -f "$DETAIL_LOG"
   [ -s "$DELETE_LOG" ] || rm -f "$DELETE_LOG"
   return "$rc"

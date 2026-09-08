@@ -36,6 +36,11 @@ PRESSWARDEN_YARA_RULES=""
 # Optional override for intel cache location; portable default is PressWarden/var/intel.
 # PRESSWARDEN_INTEL_DIR=""
 
+# Targeted database malware scan: candidate rows per source and total value bytes per site.
+# Row values above 1 MiB are not fetched. Reaching a limit reports INCOMPLETE.
+PRESSWARDEN_DB_MAX_ROWS=5000
+PRESSWARDEN_DB_MAX_BYTES=33554432
+
 # Optional vulnerability/provider integrations. Never commit real tokens.
 WPSCAN_API_TOKEN=""
 PRESSWARDEN_WORDFENCE_TOKEN=""
