@@ -58,7 +58,10 @@ PRESSWARDEN_MAX="${PRESSWARDEN_MAX:-60}"
 PRESSWARDEN_INTERACTIVE="${PRESSWARDEN_INTERACTIVE:-1}"
 QUARANTINE="${QUARANTINE:-$PRESSWARDEN_STATE_DIR/quarantine}"
 PRESSWARDEN_EXCLUDE="${PRESSWARDEN_EXCLUDE:-${PRESSWARDEN_EXCLUDE_DOMAINS:-}}"
-mkdir -p "$REPORTS" "$PRESSWARDEN_CACHE_DIR" "$QUARANTINE" 2>/dev/null || true
+# New report directories are private; never chmod existing directories or
+# change the caller's umask (which could affect WordPress repair semantics).
+(umask 077; mkdir -p "$REPORTS") 2>/dev/null || true
+mkdir -p "$PRESSWARDEN_CACHE_DIR" "$QUARANTINE" 2>/dev/null || true
 export LC_ALL=C
 
 if { [ -n "${PRESSWARDEN_FORCE_COLOR:-}" ] || [ -t 1 ] || [ -t 2 ]; } && [ -z "${PRESSWARDEN_NOCOLOR:-}" ] && [ "${TERM:-dumb}" != dumb ]; then
