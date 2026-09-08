@@ -12,7 +12,7 @@
 
 **Fleet-scale WordPress security auditing from the shell.**
 
-![Version](https://img.shields.io/badge/version-1.1.4-2ea44f)
+![Version](https://img.shields.io/badge/version-1.1.5-2ea44f)
 ![Bash](https://img.shields.io/badge/bash-4%2B-4EAA25?logo=gnubash&logoColor=white)
 ![WordPress](https://img.shields.io/badge/WordPress-security-21759B?logo=wordpress&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Linux-FCC624?logo=linux&logoColor=black)
@@ -276,7 +276,9 @@ PressWarden uses WordPress's existing database connection to inspect targeted ar
 
 It looks for high-signal behavior such as stored external script loaders, obfuscated JavaScript, suspicious redirects, database-resident PHP payloads, and privileged persistence.
 
-Stored database payloads are not dumped into normal reports.
+Stored database payloads are not dumped into normal reports. Findings identify the row, not its contents. Database failures and scan limits are reported as **INCOMPLETE**, never as a clean scan.
+
+Widget and builder values are examined separately; unrelated scripts do not combine into malware evidence. See [`docs/DATABASE-SCANNING.md`](docs/DATABASE-SCANNING.md) for limits and WordPress bootstrap considerations.
 
 ### Configuration and hardening
 

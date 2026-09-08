@@ -9,12 +9,12 @@ PW-JS-001	javascript	high	high	behavior	Decoded JavaScript passed to eval or Fun
 PW-JS-002	javascript	high	medium	behavior	Obfuscated browser script loading	js-threat-intel	PressWarden native	docs/DETECTION-QUALITY.md	2026-09-06	2026-09-07
 PW-JS-003	javascript	high	medium	behavior	Hidden remote iframe with decoded event handler	js-threat-intel	PressWarden native	docs/DETECTION-QUALITY.md	2026-09-06	2026-09-07
 PW-JS-004	javascript	high	medium	behavior	Obfuscated browser redirect	js-threat-intel	PressWarden native	docs/DETECTION-QUALITY.md	2026-09-06	2026-09-07
-PW-DB-001	database	critical	high	behavior	Obfuscated external script stored in WordPress data	wp-db-malware	Sucuri research	intel/SOURCES.md	2026-09-06	2026-09-06
-PW-DB-002	database	high	high	behavior	Hidden external iframe stored in WordPress data	wp-db-malware	PressWarden native	intel/SOURCES.md	2026-09-06	2026-09-06
-PW-DB-003	database	review	medium	behavior	Executable JavaScript stored in site-wide option	wp-db-malware	PressWarden native	intel/SOURCES.md	2026-09-06	2026-09-06
-PW-DB-004	database	high	medium	behavior	Suspicious administrator persistence identity	wp-db-malware	Sucuri research	intel/SOURCES.md	2026-09-06	2026-09-06
-PW-DB-005	database	high	medium	behavior	PHP execution payload persisted in WordPress data	wp-db-malware	Sucuri research	https://blog.sucuri.net/2026/06/wordpress-pbn-plugin-drops-dual-webshells-via-database-injection.html	2026-09-06	2026-09-06
-PW-DB-006	database	review	medium	behavior	Encoded redirect/reinfector option persistence	wp-db-malware	Sucuri research	intel/SOURCES.md	2026-09-06	2026-09-06
+PW-DB-001	database	high	high	behavior	Scoped decoded browser behavior stored in WordPress data	wp-db-malware	Sucuri research	intel/SOURCES.md	2026-09-06	2026-09-07
+PW-DB-002	database	review	medium	behavior	Hidden external iframe with same-handler decoded behavior	wp-db-malware	PressWarden native	intel/SOURCES.md	2026-09-06	2026-09-07
+PW-DB-003	database	review	medium	behavior	External script in known site-wide script storage	wp-db-malware	PressWarden native	intel/SOURCES.md	2026-09-06	2026-09-07
+PW-DB-004	database	review	medium	behavior	Administrator role with suspicious persistence identity	wp-db-malware	Sucuri research	intel/SOURCES.md	2026-09-06	2026-09-07
+PW-DB-005	database	review	medium	behavior	Stored PHP execution argument with request or decode evidence	wp-db-malware	Sucuri research	https://blog.sucuri.net/2026/06/wordpress-pbn-plugin-drops-dual-webshells-via-database-injection.html	2026-09-06	2026-09-07
+PW-DB-006	database	review	medium	behavior	Encoded option value with recognized browser behavior	wp-db-malware	Sucuri research	intel/SOURCES.md	2026-09-06	2026-09-07
 PW-CAMP-001	campaign	critical	high	campaign	WP-VCD request/password controller marker	wp-campaign-intel	Wordfence research	https://www.wordfence.com/blog/2019/11/wp-vcd-the-malware-you-install-on-your-own-sites/	2026-09-06	2026-09-06
 PW-CAMP-002	campaign	critical	high	campaign	SocGholish NDSW/NDSJ/NDSX marker	wp-campaign-intel	Sucuri research	https://sucuri.net/reports/2023-hacked-website-report/	2026-09-06	2026-09-06
 PW-CAMP-003	campaign	high	medium	campaign	Balada-style character-code remote script injection	js-threat-intel/wp-db-malware	Sucuri research	intel/SOURCES.md	2026-09-06	2026-09-06

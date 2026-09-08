@@ -1,20 +1,46 @@
 name: Database Quality
 on:
   push:
-    branches: [main, quality/database-evidence-1.1.5]
+    branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
-  source:
+  precision:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - run: git archive --format=tar HEAD > /tmp/presswarden-db-source.tar
-      - uses: actions/upload-artifact@v4
-        with:
-          name: presswarden-db-source
-          path: /tmp/presswarden-db-source.tar
-          retention-days: 1
+      - name: Inert database values and contextual evidence
+        run: php -d memory_limit=64M tests/db-values.php
+      - name: Pagination, resource limits and retained findings
+        run: php -d memory_limit=64M tests/db-scan.php
+      - name: WP-CLI failure, output protocol and privacy
+        run: bash tests/db-runtime.sh
+      - name: PHP 7.4 compatibility
+        run: |
+          docker run --rm --network=none -v "$PWD:/work:ro" -w /work php:7.4-cli php -d memory_limit=64M tests/db-values.php
+          docker run --rm --network=none -v "$PWD:/work:ro" -w /work php:7.4-cli php -d memory_limit=64M tests/db-scan.php
+  mysql:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_DATABASE: presswarden_db_test
+          MYSQL_ROOT_PASSWORD: presswarden-ci-only
+          MYSQL_ROOT_HOST: '%'
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -ppresswarden-ci-only"
+          --health-interval=10s --health-timeout=5s --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+      - name: SELECT-only inspection against real MySQL temporary tables
+        env:
+          PW_TEST_REAL_DB: '1'
+          PW_TEST_DB_PASSWORD: presswarden-ci-only
+        run: php tests/db-mysql.php
