@@ -89,6 +89,8 @@ Usage:
   ./presswarden auto-updates core minor|major|disabled [target]
   ./presswarden auto-updates plugins enable|disable [target]
   ./presswarden auto-updates themes enable|disable [target]
+  ./presswarden wp-settings [target]       WordPress policy dashboard / fleet baseline differences
+  ./presswarden wp-settings set SETTING VALUE [target]  Change supported wp-config policy
   ./presswarden file-mods ACTION [target]  Legacy/advanced status|on|off interface
   ./presswarden config               Show sanitized effective configuration
   ./presswarden config-new           List template options absent from saved config
@@ -99,7 +101,7 @@ Usage:
 Installed user-wide? The same commands also work as: presswarden fast, presswarden full, etc.
 Targets: use a website name (example.com), nested name (example.com/shop), directory, or all.
 Omit the target for the configured fleet. A named site's directory includes discovered nested installs.
-Examples: ./presswarden scan example.com   ./presswarden lock example.com   ./presswarden auto-updates core minor example.com
+Examples: ./presswarden scan example.com   ./presswarden lock example.com   ./presswarden wp-settings example.com
 List recognized names: ./presswarden sites
 Portable installs automatically scan outside the PressWarden program folder.
 EOF
@@ -223,6 +225,22 @@ confirm_auto_update_change() {
   return 1
 }
 
+confirm_wp_setting_change() {
+  local setting="$1" value="$2" root="$3" ans=''
+  if [ "${PRESSWARDEN_INTERACTIVE:-1}" = "0" ]; then return 0; fi
+  if [ -r /dev/tty ] && [ -w /dev/tty ]; then
+    if [ -n "${TARGET_NAME:-}" ]; then
+      printf '\n  Set %s=%s for %s (%s installation(s))? [y/N]: ' "$setting" "$value" "$TARGET_NAME" "${TARGET_COUNT:-1}" > /dev/tty
+    else
+      printf '\n  Set %s=%s for all discovered websites under %s? [y/N]: ' "$setting" "$value" "$root" > /dev/tty
+    fi
+    IFS= read -r ans < /dev/tty || ans=''
+    case "$ans" in y|Y|yes|YES) return 0 ;; *) printf 'Cancelled.\n'; return 1 ;; esac
+  fi
+  printf 'Refusing fleet wp-settings change without an interactive terminal. Set PRESSWARDEN_INTERACTIVE=0 to run intentionally in automation.\n' >&2
+  return 1
+}
+
 cmd="${1:-help}"; shift || true
 case "$cmd" in
   -V|--version|version) printf 'PressWarden %s\n' "$VERSION" ;;
@@ -337,6 +355,36 @@ case "$cmd" in
   lock-status)
     select_target "$@" || exit 2
     exec bash "$PRESSWARDEN_DIR/checks/file-mods.sh" status
+    ;;
+  wp-settings)
+    sub="${1:-status}"
+    if [ "$sub" = status ]; then
+      shift || true
+      [ "$#" -le 1 ] || { printf 'Usage: ./presswarden wp-settings [website|directory|all]\n' >&2; exit 2; }
+      select_target "$@" || exit 2
+      exec bash "$PRESSWARDEN_DIR/checks/wp-settings.sh" status
+    elif [ "$sub" = set ]; then
+      shift || true
+      setting="${1:-}"; value="${2:-}"; target="${3:-}"
+      [ "$#" -ge 2 ] && [ "$#" -le 3 ] || { printf 'Usage: ./presswarden wp-settings set SETTING VALUE [website|directory|all]\n' >&2; exit 2; }
+      case "$setting" in
+        editor|cron|recovery|debug|force-ssl-admin|alternate-cron)
+          case "$value" in enabled|disabled) : ;; *) printf '%s must be enabled or disabled.\n' "$setting" >&2; exit 2 ;; esac ;;
+        environment)
+          case "$value" in production|staging|development|local) : ;; *) printf 'environment must be production, staging, development, or local.\n' >&2; exit 2 ;; esac ;;
+        development)
+          case "$value" in disabled|core|plugin|theme|all) : ;; *) printf 'development must be disabled, core, plugin, theme, or all.\n' >&2; exit 2 ;; esac ;;
+        *) printf 'Supported wp-settings setters: editor, cron, recovery, environment, development, debug, force-ssl-admin, alternate-cron.\n' >&2; exit 2 ;;
+      esac
+      if [ -n "$target" ]; then select_target "$target" || exit 2; else select_target || exit 2; fi
+      confirm_wp_setting_change "$setting" "$value" "$ROOT" || exit 1
+      export PRESSWARDEN_POLICY_APPLY=1 PRESSWARDEN_INTERACTIVE=0
+      exec bash "$PRESSWARDEN_DIR/checks/wp-settings.sh" set "$setting" "$value"
+    else
+      [ "$#" -le 1 ] || { printf 'Usage: ./presswarden wp-settings [website|directory|all]\n' >&2; exit 2; }
+      select_target "$@" || exit 2
+      exec bash "$PRESSWARDEN_DIR/checks/wp-settings.sh" status
+    fi
     ;;
   auto-updates)
     area="${1:-status}"; [ "$#" -gt 0 ] && shift || true

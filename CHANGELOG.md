@@ -2,6 +2,16 @@
 
 All notable changes to PressWarden are documented here.
 
+## 1.1.12 — 2026-09-09
+
+Unified WordPress policy dashboard and fleet baseline differences.
+
+- Add `wp-settings` for a full one-site policy view and a compact fleet baseline with only differing sites. Tied values are reported as MIXED rather than selecting an arbitrary baseline.
+- Replace the separate Fast/Full auto-update inventory step with the unified `wp-settings` check; existing `auto-updates` mutation commands remain available. Policy differences are informational and do not replace dedicated security findings.
+- Collect one allowlisted normalized policy record per site, covering file/editor controls, core/plugin/theme updates, updater blockers, cron/recovery, environment/development, debug/cache, retention/resources and selected configuration posture. Never emit arbitrary wp-config values, credentials, salts, API keys or source bodies.
+- Add confirmed, backed-up and verified setters for editor, cron, Recovery Mode, environment, development mode, debug, FORCE_SSL_ADMIN and alternate cron. Hosting/plugin-sensitive values remain inventory-only.
+- Preserve website-name targeting, exclusions, verified quarantine, baseline semantics, updater recovery, scan progress and detector thresholds.
+
 ## 1.1.11 — 2026-09-09
 
 WordPress automatic-update policy controls and suite-wide progress context.
