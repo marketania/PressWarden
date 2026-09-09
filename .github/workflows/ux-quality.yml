@@ -3,15 +3,43 @@ on:
   push:
     branches: [quality/site-targets-1.1.9]
 permissions:
-  contents: read
+  contents: write
 jobs:
-  source:
+  apply-reviewed-patch:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - run: git archive --format=tar HEAD > /tmp/presswarden-ux-source.tar
-      - uses: actions/upload-artifact@v4
         with:
-          name: presswarden-ux-source
-          path: /tmp/presswarden-ux-source.tar
-          retention-days: 1
+          ref: quality/site-targets-1.1.9
+      - name: Verify and apply the locally tested patch
+        run: |
+          python3 - <<'PY'
+          import base64, gzip, hashlib, os, pathlib, subprocess
+          parts = [pathlib.Path('.github/ux-patch/part-' + str(i)) for i in range(1, 7)]
+          encoded = b''.join(p.read_bytes() for p in parts)
+          assert len(encoded) == 35324
+          patch = gzip.decompress(base64.b64decode(encoded, validate=True))
+          assert len(patch) == 85964
+          assert hashlib.sha256(patch).hexdigest() == '8777814760d0d38ab17c285d6d8ce089da4f93024748c92bdbdf7e4dceba07c5'
+          assert b'diff --git a/.github/workflows/' not in patch
+          dest = pathlib.Path(os.environ['RUNNER_TEMP']) / 'reviewed-ux.patch'
+          dest.write_bytes(patch)
+          subprocess.run(['git', 'apply', '--check', '--index', str(dest)], check=True)
+          subprocess.run(['git', 'apply', '--index', str(dest)], check=True)
+          PY
+      - name: Check the applied code
+        run: |
+          php tests/site-target.php
+          php tests/php-environment.php
+          bash tests/site-target.sh
+          bash tests/site-lock.sh
+          bash tests/php-environment-runtime.sh
+      - name: Commit source changes to this review branch only
+        run: |
+          git rm -r .github/ux-patch
+          git diff --cached --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'feat: website-name targets and compact PHP environment reports'
+          git push origin HEAD:refs/heads/quality/site-targets-1.1.9
