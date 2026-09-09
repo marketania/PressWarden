@@ -1,0 +1,17 @@
+name: UX Quality
+on:
+  push:
+    branches: [quality/site-targets-1.1.9]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: git archive --format=tar HEAD > /tmp/presswarden-ux-source.tar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: presswarden-ux-source
+          path: /tmp/presswarden-ux-source.tar
+          retention-days: 1
