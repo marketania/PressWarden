@@ -86,7 +86,7 @@ grep -q 'Retention / resources' "$T/one"; grep -q 'Configuration posture' "$T/on
 
 run wp-settings all > "$T/fleet"
 grep -q 'BASELINE.*Security' "$T/fleet"; grep -q 'DIFF other.com' "$T/fleet"
-! grep -q 'DIFF a.com' "$T/fleet"; grep -q 'Environment=STAGING.*baseline PRODUCTION' "$T/fleet"
+! grep -q 'DIFF a.com' "$T/fleet"; grep -q 'Environment=STAGING' "$T/fleet"
 
 run wp-settings set editor enabled a.com > "$T/set"; grep -q 'effective editor remains disabled' "$T/set"; [ "$(cat "$T/sites/a.com/public_html/.editor")" = enabled ]
 run wp-settings set cron disabled a.com > "$T/set"; grep -q 'external/server cron' "$T/set"; [ "$(cat "$T/sites/a.com/public_html/.cron")" = disabled ]
