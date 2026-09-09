@@ -15,16 +15,26 @@ main() {
     printf '    INCOMPLETE: no validated WordPress installations found; no PHP scan performed.\n' >&2
     return 2
   fi
-  local candidates results errors s rc=0 kind rule finding alert review id title stats
+  local candidates results errors s rc=0 kind rule finding alert review id title stats roots_visited=0
   candidates=$(tmpf); results=$(tmpf); errors=$(tmpf)
   : > "$candidates"; : > "$results"; : > "$errors"
+  pw_progress_init
   for s in "${TREE_ROOTS[@]}"; do
+    if [ "${PW_PROGRESS_ACTIVE:-0}" = 1 ]; then
+      pw_progress_collect "$roots_visited" "${#TREE_ROOTS[@]}" "$(site_label_from_root "$s")"
+    fi
     find "$s" -xdev \
       \( -type d \( -name vendor -o -name node_modules -o -name cache -o -name caches -o -name uploads -o -name wflogs -o -name .git -o -name .private \) -prune \) -o \
       \( -type f \( -name '*.php' -o -name '*.phtml' \) -size -5242881c -print0 \) \
       >> "$candidates" 2>> "$errors" || rc=2
+    roots_visited=$((roots_visited+1))
   done
+  PW_PROGRESS_LIST_COMPLETE=1; [ "$rc" -eq 0 ] || PW_PROGRESS_LIST_COMPLETE=0
+  export PW_PROGRESS_LIST_COMPLETE
+  pw_progress_count_paths "$candidates"
+  pw_progress_clear
   php "$PRESSWARDEN_DIR/lib/php-threat-cli.php" < "$candidates" > "$results" 2>> "$errors" || rc=2
+  pw_progress_end
 
   stats=$(grep '^PHP ANALYSIS:' "$errors" | tail -1)
   [ -z "$stats" ] || note "$stats"

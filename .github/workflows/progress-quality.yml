@@ -1,0 +1,28 @@
+name: Progress Quality
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  terminal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Optional progress without a terminal
+        run: php tests/progress.php
+      - name: Real terminal rendering, safe counts and report isolation
+        run: python3 tests/progress-terminal.py
+      - name: Existing PHP, JS and database failure contracts
+        run: |
+          bash tests/php-intel-runtime.sh
+          bash tests/runtime-reliability.sh
+          bash tests/db-runtime.sh
+      - name: PHP 7.4 progress compatibility
+        run: docker run --rm --network=none -v "$PWD:/work:ro" -w /work php:7.4-cli php tests/progress.php

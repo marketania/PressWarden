@@ -1,6 +1,8 @@
 <?php
 /** PressWarden read-only JS validator. Input: NUL-delimited absolute paths. */
 require __DIR__.'/js-flow.php';
+require __DIR__.'/progress.php';
+$progress = new PressWardenProgress('JavaScript'); $processed = 0;
 $scanner = new PressWardenJsFlow(); $errors = 0;
 $cache = []; $candidates = 0; $analyses = 0; $reused = 0;
 function pw_js_display_path($path) {
@@ -65,7 +67,10 @@ while (($path = stream_get_line(STDIN, 1048576, "\0")) !== false) {
         ++$errors;
         // Escape filenames, omit source bodies, decoded payloads, and URL secrets.
         fwrite(STDERR, 'INCOMPLETE: '.pw_js_display_path($path).': '.$e->getMessage()."\n");
+    } finally {
+        ++$processed; $progress->advance($processed);
     }
 }
+$progress->finish($processed, $errors);
 fprintf(STDERR, "JS ANALYSIS: %d decoder-bearing files; %d unique analyses; %d identical-file results reused\n", $candidates, $analyses, $reused);
 exit($errors > 0 ? 2 : 0);

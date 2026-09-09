@@ -1,6 +1,8 @@
 <?php
 /** Read-only PHP intelligence validator. Input: NUL-delimited local paths. */
 require __DIR__.'/php-flow.php';
+require __DIR__.'/progress.php';
+$progress = new PressWardenProgress('PHP'); $processed = 0;
 $scanner = new PressWardenPhpFlow(); $errors = $candidates = $analyses = $reused = 0; $cache = [];
 function pw_php_display_path($path) {
     return preg_replace_callback('~[\x00-\x1f\x7f]~', function ($m) { return sprintf('\\x%02X',ord($m[0])); },$path);
@@ -26,7 +28,10 @@ while (($path = stream_get_line(STDIN, 1048576, "\0")) !== false) {
         // Parser/runtime exception messages can quote secrets from source. Do
         // not log them; distinguish an incomplete analysis without source text.
         fwrite(STDERR,'INCOMPLETE: '.pw_php_display_path($path).': PHP read or analysis failed; no clean verdict'."\n");
+    } finally {
+        ++$processed; $progress->advance($processed);
     }
 }
+$progress->finish($processed, $errors);
 fprintf(STDERR,"PHP ANALYSIS: %d candidate files; %d unique analyses; %d identical-file results reused\n",$candidates,$analyses,$reused);
 exit($errors ? 2 : 0);
