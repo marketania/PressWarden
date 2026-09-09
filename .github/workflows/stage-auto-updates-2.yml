@@ -31,8 +31,6 @@ jobs:
           code='\n'.join(lines)+'\n'
           compile(code,'stage-auto-updates.py','exec')
           exec(compile(code,'stage-auto-updates.py','exec'),{'__name__':'__main__'})
-          # The reconstructed script removes the original invalid staging workflow.
-          Path('.github/workflows/stage-auto-updates-2.yml').unlink()
           PY
           chmod +x checks/wp-auto-updates.sh tests/wp-auto-updates.sh tests/suite-progress.sh
       - name: Validate staged source
@@ -41,9 +39,11 @@ jobs:
           bash tests/suite-progress.sh
           bash -n presswarden lib/_runner.sh lib/ui.sh checks/wp-auto-updates.sh suites/fast.sh suites/full.sh
           bash tests/smoke.sh
-      - name: Commit source changes to review branch
+      - name: Commit source changes only
         run: |
-          git add -A
+          rm -f .github/workflows/auto-update-quality.yml
+          git checkout -- .github/workflows/stage-auto-updates.yml .github/workflows/stage-auto-updates-2.yml
+          git add -A -- . ':!.github/workflows'
           git diff --cached --check
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
