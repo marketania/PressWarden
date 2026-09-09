@@ -85,6 +85,10 @@ Usage:
   ./presswarden lock [target]          Lock WordPress file modifications across discovered sites
   ./presswarden unlock [target]        Unlock WordPress file modifications for updates/maintenance
   ./presswarden lock-status [target]   Show DISALLOW_FILE_MODS status across discovered sites
+  ./presswarden auto-updates status [target]  Show core/plugin/theme auto-update policy
+  ./presswarden auto-updates core minor|major|disabled [target]
+  ./presswarden auto-updates plugins enable|disable [target]
+  ./presswarden auto-updates themes enable|disable [target]
   ./presswarden file-mods ACTION [target]  Legacy/advanced status|on|off interface
   ./presswarden config               Show sanitized effective configuration
   ./presswarden config-new           List template options absent from saved config
@@ -95,7 +99,7 @@ Usage:
 Installed user-wide? The same commands also work as: presswarden fast, presswarden full, etc.
 Targets: use a website name (example.com), nested name (example.com/shop), directory, or all.
 Omit the target for the configured fleet. A named site's directory includes discovered nested installs.
-Examples: ./presswarden scan example.com   ./presswarden lock example.com   ./presswarden unlock all
+Examples: ./presswarden scan example.com   ./presswarden lock example.com   ./presswarden auto-updates core minor example.com
 List recognized names: ./presswarden sites
 Portable installs automatically scan outside the PressWarden program folder.
 EOF
@@ -200,6 +204,22 @@ confirm_fleet_file_mods() {
     case "$ans" in y|Y|yes|YES) return 0 ;; *) printf 'Cancelled.\n'; return 1 ;; esac
   fi
   printf 'Refusing fleet %s without an interactive terminal. Set PRESSWARDEN_INTERACTIVE=0 to run intentionally in automation.\n' "${verb,,}" >&2
+  return 1
+}
+
+confirm_auto_update_change() {
+  local area="$1" value="$2" root="$3" ans=''
+  if [ "${PRESSWARDEN_INTERACTIVE:-1}" = "0" ]; then return 0; fi
+  if [ -r /dev/tty ] && [ -w /dev/tty ]; then
+    if [ -n "${TARGET_NAME:-}" ]; then
+      printf '\n  Set %s auto-updates to %s for %s (%s installation(s))? [y/N]: ' "$area" "$value" "$TARGET_NAME" "${TARGET_COUNT:-1}" > /dev/tty
+    else
+      printf '\n  Set %s auto-updates to %s for all discovered websites under %s? [y/N]: ' "$area" "$value" "$root" > /dev/tty
+    fi
+    IFS= read -r ans < /dev/tty || ans=''
+    case "$ans" in y|Y|yes|YES) return 0 ;; *) printf 'Cancelled.\n'; return 1 ;; esac
+  fi
+  printf 'Refusing fleet auto-update change without an interactive terminal. Set PRESSWARDEN_INTERACTIVE=0 to run intentionally in automation.\n' >&2
   return 1
 }
 
@@ -317,6 +337,35 @@ case "$cmd" in
   lock-status)
     select_target "$@" || exit 2
     exec bash "$PRESSWARDEN_DIR/checks/file-mods.sh" status
+    ;;
+  auto-updates)
+    area="${1:-status}"; [ "$#" -gt 0 ] && shift || true
+    case "$area" in
+      status)
+        [ "$#" -le 1 ] || { printf 'Usage: ./presswarden auto-updates status [website|directory|all]\n' >&2; exit 2; }
+        select_target "$@" || exit 2
+        exec bash "$PRESSWARDEN_DIR/checks/wp-auto-updates.sh" status
+        ;;
+      core)
+        value="${1:-}"; [ "$#" -gt 0 ] && shift || true
+        case "$value" in minor|major|disabled) : ;; disable) value=disabled ;; *) printf 'Core policy must be minor, major, or disabled.\n' >&2; exit 2 ;; esac
+        [ "$#" -le 1 ] || { printf 'Usage: ./presswarden auto-updates core minor|major|disabled [website|directory|all]\n' >&2; exit 2; }
+        select_target "$@" || exit 2
+        confirm_auto_update_change CORE "$value" "$ROOT" || exit 1
+        export PRESSWARDEN_INTERACTIVE=0
+        exec bash "$PRESSWARDEN_DIR/checks/wp-auto-updates.sh" core "$value"
+        ;;
+      plugins|themes)
+        value="${1:-}"; [ "$#" -gt 0 ] && shift || true
+        case "$value" in enable|disable) : ;; *) printf '%s policy must be enable or disable.\n' "$area" >&2; exit 2 ;; esac
+        [ "$#" -le 1 ] || { printf 'Usage: ./presswarden auto-updates %s enable|disable [website|directory|all]\n' "$area" >&2; exit 2; }
+        select_target "$@" || exit 2
+        confirm_auto_update_change "${area^^}" "$value" "$ROOT" || exit 1
+        export PRESSWARDEN_INTERACTIVE=0
+        exec bash "$PRESSWARDEN_DIR/checks/wp-auto-updates.sh" "$area" "$value"
+        ;;
+      *) printf 'Use auto-updates status, core, plugins, or themes.\n' >&2; exit 2 ;;
+    esac
     ;;
   file-mods)
     action="${1:-status}"; [ "$#" -gt 0 ] && shift || true

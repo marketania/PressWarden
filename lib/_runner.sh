@@ -37,7 +37,7 @@ uploads_deep_check_wanted() {
 }
 
 _run_checks() {
-  local c rc n out seen="" start elapsed force="" total_checks=0 current_check=0 check_path
+  local c rc n out seen="" start elapsed force="" total_checks=0 current_check=0 check_path completed_before suite_percent
   local -a pipeline_status
   [ -n "$C" ] && force=1
   total_checks=$(printf '%s\n' $CHECKS | sort -u | grep -c .)
@@ -63,19 +63,21 @@ _run_checks() {
   for c in $CHECKS; do
     case " $seen " in *" $c "*) continue ;; esac
     seen="$seen $c"; current_check=$((current_check+1)); check_path="$PRESSWARDEN_DIR/checks/$c.sh"
+    completed_before=$((current_check-1)); suite_percent=$((completed_before*100/total_checks))
+    export PW_SUITE_CURRENT="$current_check" PW_SUITE_TOTAL="$total_checks" PW_SUITE_COMPLETED="$completed_before" PW_SUITE_PERCENT="$suite_percent"
     if [ "$c" = "wp-access" ] && ! admin_check_wanted; then
-      printf '\n%s%s▶ SKIP%s %s[%s/%s]%s  %s%s%s  %s(administrator checks skipped)%s\n' "$B" "$Y" "$X" "$B" "$current_check" "$total_checks" "$X" "$B" "$c" "$X" "$D" "$X"
+      printf '\n%s%s▶ SKIP%s %s[%s/%s]%s  %s%s%s  %s(administrator checks skipped • suite %s%% complete)%s\n' "$B" "$Y" "$X" "$B" "$current_check" "$total_checks" "$X" "$B" "$c" "$X" "$D" "$suite_percent" "$X"
       printf '%s|0|skipped|0\n' "$c" >> "$RES" || return 2; continue
     fi
     if [ "$c" = "wp-uploads-deep" ] && ! uploads_deep_check_wanted; then
-      printf '\n%s%s▶ SKIP%s %s[%s/%s]%s  %s%s%s  %s(slow image-content scan skipped)%s\n' "$B" "$Y" "$X" "$B" "$current_check" "$total_checks" "$X" "$B" "$c" "$X" "$D" "$X"
+      printf '\n%s%s▶ SKIP%s %s[%s/%s]%s  %s%s%s  %s(slow image-content scan skipped • suite %s%% complete)%s\n' "$B" "$Y" "$X" "$B" "$current_check" "$total_checks" "$X" "$B" "$c" "$X" "$D" "$suite_percent" "$X"
       printf '%s|0|skipped|0\n' "$c" >> "$RES" || return 2; continue
     fi
     if [ ! -r "$check_path" ]; then
-      printf '\n%s%s▶ RUN%s  %s[%s/%s]%s  %s%s%s  %s(missing/unreadable)%s\n' "$B" "$BL" "$X" "$B" "$current_check" "$total_checks" "$X" "$B" "$c" "$X" "$Y" "$X"
+      printf '\n%s%s▶ RUN%s  %s[%s/%s]%s  %s%s%s  %s(missing/unreadable • suite %s%% complete)%s\n' "$B" "$BL" "$X" "$B" "$current_check" "$total_checks" "$X" "$B" "$c" "$X" "$Y" "$suite_percent" "$X"
       printf '%s|-|missing|0\n' "$c" >> "$RES" || return 2; continue
     fi
-    printf '\n%s%s▶ RUN%s  %s[%s/%s]%s  %s%s%s\n' "$B" "$BL" "$X" "$B" "$current_check" "$total_checks" "$X" "$B" "$c" "$X"
+    printf '\n%s%s▶ RUN%s  %s[%s/%s]%s  %s%s%s  %s(suite %s%% complete)%s\n' "$B" "$BL" "$X" "$B" "$current_check" "$total_checks" "$X" "$B" "$c" "$X" "$D" "$suite_percent" "$X"
     start=$(date +%s); out=$(tmpf)
     if [ -n "$force" ]; then
       PRESSWARDEN_FORCE_COLOR=1 bash "$check_path" 2>&1 | tee "$out"

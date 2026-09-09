@@ -38,6 +38,7 @@ banner() {
   printf '\n%s%s' "$B" "$C"; _repeat '═' "$W"; printf '%s\n' "$X"
   printf '%s%s  PRESSWARDEN SECURITY AUDIT%s  %sv%s%s\n' "$B" "$C" "$X" "$D" "$PRESSWARDEN_VERSION" "$X"
   printf '  %s%-11s%s %s%s%s\n' "$D" "CHECK" "$X" "$B" "$NAME" "$X"
+  if [ -n "${PW_SUITE_TOTAL:-}" ]; then _meta_field 11 "PROGRESS" "${PW_SUITE_PERCENT:-0}% suite complete • step ${PW_SUITE_CURRENT:-?}/${PW_SUITE_TOTAL}"; fi
   [ -z "${PW_REPORT_ID:-}" ] || _meta_field 11 "RUN" "$PW_REPORT_ID"
   _meta_field 11 "PURPOSE" "$DESC"; _meta_field 11 "CHECKS" "$SCAN_DOES"; _meta_field 11 "WHY" "$SCAN_WHY"
   printf '  %s%-11s%s %s\n' "$D" "ROOT" "$X" "$ROOT"
