@@ -1,0 +1,20 @@
+name: Progress Quality
+on:
+  push:
+    branches: [quality/live-progress-1.1.10]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: git archive --format=tar HEAD > "$RUNNER_TEMP/presswarden-source.tar"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: presswarden-progress-source
+          path: ${{ runner.temp }}/presswarden-source.tar
+          retention-days: 1
