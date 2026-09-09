@@ -12,7 +12,7 @@
 
 **Fleet-scale WordPress security auditing from the shell.**
 
-![Version](https://img.shields.io/badge/version-1.1.6-2ea44f)
+![Version](https://img.shields.io/badge/version-1.1.7-2ea44f)
 ![Bash](https://img.shields.io/badge/bash-4%2B-4EAA25?logo=gnubash&logoColor=white)
 ![WordPress](https://img.shields.io/badge/WordPress-security-21759B?logo=wordpress&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Linux-FCC624?logo=linux&logoColor=black)
@@ -535,7 +535,7 @@ PressWarden does not attempt to repair these tables or count them as unhealthy.
 PressWarden is designed to detect first and remediate carefully.
 
 - file-removal actions are interactive
-- files are copied to quarantine before deletion
+- approved generic file actions verify quarantine copies against SHA-256 before removal
 - critical WordPress files are protected from generic deletion prompts
 - core repair verifies official replacements
 - fleet lock/unlock backs up `wp-config.php`
@@ -552,6 +552,19 @@ Quarantine, baselines, and reports normally live under:
 ```text
 PressWarden/var/
 ```
+
+---
+
+## Check quarantined evidence
+
+Approved file removals now verify their quarantine copies before deleting originals. Each action has a unique private case; failed or interrupted actions retain available evidence.
+
+```bash
+./presswarden quarantine list
+./presswarden quarantine verify CASE_ID
+```
+
+Verification checks stored hashes, not whether a file is safe. There is no automatic restore or purge, and older quarantine folders stay untouched. See [verified quarantine](docs/QUARANTINE.md) for scope, limits and recovery guidance.
 
 ---
 

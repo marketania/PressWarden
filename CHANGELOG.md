@@ -2,6 +2,19 @@
 
 All notable changes to PressWarden are documented here.
 
+## 1.1.7 — 2026-09-08
+
+Verified quarantine and conservative action safety.
+
+- Snapshot selected targets before interactive approval, then require matching source identities/hashes and verified quarantine copies before removal. No automatic remediation or unverified fallback.
+- Allocate unique private cases with manifests, inert `.bin` copies, SHA-256 records and per-entry outcomes. Retain partial evidence after interruption or failure; never overwrite or migrate older quarantine folders.
+- Capture symlinks as link-target text without following their referents. Revalidate protected/excluded paths, scanner state and ancestors. Refuse special files, hard links, unsafe paths, out-of-scope targets and oversized selections.
+- Preserve narrowly scoped VCS/disposable-metadata directory actions using checked leaf removal and empty-directory removal instead of recursive force deletion. Unexpected new entries remain untouched.
+- Propagate failed approved actions as INCOMPLETE (2), including partial removals. Disable further generic actions after a quarantine/reporting failure.
+- Add read-only `quarantine list` and `quarantine verify CASE_ID`; separate stored-copy verification from recorded removal status. No restore/purge command or WordPress bootstrap is introduced.
+- Add copy/source mutation, corruption, manifest/journal failure, protected-scope, concurrency, interruption, privacy, limits and PHP 7.4 regressions.
+- Malware rules, thresholds, existing suite membership, updater behavior, private config, baselines and historical reports are unchanged. Baseline/discovery rewrites are intentionally separate.
+
 ## 1.1.6 — 2026-09-07
 
 Conservative reporting and focused-recheck update.

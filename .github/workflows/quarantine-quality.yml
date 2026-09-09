@@ -1,20 +1,24 @@
 name: Quarantine Quality
 on:
   push:
-    branches: [quality/verified-quarantine-1.1.7]
+    branches: [main]
+  pull_request:
+    branches: [main]
 permissions:
   contents: read
 jobs:
-  snapshot:
+  safety:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Capture tracked source for isolated tests
-        run: git archive --format=tar.gz HEAD > /tmp/presswarden-quarantine-source.tar.gz
-      - uses: actions/upload-artifact@v4
-        with:
-          name: presswarden-quarantine-source
-          path: /tmp/presswarden-quarantine-source.tar.gz
-          retention-days: 1
+      - name: Verified copies, changed originals, boundaries and partial failures
+        run: php -d memory_limit=64M tests/quarantine.php
+      - name: Approved actions, read-only inspection, privacy and concurrency
+        run: bash tests/quarantine-runtime.sh
+      - name: Interruption before and after source removal
+        run: bash tests/quarantine-interruption.sh
+      - name: PHP 7.4 quarantine compatibility
+        run: docker run --rm --network=none -v "$PWD:/work:ro" -w /work php:7.4-cli php -d memory_limit=64M tests/quarantine.php

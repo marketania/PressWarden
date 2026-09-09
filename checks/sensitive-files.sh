@@ -50,15 +50,17 @@ _prompt_cleanup_action() {
   [ "$PRESSWARDEN_INTERACTIVE" != 0 ] || { printf '    %sℹ%s  non-interactive session — cleanup skipped\n' "$C" "$X"; return 0; }
   [ -t 0 ] || { printf '    %sℹ%s  non-interactive session — cleanup skipped\n' "$C" "$X"; return 0; }
 
+  _pw_quarantine_prepare "$list" cleanup || return 2
   printf '    %s[c]%s cleanup + quarantine   %s[s]%s skip %s(default)%s : ' "$B$R" "$X" "$B$G" "$X" "$D" "$X"
   IFS= read -r ans || ans='s'
   case "$ans" in
     c|C|clean|cleanup|CLEAN|CLEANUP)
       printf '    %sℹ%s  backing up cleanup candidates to quarantine before removal...\n' "$C" "$X"
-      _quarantine_delete "$list" || true
+      _quarantine_delete "$list" "$PW_Q_WORK/plan.json" cleanup || true
       ;;
     *) printf '    %s%s↷ SKIPPED%s  no cleanup files changed\n' "$B" "$Y" "$X" ;;
   esac
+  _pw_quarantine_discard_plan
 }
 
 main() {
