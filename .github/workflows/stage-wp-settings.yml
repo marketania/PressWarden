@@ -13,21 +13,14 @@ jobs:
         with:
           ref: quality/wp-settings-1.1.12
       - name: Integrate CLI and changelog
-        run: |
-          python3 .github/stage-wp-settings.py
-          python3 - <<'PY'
-          from pathlib import Path
-          p=Path('tests/wp-settings.sh'); s=p.read_text()
-          old="! grep -q 'DIFF a.com' \"$T/fleet\"; grep -q 'Environment=STAGING.*baseline PRODUCTION' \"$T/fleet\""
-          new="! grep -q 'DIFF a.com' \"$T/fleet\"; grep -q 'Environment=STAGING' \"$T/fleet\"; grep -q 'baseline PRODUCTION' \"$T/fleet\""
-          assert old in s; p.write_text(s.replace(old,new,1))
-          PY
+        run: python3 .github/stage-wp-settings.py
       - name: Validate new policy layer
         run: |
           bash -n presswarden checks/wp-settings.sh suites/fast.sh suites/full.sh
           php -l lib/wp-policy-runtime.php
           php -l lib/wp-policy-summary.php
           php tests/wp-policy-runtime.php
+          bash tests/wp-policy-summary.sh
           bash -x tests/wp-settings.sh
           bash tests/wp-auto-updates.sh
           bash tests/site-target.sh
@@ -35,7 +28,7 @@ jobs:
       - name: Commit source integration only
         run: |
           git rm .github/stage-wp-settings.py
-          git add presswarden CHANGELOG.md tests/wp-settings.sh
+          git add presswarden CHANGELOG.md
           git diff --cached --check
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
