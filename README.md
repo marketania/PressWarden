@@ -12,7 +12,7 @@
 
 **Fleet-scale WordPress security auditing from the shell.**
 
-![Version](https://img.shields.io/badge/version-1.1.9-2ea44f)
+![Version](https://img.shields.io/badge/version-1.1.10-2ea44f)
 ![Bash](https://img.shields.io/badge/bash-4%2B-4EAA25?logo=gnubash&logoColor=white)
 ![WordPress](https://img.shields.io/badge/WordPress-security-21759B?logo=wordpress&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Linux-FCC624?logo=linux&logoColor=black)
@@ -154,6 +154,8 @@ Run just the existing PHP, JavaScript, or database threat-intelligence check:
 ```
 
 The website name is optional. These commands reuse discovery, exclusions, and reports without refreshing feeds, offering file removal, or running database maintenance. They cover only the selected intelligence layer—not a complete security audit. Database inspection still loads WordPress through WP-CLI. Use `./presswarden inspect help` for scope details.
+
+Long PHP/JavaScript checks now show a live file percentage; database inspection shows sites processed. The terminal line stays separate from saved reports. Disable with `PRESSWARDEN_PROGRESS=0`. See [progress details](docs/PROGRESS.md).
 
 ---
 

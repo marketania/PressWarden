@@ -17,6 +17,8 @@ PRESSWARDEN_SITE_ALIASES_FILE=""
 PRESSWARDEN_INTERACTIVE=1
 PRESSWARDEN_ADMINS_CHECK=""
 PRESSWARDEN_OUTPUT_JSON=1
+# Long PHP/JS/DB checks: auto=terminal progress, 0=off, 1=request available terminal.
+PRESSWARDEN_PROGRESS=auto
 # Maximum baseline changes printed to the terminal. Full TSV diff is still saved to reports.
 PRESSWARDEN_BASELINE_MAX_CHANGES=100
 # Slow image-extension PHP scan in FULL: empty=ask, 1=always run, 0=always skip.

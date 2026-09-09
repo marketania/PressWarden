@@ -2,6 +2,16 @@
 
 All notable changes to PressWarden are documented here.
 
+## 1.1.10 — 2026-09-09
+
+Visible progress for quiet intelligence checks.
+
+- Show file-list collection and real processed-file percentages during PHP/JavaScript intelligence; show sites attempted/current site during database inspection. Reuse existing path lists and selected sites, without extra directory scans, source reads, queries or API requests.
+- Refresh a bounded terminal-only line at most once every two seconds between work units. Keep transient output out of saved reports, evidence protocols and JSON. Sanitize site labels and retain existing logging, verdict, cache, exclusion and remediation semantics.
+- Enable progress automatically in supported terminals; add optional `PRESSWARDEN_PROGRESS=0` to disable. Missing/restricted terminals, cron and ordinary nonterminal redirects remain quiet. No runtime Python, background monitors, process substitution or new dependencies for existing non-PHP workflows.
+- Do not invent time estimates, row percentages or whole-suite time completion. Partial discovery/analysis cannot produce a successful PHP/JS progress completion. Other checks retain their existing output.
+- Add pseudo-terminal, throttling, NUL-path count, redirection, disabled/dependency-limited display, failed analysis and unchanged report/verdict tests, plus PHP 7.4 compatibility. Private config, baselines, quarantine, website-name commands and branding remain unchanged.
+
 ## 1.1.9 — 2026-09-09
 
 Website-name commands and compact PHP environment reporting.
