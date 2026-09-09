@@ -2,6 +2,19 @@
 
 All notable changes to PressWarden are documented here.
 
+## 1.1.8 — 2026-09-09
+
+Complete-or-refuse security baselines.
+
+- Record per-site file/plugin/theme/administrator/cron coverage, capture policy and snapshot hashes. Failed traversal, hashing, changed file identities, invalid inventories or failed writes cannot activate a partial baseline or produce false removal deltas.
+- Refresh discovery for baseline captures and compare only matching site sets, exclusions, policy and captured categories. Missing sites and lost WP-CLI availability return INCOMPLETE (2), not mass removal findings. File-only baselines remain usable without WP-CLI or PHP; previously captured runtime state cannot be silently downgraded.
+- Validate WP-CLI CSV headers, fields, states and resource limits without executing input or forwarding raw diagnostics. Preserve quoted commas and compare duplicate cron hooks using sorted recurrence sets rather than an arbitrary last row.
+- Keep nested-site ownership separate and prune excluded sites/scanner state from parent captures. Use NUL-delimited candidate paths and refuse unrepresentable control-character paths rather than silently dropping them.
+- Serialize baseline readers/writers with an exclusive lock, stage private snapshots, preserve old generations in unique history directories, and restore the previous generation after failed activation when possible. Retain evidence and the lock if recovery is unconfirmed.
+- Publish unique private change TSV reports without replacing history. Apply the same coverage gate to incident baseline checks and fleet correlation; run the correlate helper through Bash on source checkouts too.
+- Legacy snapshots remain untouched until explicit recreation, when they are archived. Their previously unrecorded coverage is unknown, not retroactively certified. No automatic migration, deletion or acceptance of changed state.
+- Add CSV, coverage-loss, scope/exclusion, mutation, concurrent operation, activation/rollback, interruption, report preservation, permissions and PHP 7.4 tests. Existing detection, quarantine, updater, private config and other scan suites are unchanged.
+
 ## 1.1.7 — 2026-09-08
 
 Verified quarantine and conservative action safety.

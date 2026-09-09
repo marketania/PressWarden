@@ -7,36 +7,25 @@ PRESSWARDEN_DIR="${PRESSWARDEN_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 # shellcheck source=lib/baseline.sh
 . "$PRESSWARDEN_DIR/lib/baseline.sh"
 
-main() {
-  local scope current capture diff findings action type site key newv oldv label
+main() (
+  local scope current capture diff findings action type site key newv oldv label row
   banner
   sec "Changes since baseline" "review-only • no automatic remediation"
 
   scope=$(_pw_baseline_scope_dir)
   current="$scope/current"
-  if [ ! -s "$current/manifest.tsv" ] || [ ! -s "$current/meta.tsv" ]; then
+  if [ ! -e "$current" ] && [ ! -L "$current" ] && [ ! -e "$scope/.baseline.lock" ]; then
     note "No baseline exists for this scan root; incident scanning will continue without change history."
     note "Create one after validating a known-good state: ./presswarden baseline create [path]"
     finish
     return
   fi
 
-  if [ "$(_pw_meta_value "$current/meta.tsv" root)" != "$ROOT" ]; then
-    note "Saved baseline belongs to a different scan root; change comparison skipped."
-    finish
-    return
-  fi
-
-  capture="$scope/.incident-compare.$$"
-  diff=$(tmpf)
-  findings=$(tmpf)
-  rm -rf "$capture"; mkdir -p "$capture" || die "cannot create baseline comparison capture"
-  : > "$findings"
-
-  _pw_baseline_capture "$capture"
-  _pw_baseline_build_diff "$current/manifest.tsv" "$capture/manifest.tsv" "$diff"
-
-  while IFS=$'\t' read -r action type site key newv oldv; do
+  _pw_baseline_prepare_comparison || return 2
+  capture="$PW_BASELINE_CAPTURE"; diff="$PW_BASELINE_DIFF"
+  findings="$PW_BASELINE_WORK/findings"; : > "$findings" || return 2
+  while IFS= read -r row; do
+    IFS=$'\034' read -r action type site key newv oldv <<< "${row//$'\t'/$'\034'}"
     [ -n "$action" ] || continue
     case "$type:$action" in
       F:ADD) label='NEW FILE' ;;
@@ -59,19 +48,19 @@ main() {
     case "$type" in
       P|T|C)
         if [ "$action" = CHANGE ]; then
-          printf '%s  %s  ›  %s  (%s -> %s)\n' "$label" "$site" "$key" "$oldv" "$newv" >> "$findings"
+          printf '%s  %s  ›  %s  (%s -> %s)\n' "$label" "$site" "$key" "$oldv" "$newv" >> "$findings" || return 2
         else
-          printf '%s  %s  ›  %s\n' "$label" "$site" "$key" >> "$findings"
+          printf '%s  %s  ›  %s\n' "$label" "$site" "$key" >> "$findings" || return 2
         fi
         ;;
-      *) printf '%s  %s  ›  %s\n' "$label" "$site" "$key" >> "$findings" ;;
+      *) printf '%s  %s  ›  %s\n' "$label" "$site" "$key" >> "$findings" || return 2 ;;
     esac
-  done < "$diff"
+  done < "$diff" || return 2
 
   rm -rf "$capture"; rm -f "$diff"
   report "$findings" review "no changes since the accepted baseline" noaction
   note "Baseline changes are context signals only; correlate them with integrity, malware, account, and persistence findings before remediation."
   finish
-}
+)
 
 run_logged baseline-changes

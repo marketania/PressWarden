@@ -12,7 +12,7 @@
 
 **Fleet-scale WordPress security auditing from the shell.**
 
-![Version](https://img.shields.io/badge/version-1.1.7-2ea44f)
+![Version](https://img.shields.io/badge/version-1.1.8-2ea44f)
 ![Bash](https://img.shields.io/badge/bash-4%2B-4EAA25?logo=gnubash&logoColor=white)
 ![WordPress](https://img.shields.io/badge/WordPress-security-21759B?logo=wordpress&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Linux-FCC624?logo=linux&logoColor=black)
@@ -228,7 +228,9 @@ Useful baseline commands:
 ./presswarden baseline diff
 ```
 
-Creating a new baseline preserves the previous one locally for future history and reinfection workflows.
+Creating a new baseline preserves the previous one locally for future history and reinfection workflows. Failed captures never replace it. Comparisons require matching coverage: a failed inventory or missing site is **INCOMPLETE**, not a removal finding.
+
+Baselines from before 1.1.8 have unknown coverage. After reviewing the current sites, explicitly recreate once to enable the safer comparisons; your older snapshot is archived. See [baseline coverage and recovery](docs/BASELINES.md).
 
 ---
 

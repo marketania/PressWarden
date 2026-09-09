@@ -225,6 +225,7 @@ case "$cmd" in
     ;;
   baseline)
     action="${1:-status}"; [ "$#" -gt 0 ] && shift || true
+    [ "$#" -le 1 ] || { printf 'Usage: ./presswarden baseline create|status|diff [path]\n' >&2; exit 2; }
     ROOT=$(resolve_root "${1:-}"); export ROOT PRESSWARDEN_DIR
     # shellcheck disable=SC1090
     . "$PRESSWARDEN_DIR/lib/baseline.sh"
@@ -236,6 +237,7 @@ case "$cmd" in
     esac
     ;;
   changes)
+    [ "$#" -le 1 ] || { printf 'Usage: ./presswarden changes [path]\n' >&2; exit 2; }
     ROOT=$(resolve_root "${1:-}"); export ROOT PRESSWARDEN_DIR
     # shellcheck disable=SC1090
     . "$PRESSWARDEN_DIR/lib/baseline.sh"
@@ -243,7 +245,7 @@ case "$cmd" in
     ;;
   correlate)
     ROOT=$(resolve_root "${1:-}"); export ROOT PRESSWARDEN_DIR
-    exec "$PRESSWARDEN_DIR/checks/fleet-correlate.sh"
+    exec bash "$PRESSWARDEN_DIR/checks/fleet-correlate.sh"
     ;;
   cleanup)
     ROOT=$(resolve_root "${1:-}"); export ROOT PRESSWARDEN_DIR
