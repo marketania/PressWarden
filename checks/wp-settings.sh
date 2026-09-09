@@ -22,17 +22,29 @@ _policy_snapshot() {
 }
 
 _policy_status() {
-  local rows summary site label failed=0 mode kind a b diffshown=0 diffcount=0
+  local rows summary site label failed=0 mode kind a b diffshown=0 diffcount=0 done=0 total=0 percent=0
   require_wp; discover_sites; banner
   sec "WordPress policy" "fleet baseline + exceptions; informational"
   rows=$(tmpf); summary=$(tmpf); : > "$rows"; : > "$summary"
+  total=${#WP_SITES[@]}
+  pw_progress_init
+  pw_progress_draw "WordPress policy: 0% | 0/$total sites processed" 1
   for site in "${WP_SITES[@]}"; do
     label=$(site_label_from_root "$site")
     if ! _policy_snapshot "$site" "$label" >> "$rows"; then
       printf '    INCOMPLETE: %s policy snapshot could not be collected.\n' "$label" >&2
       failed=1
     fi
+    done=$((done+1)); percent=$((done*100/total))
+    if [ "$failed" -ne 0 ] && [ "$percent" -ge 100 ]; then percent=99; fi
+    pw_progress_draw "WordPress policy: $percent% | $done/$total sites processed | $label" "$([ "$done" -eq "$total" ] && printf 1 || printf 0)"
   done
+  if [ "$failed" -ne 0 ]; then
+    pw_progress_draw "WordPress policy: INCOMPLETE | $done/$total sites attempted" 1
+  else
+    pw_progress_draw "WordPress policy: 100% | $done/$total sites processed" 1
+  fi
+  pw_progress_end
   if [ "$failed" -ne 0 ]; then
     [ -z "${DETAIL_LOG:-}" ] || { printf '\n[WP-SETTINGS] retained complete normalized snapshots before incomplete collection\n'; cat "$rows"; } >> "$DETAIL_LOG" 2>/dev/null || true
     rm -f "$rows" "$summary"; return 2
