@@ -28,6 +28,8 @@ The dashboard allowlist includes:
 - filesystem method
 - WP_ALLOW_REPAIR, ALLOW_UNFILTERED_UPLOADS, DISALLOW_UNFILTERED_HTML and WP_HTTP_BLOCK_EXTERNAL
 
+Core/plugin/theme automatic-update entries describe WordPress's configured preferences and recognized global blockers. Plugins, themes, MU plugins, or custom filters can still alter WordPress's final update decision, so the dashboard does not claim that a configured preference guarantees a future update will or will not run.
+
 The collector emits only normalized allowlisted values. It intentionally does **not** emit DB credentials, salts/keys, API tokens, FTP credentials, proxy credentials, arbitrary constants, source code, plugin output, or wp-config bodies.
 
 The policy collector runs once per selected WordPress installation through WP-CLI with plugins/themes/packages skipped. WordPress still boots, and MU plugins or other early bootstrap code are not sandboxed. Malformed or contaminated output makes the check `INCOMPLETE` rather than clean.
@@ -67,7 +69,9 @@ Changes use the same website-name / directory / `all` target resolver as `lock`,
 ./presswarden wp-settings set alternate-cron enabled example.com
 ```
 
-Disabling WP-Cron does not create a server cron job; confirm an external scheduler invokes `wp-cron.php` as intended. Alternate WP-Cron is a compatibility workaround rather than a default hardening recommendation. Enabling the dashboard editor does not override `DISALLOW_FILE_MODS`; a locked site remains effectively unable to use the editor.
+Disabling WP-Cron does not create a server cron job; confirm an external scheduler invokes `wp-cron.php` as intended. Alternate WP-Cron is a compatibility workaround rather than a default hardening recommendation. The normal cron and alternate-cron controls deliberately change only their own constants: enabling normal WP-Cron does not silently remove `ALTERNATE_WP_CRON`, and enabling alternate cron does not silently remove `DISABLE_WP_CRON`. The status dashboard shows the resulting effective cron posture.
+
+Enabling the dashboard editor does not override `DISALLOW_FILE_MODS`; a locked site remains effectively unable to use the editor.
 
 `WP_ENVIRONMENT_TYPE=development` or a non-empty `WP_DEVELOPMENT_MODE` can make WordPress enable `WP_DEBUG` when `WP_DEBUG` is not explicitly defined. The dashboard reports the resulting effective debug posture.
 
