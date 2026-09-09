@@ -1,44 +1,28 @@
 name: Progress Quality
 on:
   push:
-    branches: [quality/live-progress-1.1.10]
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
 permissions:
-  contents: write
+  contents: read
 jobs:
-  apply-reviewed-patch:
+  terminal:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: quality/live-progress-1.1.10
-      - name: Verify and apply locally tested progress changes
+          persist-credentials: false
+      - name: Optional progress without a terminal
+        run: php tests/progress.php
+      - name: Real terminal rendering, safe counts and report isolation
+        run: python3 tests/progress-terminal.py
+      - name: Existing PHP, JS and database failure contracts
         run: |
-          python3 - <<'PY'
-          import base64, gzip, hashlib, os, pathlib, subprocess
-          encoded = b''.join(pathlib.Path('.github/progress-patch/part-' + str(i)).read_bytes() for i in range(1, 5))
-          assert len(encoded) == 15200
-          patch = gzip.decompress(base64.b64decode(encoded, validate=True))
-          assert len(patch) == 34831
-          assert hashlib.sha256(patch).hexdigest() == '25c75fc7ee1c094071e9ed552e0bae9aee7e17ed77e0831fe04870b7ae616d59'
-          assert b'diff --git a/.github/workflows/' not in patch
-          dest = pathlib.Path(os.environ['RUNNER_TEMP']) / 'reviewed-progress.patch'
-          dest.write_bytes(patch)
-          subprocess.run(['git', 'apply', '--check', '--index', str(dest)], check=True)
-          subprocess.run(['git', 'apply', '--index', str(dest)], check=True)
-          PY
-      - name: Validate the applied changes
-        run: |
-          php tests/progress.php
-          python3 tests/progress-terminal.py
           bash tests/php-intel-runtime.sh
           bash tests/runtime-reliability.sh
           bash tests/db-runtime.sh
-      - name: Commit only to this review branch
-        run: |
-          git rm -r .github/progress-patch
-          git diff --cached --check
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'feat: live progress for quiet intelligence checks'
-          git push origin HEAD:refs/heads/quality/live-progress-1.1.10
+      - name: PHP 7.4 progress compatibility
+        run: docker run --rm --network=none -v "$PWD:/work:ro" -w /work php:7.4-cli php tests/progress.php
