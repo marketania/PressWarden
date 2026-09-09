@@ -2,6 +2,18 @@
 
 All notable changes to PressWarden are documented here.
 
+## 1.1.9 — 2026-09-09
+
+Website-name commands and compact PHP environment reporting.
+
+- Accept local website names across commands that take a scan target: `scan example.com`, `lock example.com`, `unlock example.com`, focused inspections, baselines and more. Add `sites` to list known local names and `all` as an explicit fleet selector; existing directory arguments remain supported.
+- Resolve only freshly discovered, structurally valid installations under the configured root. Recognize common domain/document-root layouts and plain WP_HOME/WP_SITEURL literals in otherwise unnamed roots without executing WordPress or contacting a website. Optional private alias files cover opaque layouts. Refuse unknown/excluded/ambiguous names rather than broadening scope.
+- Preserve recursive directory semantics and carry fleet-relative nested exclusions into narrowed scans. Show nested installation counts before named lock/unlock approval. Use readable LOCKED/UNLOCKED status wording; no lock constant or backup workflow change.
+- Replace the optional Hostinger PHP wall of settings/domain lists with consistency counts and differences grouped by website. Save full values, custom defaults and ranges to private reports; add `inspect runtime [target] --details` for explicit full display.
+- Fix numeric-string array-key comparisons that produced outliers equal to their own baseline. Keep empty values explicit without tab-column shifts; normalize documented boolean spellings and OPCache megabyte spellings only. Group version-derived provider paths without suppressing unexpected path changes. Distinguish incomplete option coverage from consistency.
+- Add parser, command-routing, name ambiguity, exclusions, no-bootstrap, compact/detail/privacy and provider-failure tests including PHP 7.4. Existing malware thresholds, quarantine, updater preservation, baselines, branding and established suite membership remain unchanged.
+- Run distributed Bash entry points through Bash so website actions also work from source checkouts without executable bits.
+
 ## 1.1.8 — 2026-09-09
 
 Complete-or-refuse security baselines.

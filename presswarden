@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -uo pipefail
+# Internal target context is rebuilt for each CLI invocation, never inherited.
+unset _PW_TARGET_EXCLUSIONS
 
 # Resolve the real program directory even when the CLI is invoked through the
 # user-install symlink (for example ~/.local/bin/presswarden).
@@ -66,31 +68,36 @@ usage() {
 PressWarden v$VERSION
 
 Usage:
-  ./presswarden fast [path]          High-signal routine audit
-  ./presswarden full [path]          Comprehensive audit + deep integrity/DB maintenance
-  ./presswarden incident [path]      Evidence-first compromise / reinfection investigation
-  ./presswarden db [path]            Database security/malware audit + maintenance
-  ./presswarden scan [path]          Alias for fast
-  ./presswarden inspect KIND [path]  Focused read-only PHP/JS/DB recheck (php|js|db)
+  ./presswarden fast [target]          High-signal routine audit
+  ./presswarden full [target]          Comprehensive audit + deep integrity/DB maintenance
+  ./presswarden incident [target]      Evidence-first compromise / reinfection investigation
+  ./presswarden db [target]            Database security/malware audit + maintenance
+  ./presswarden scan [target]          Alias for fast
+  ./presswarden inspect KIND [target]  Focused read-only PHP/JS/DB recheck (php|js|db|runtime)
   ./presswarden update               Update PressWarden code + threat intelligence
-  ./presswarden intel ACTION [path]  status|update|scan threat intelligence
-  ./presswarden baseline ACTION [path]  create|status|diff security baseline
-  ./presswarden changes [path]       Compare current state with the saved baseline
-  ./presswarden correlate [path]     Correlate new/changed artifacts across WordPress sites
+  ./presswarden intel ACTION [target]  status|update|scan threat intelligence
+  ./presswarden baseline ACTION [target]  create|status|diff security baseline
+  ./presswarden changes [target]       Compare current state with the saved baseline
+  ./presswarden correlate [target]     Correlate new/changed artifacts across WordPress sites
   ./presswarden quarantine ACTION    list|verify CASE_ID (read-only evidence checks)
-  ./presswarden cleanup [path]       Logs + disposable metadata/inode cleanup
-  ./presswarden doctor [path]        Dependencies, config, integrations, discovery
-  ./presswarden lock [path]          Lock WordPress file modifications across discovered sites
-  ./presswarden unlock [path]        Unlock WordPress file modifications for updates/maintenance
-  ./presswarden lock-status [path]   Show DISALLOW_FILE_MODS status across discovered sites
-  ./presswarden file-mods ACTION [path]  Legacy/advanced status|on|off interface
+  ./presswarden cleanup [target]       Logs + disposable metadata/inode cleanup
+  ./presswarden doctor [target]        Dependencies, config, integrations, discovery
+  ./presswarden lock [target]          Lock WordPress file modifications across discovered sites
+  ./presswarden unlock [target]        Unlock WordPress file modifications for updates/maintenance
+  ./presswarden lock-status [target]   Show DISALLOW_FILE_MODS status across discovered sites
+  ./presswarden file-mods ACTION [target]  Legacy/advanced status|on|off interface
   ./presswarden config               Show sanitized effective configuration
   ./presswarden config-new           List template options absent from saved config
+  ./presswarden sites [path]         List local website names and directories
   ./presswarden --version
   ./presswarden help
 
 Installed user-wide? The same commands also work as: presswarden fast, presswarden full, etc.
-Path is optional. Portable installs automatically scan outside the PressWarden program folder.
+Targets: use a website name (example.com), nested name (example.com/shop), directory, or all.
+Omit the target for the configured fleet. A named site's directory includes discovered nested installs.
+Examples: ./presswarden scan example.com   ./presswarden lock example.com   ./presswarden unlock all
+List recognized names: ./presswarden sites
+Portable installs automatically scan outside the PressWarden program folder.
 EOF
 }
 
@@ -112,6 +119,37 @@ resolve_root() {
   else c="$PWD"
   fi
   if command -v realpath >/dev/null 2>&1; then realpath "$c" 2>/dev/null || printf '%s' "$c"; else (cd "$c" 2>/dev/null && pwd -P) || printf '%s' "$c"; fi
+}
+
+# One resolver for every command accepting a site/directory. A failed name must
+# never become an empty ROOT (which would silently broaden the operation).
+select_target() {
+  local target="${1:-}" result scope line kind value first
+  [ "$#" -le 1 ] || { printf 'Use one website name, directory, or all.\n' >&2; return 2; }
+  TARGET_NAME=''; TARGET_COUNT=''
+  case "$target" in
+    ''|all) ROOT=$(resolve_root '') ;;
+    /*|./*|../*|.|..|~/*) ROOT=$(resolve_root "$target") ;;
+    *)
+      if [[ "$target" != *.* && "$target" != *://* ]] && [ -d "$target" ]; then
+        ROOT=$(resolve_root "$target")
+      else
+        scope=$(resolve_root '')
+        result=$(bash "$PRESSWARDEN_DIR/lib/site-target.sh" "$scope" "$target") || return 2
+        first=${result%%$'\n'*}
+        IFS=$'\t' read -r ROOT TARGET_NAME TARGET_COUNT <<< "$first"
+        _PW_TARGET_EXCLUSIONS=''
+        while IFS=$'\t' read -r kind value; do
+          [ "$kind" != E ] || _PW_TARGET_EXCLUSIONS+="$value"$'\n'
+        done <<< "$result"
+        export _PW_TARGET_EXCLUSIONS
+        [ -d "$ROOT" ] && [ -n "$TARGET_NAME" ] || return 2
+        printf 'Target: %s' "$TARGET_NAME" >&2
+        [ "${TARGET_COUNT:-1}" -le 1 ] || printf ' (%s installations, including nested sites)' "$TARGET_COUNT" >&2
+        printf '\n' >&2
+      fi ;;
+  esac
+  export ROOT PRESSWARDEN_DIR
 }
 
 show_config() {
@@ -153,7 +191,11 @@ confirm_fleet_file_mods() {
   [ "$action" = on ] && verb='LOCK' || verb='UNLOCK'
   if [ "${PRESSWARDEN_INTERACTIVE:-1}" = "0" ]; then return 0; fi
   if [ -r /dev/tty ] && [ -w /dev/tty ]; then
-    printf '\n  %s all discovered WordPress installations under:\n  %s\n\n  This will set DISALLOW_FILE_MODS=%s on every discovered site. Continue? [y/N]: ' "$verb" "$root" "$([ "$action" = on ] && printf true || printf false)" > /dev/tty
+    if [ -n "${TARGET_NAME:-}" ]; then
+      printf '\n  %s %s (%s installation(s))? [y/N]: ' "$verb" "$TARGET_NAME" "${TARGET_COUNT:-1}" > /dev/tty
+    else
+      printf '\n  %s all discovered websites under %s? [y/N]: ' "$verb" "$root" > /dev/tty
+    fi
     IFS= read -r ans < /dev/tty || ans=''
     case "$ans" in y|Y|yes|YES) return 0 ;; *) printf 'Cancelled.\n'; return 1 ;; esac
   fi
@@ -166,6 +208,11 @@ case "$cmd" in
   -V|--version|version) printf 'PressWarden %s\n' "$VERSION" ;;
   help|-h|--help) usage ;;
   config) show_config ;;
+  sites)
+    [ "$#" -le 1 ] || { printf 'Usage: ./presswarden sites [directory]\n' >&2; exit 2; }
+    ROOT=$(resolve_root "${1:-}")
+    exec bash "$PRESSWARDEN_DIR/lib/site-target.sh" "$ROOT" --list
+    ;;
   update)
     # shellcheck disable=SC1090
     . "$PRESSWARDEN_DIR/lib/update.sh"
@@ -190,24 +237,29 @@ case "$cmd" in
     kind="${1:-help}"; [ "$#" -gt 0 ] && shift || true
     case "$kind" in
       help|-h|--help)
-        printf 'Usage: ./presswarden inspect php|js|db [directory]\n\n'
+        printf 'Usage: ./presswarden inspect php|js|db|runtime [website or directory]\n\n'
         printf 'php  PHP callable, credential and browser-payload intelligence only\n'
         printf 'js   JavaScript/inline HTML intelligence only\n'
-        printf 'db   Database-stored threat intelligence only (no maintenance)\n\n'
-        printf 'Uses existing discovery, exclusions and report settings. No feed refresh or remediation.\n'
+        printf 'db   Database-stored threat intelligence only (no maintenance)\n'
+        printf 'runtime  PHP environment (optional --details after target)\n\n'
+        printf 'Use a website name or directory; omit it for the fleet. No feed refresh or remediation.\n'
         printf 'Not a full security audit. Database inspection still loads WordPress through WP-CLI.\n'
         exit 0 ;;
-      php|js|db) : ;;
-      *) printf 'Unknown inspect kind. Use php, js or db.\n' >&2; exit 2 ;;
+      php|js|db|runtime) : ;;
+      *) printf 'Unknown inspect kind. Use php, js, db or runtime.\n' >&2; exit 2 ;;
     esac
-    [ "$#" -le 1 ] || { printf 'Too many inspect arguments; use one directory.\n' >&2; exit 2; }
-    ROOT=$(resolve_root "${1:-}"); export ROOT PRESSWARDEN_DIR
+    if [ "$kind" = runtime ] && [ "${*: -1}" = --details ]; then
+      export PRESSWARDEN_PHP_DETAILS=1
+      set -- "${@:1:$#-1}"
+    fi
+    [ "$#" -le 1 ] || { printf 'Too many inspect arguments; use one website or directory.\n' >&2; exit 2; }
+    select_target "$@" || exit 2
     exec bash "$PRESSWARDEN_DIR/suites/inspect.sh" "$kind"
     ;;
   fast|scan|full|incident|db)
-    ROOT=$(resolve_root "${1:-}"); export ROOT PRESSWARDEN_DIR
+    select_target "$@" || exit 2
     suite="$cmd"; [ "$suite" = scan ] && suite=fast
-    exec "$PRESSWARDEN_DIR/suites/$suite.sh"
+    exec bash "$PRESSWARDEN_DIR/suites/$suite.sh"
     ;;
   intel)
     action="${1:-status}"; [ "$#" -gt 0 ] && shift || true
@@ -217,8 +269,8 @@ case "$cmd" in
       status) pw_intel_status ;;
       update) pw_intel_update ;;
       scan)
-        ROOT=$(resolve_root "${1:-}"); export ROOT PRESSWARDEN_DIR
-        exec "$PRESSWARDEN_DIR/suites/intel.sh"
+        select_target "$@" || exit 2
+        exec bash "$PRESSWARDEN_DIR/suites/intel.sh"
         ;;
       *) printf 'Unknown intel action: %s (use status, update, or scan)\n' "$action" >&2; exit 2 ;;
     esac
@@ -226,7 +278,7 @@ case "$cmd" in
   baseline)
     action="${1:-status}"; [ "$#" -gt 0 ] && shift || true
     [ "$#" -le 1 ] || { printf 'Usage: ./presswarden baseline create|status|diff [path]\n' >&2; exit 2; }
-    ROOT=$(resolve_root "${1:-}"); export ROOT PRESSWARDEN_DIR
+    select_target "$@" || exit 2
     # shellcheck disable=SC1090
     . "$PRESSWARDEN_DIR/lib/baseline.sh"
     case "$action" in
@@ -238,38 +290,38 @@ case "$cmd" in
     ;;
   changes)
     [ "$#" -le 1 ] || { printf 'Usage: ./presswarden changes [path]\n' >&2; exit 2; }
-    ROOT=$(resolve_root "${1:-}"); export ROOT PRESSWARDEN_DIR
+    select_target "$@" || exit 2
     # shellcheck disable=SC1090
     . "$PRESSWARDEN_DIR/lib/baseline.sh"
     pw_baseline_diff
     ;;
   correlate)
-    ROOT=$(resolve_root "${1:-}"); export ROOT PRESSWARDEN_DIR
+    select_target "$@" || exit 2
     exec bash "$PRESSWARDEN_DIR/checks/fleet-correlate.sh"
     ;;
   cleanup)
-    ROOT=$(resolve_root "${1:-}"); export ROOT PRESSWARDEN_DIR
-    exec "$PRESSWARDEN_DIR/checks/sensitive-files.sh"
+    select_target "$@" || exit 2
+    exec bash "$PRESSWARDEN_DIR/checks/sensitive-files.sh"
     ;;
   doctor)
-    ROOT=$(resolve_root "${1:-}"); export ROOT PRESSWARDEN_DIR
-    exec "$PRESSWARDEN_DIR/checks/doctor.sh"
+    select_target "$@" || exit 2
+    exec bash "$PRESSWARDEN_DIR/checks/doctor.sh"
     ;;
   lock|unlock)
-    ROOT=$(resolve_root "${1:-}"); export ROOT PRESSWARDEN_DIR
+    select_target "$@" || exit 2
     action=on; [ "$cmd" = unlock ] && action=off
     confirm_fleet_file_mods "$action" "$ROOT" || exit 1
     export PRESSWARDEN_INTERACTIVE=0
-    exec "$PRESSWARDEN_DIR/checks/file-mods.sh" "$action"
+    exec bash "$PRESSWARDEN_DIR/checks/file-mods.sh" "$action"
     ;;
   lock-status)
-    ROOT=$(resolve_root "${1:-}"); export ROOT PRESSWARDEN_DIR
-    exec "$PRESSWARDEN_DIR/checks/file-mods.sh" status
+    select_target "$@" || exit 2
+    exec bash "$PRESSWARDEN_DIR/checks/file-mods.sh" status
     ;;
   file-mods)
     action="${1:-status}"; [ "$#" -gt 0 ] && shift || true
-    ROOT=$(resolve_root "${1:-}"); export ROOT PRESSWARDEN_DIR
-    exec "$PRESSWARDEN_DIR/checks/file-mods.sh" "$action"
+    select_target "$@" || exit 2
+    exec bash "$PRESSWARDEN_DIR/checks/file-mods.sh" "$action"
     ;;
   *) printf 'Unknown command: %s\n\n' "$cmd" >&2; usage >&2; exit 2 ;;
 esac

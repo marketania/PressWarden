@@ -124,10 +124,10 @@ printf '%s\n' "$cfg" | grep -qE 'Deep upload scan:[[:space:]]+1$'
 stage 'CLI aliases/version/intel'
 [ "$($ROOTDIR/presswarden --version)" = "PressWarden $EXPECTED_VERSION" ]
 help=$($ROOTDIR/presswarden help)
-printf '%s\n' "$help" | grep -q '\./presswarden lock \[path\]'
-printf '%s\n' "$help" | grep -q '\./presswarden unlock \[path\]'
-printf '%s\n' "$help" | grep -q '\./presswarden lock-status \[path\]'
-printf '%s\n' "$help" | grep -q '\./presswarden intel ACTION \[path\]'
+printf '%s\n' "$help" | grep -q '\./presswarden lock \[target\]'
+printf '%s\n' "$help" | grep -q '\./presswarden unlock \[target\]'
+printf '%s\n' "$help" | grep -q '\./presswarden lock-status \[target\]'
+printf '%s\n' "$help" | grep -q '\./presswarden intel ACTION \[target\]'
 intel_status=$(PRESSWARDEN_CONFIG_FILE="$TMP/no-config" PRESSWARDEN_STATE_DIR="$TMP/state-intel" "$ROOTDIR/presswarden" intel status)
 printf '%s\n' "$intel_status" | grep -q 'PressWarden Threat Intelligence'
 printf '%s\n' "$intel_status" | grep -qE 'Native behavior rules[[:space:]]+[1-9][0-9]*'

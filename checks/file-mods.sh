@@ -7,7 +7,11 @@ for s in "${SCAN_ROOTS[@]}"; do
   label=$(site_label_from_root "$s")
   cur=$(wpq "$s" config get DISALLOW_FILE_MODS --type=constant 2>/dev/null || printf '')
   if [ "$action" = status ]; then
-    case "${cur,,}" in 1|true) ok "$label" "DISALLOW_FILE_MODS=true" ;; *) flag "$label" "DISALLOW_FILE_MODS is not true" ;; esac
+    case "${cur,,}" in
+      1|true) printf '    %sLOCKED%s    %s\n' "$G" "$X" "$label" ;;
+      0|false) printf '    %sUNLOCKED%s  %s\n' "$Y" "$X" "$label" ;;
+      *) printf '    %sNOT CONFIRMED%s  %s — restriction absent or unreadable\n' "$Y" "$X" "$label" ;;
+    esac
     continue
   fi
   want=true; [ "$action" = off ] && want=false
@@ -18,7 +22,7 @@ for s in "${SCAN_ROOTS[@]}"; do
   backup="$QUARANTINE/file-mods-$(date +%Y%m%d-%H%M%S)/$label/wp-config.php"
   mkdir -p "$(dirname "$backup")" && cp -p "$s/wp-config.php" "$backup" || { flag "$label" "could not back up wp-config.php"; continue; }
   if wpq "$s" config set DISALLOW_FILE_MODS "$want" --raw >/dev/null 2>&1; then
-    ok "$label" "DISALLOW_FILE_MODS=$want"
+    if [ "$want" = true ]; then ok "$label" "file changes locked"; else ok "$label" "file changes unlocked"; fi
   else
     cp -p "$backup" "$s/wp-config.php" 2>/dev/null || true
     issue "$label" "WP-CLI update failed; original wp-config.php restored"

@@ -3,8 +3,9 @@
 case "${1:-}" in
   php) CHECKS='php-threat-intel'; RUN_NAME=inspect-php; scope='PHP callable / credential / admin-payload intelligence' ;;
   js) CHECKS='js-threat-intel'; RUN_NAME=inspect-js; scope='JavaScript and inline HTML intelligence' ;;
+  runtime) CHECKS='php-runtime'; RUN_NAME=inspect-runtime; scope='PHP environment and optional per-site provider comparison' ;;
   db) CHECKS='wp-db-malware'; RUN_NAME=inspect-db; scope='targeted database-stored threat intelligence' ;;
-  *) printf 'Usage: ./presswarden inspect php|js|db [directory]\n' >&2; exit 2 ;;
+  *) printf 'Usage: ./presswarden inspect php|js|db|runtime [website or directory]\n' >&2; exit 2 ;;
 esac
 [ "$#" -eq 1 ] || { printf 'Unexpected inspect arguments.\n' >&2; exit 2; }
 RUN_DESC="focused read-only recheck • $scope"
