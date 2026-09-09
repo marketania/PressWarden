@@ -31,7 +31,7 @@ jobs:
           docker run --rm --network=none -v "$PWD:/work:ro" -w /work php:7.4-cli php -l lib/wp-policy-runtime.php
           docker run --rm --network=none -v "$PWD:/work:ro" -w /work php:7.4-cli php -l lib/wp-policy-summary.php
           docker run --rm --network=none -v "$PWD:/work:ro" -w /work php:7.4-cli php tests/wp-policy-runtime.php
-          docker run --rm --network=none -v "$PWD:/work:ro" -w /work php:7.4-cli sh tests/wp-policy-summary.sh
+          docker run --rm --network=none -v "$PWD:/work:ro" -w /work php:7.4-cli bash tests/wp-policy-summary.sh
       - name: Fast and Full use unified policy view
         run: |
           grep -q 'wp-settings' suites/fast.sh
