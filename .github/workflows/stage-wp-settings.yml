@@ -20,7 +20,7 @@ jobs:
           php -l lib/wp-policy-runtime.php
           php -l lib/wp-policy-summary.php
           php tests/wp-policy-runtime.php
-          bash tests/wp-settings.sh
+          bash -x tests/wp-settings.sh
           bash tests/wp-auto-updates.sh
           bash tests/site-target.sh
           bash tests/smoke.sh
