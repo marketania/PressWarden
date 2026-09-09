@@ -12,7 +12,7 @@
 
 **Fleet-scale WordPress security auditing from the shell.**
 
-![Version](https://img.shields.io/badge/version-1.1.10-2ea44f)
+![Version](https://img.shields.io/badge/version-1.1.12-2ea44f)
 ![Bash](https://img.shields.io/badge/bash-4%2B-4EAA25?logo=gnubash&logoColor=white)
 ![WordPress](https://img.shields.io/badge/WordPress-security-21759B?logo=wordpress&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Linux-FCC624?logo=linux&logoColor=black)
@@ -60,6 +60,7 @@ PressWarden focuses on **high-signal findings**. A PHP function such as `base64_
 - 🧳 **Portable shared-hosting install** with no sudo or PATH changes required
 - ♻️ **Safe remediation** with quarantine-backed file actions
 - 🔒 **Fleet lock/unlock** for `DISALLOW_FILE_MODS`
+- 🧭 **WordPress policy dashboard** with one-site detail and fleet baseline differences
 - 📊 **Human-readable and JSON reports**
 
 ---
@@ -112,6 +113,7 @@ That is the recommended starting point for most users.
 | `./presswarden update` | Updating PressWarden code and refreshing threat intelligence |
 | `./presswarden doctor` | Checking setup, dependencies, discovery, and integrations |
 | `./presswarden cleanup` | Conservative log / disposable-file cleanup |
+| `./presswarden wp-settings example.com` | WordPress policy, updates, cron, recovery, environment, debug, and config posture |
 
 For routine use, start with:
 
@@ -134,6 +136,7 @@ If you suspect a compromise:
 ./presswarden lock example.com
 ./presswarden unlock example.com
 ./presswarden lock-status example.com
+./presswarden wp-settings example.com
 ```
 
 Use the same website name with `full`, `incident`, `db`, `inspect`, `baseline`, `changes`, `cleanup`, and other site commands. No full hosting path needed.
@@ -142,6 +145,30 @@ Use the same website name with `full`, `incident`, `db`, `inspect`, `baseline`, 
 **Nested website:** use `example.com/shop`. A parent website's directory still includes discovered nested installations, shown before lock/unlock approval.
 
 `./presswarden sites` lists local names and directories. Unknown, excluded or ambiguous names stop without selecting anything. Existing directory arguments still work. [How local names are resolved](docs/SITE-TARGETS.md).
+
+## WordPress policy dashboard
+
+See the full normalized policy for one site:
+
+```bash
+./presswarden wp-settings example.com
+```
+
+For a fleet, PressWarden shows the unique most-common policy as a comparison baseline and then **only the websites that differ**. Tied values are reported as `MIXED`; differences are informational and do not replace dedicated security findings. Fast and Full include this read-only view automatically.
+
+```bash
+./presswarden wp-settings all
+```
+
+Supported settings can be changed with the same website-name or `all` targeting, with confirmation, backup, and verification. For example:
+
+```bash
+./presswarden wp-settings set cron disabled example.com
+./presswarden wp-settings set environment production example.com
+./presswarden wp-settings set editor disabled all
+```
+
+Core/plugin/theme automatic-update controls remain under `auto-updates`. See [WordPress policy details](docs/WP-SETTINGS.md).
 
 ## Recheck one area
 

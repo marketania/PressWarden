@@ -50,6 +50,8 @@ run auto-updates themes enable all > "$T/out"; [ "$(cat "$T/sites/example.com/pu
 run auto-updates themes disable other.com > "$T/out"; [ "$(cat "$T/sites/other.com/public_html/.themes-enabled")" = 0 ]
 run auto-updates core disabled other.com > "$T/out"; [ "$(cat "$T/sites/other.com/public_html/.core")" = disabled ]
 run auto-updates status all > "$T/fleet"; grep -q 'Core .*MAJOR' "$T/fleet"; grep -q 'Core .*DISABLED' "$T/fleet"
-grep -q 'wp-auto-updates' "$REPO/suites/fast.sh"; grep -q 'wp-auto-updates' "$REPO/suites/full.sh"
+# Standalone mutation/status commands remain; Fast/Full now use the unified policy dashboard.
+grep -q 'wp-settings' "$REPO/suites/fast.sh"; grep -q 'wp-settings' "$REPO/suites/full.sh"
+! grep -q 'wp-auto-updates' "$REPO/suites/fast.sh"; ! grep -q 'wp-auto-updates' "$REPO/suites/full.sh"
 find "$T/state/quarantine" -type f | grep -q .
 printf 'WordPress automatic-update policy: named/fleet status, core/plugin/theme changes and backups PASS\n'

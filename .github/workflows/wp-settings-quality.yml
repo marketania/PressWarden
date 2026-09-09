@@ -1,0 +1,46 @@
+name: WordPress Policy Quality
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  policy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Bash and PHP syntax
+        run: |
+          bash -n presswarden checks/wp-settings.sh suites/fast.sh suites/full.sh tests/wp-settings.sh tests/wp-policy-summary.sh
+          php -l lib/wp-policy-runtime.php
+          php -l lib/wp-policy-summary.php
+          php -l tests/wp-policy-runtime.php
+      - name: Allowlisted effective policy collection
+        run: php tests/wp-policy-runtime.php
+      - name: Baseline, outlier-only differences and mixed ties
+        run: bash tests/wp-policy-summary.sh
+      - name: Dashboard, targeting, safe mutation and failure handling
+        run: bash tests/wp-settings.sh
+      - name: Existing core plugin theme auto-update controls remain intact
+        run: bash tests/wp-auto-updates.sh
+      - name: PHP 7.4 policy compatibility
+        run: |
+          docker run --rm --network=none -v "$PWD:/work:ro" -w /work php:7.4-cli php -l lib/wp-policy-runtime.php
+          docker run --rm --network=none -v "$PWD:/work:ro" -w /work php:7.4-cli php -l lib/wp-policy-summary.php
+          docker run --rm --network=none -v "$PWD:/work:ro" -w /work php:7.4-cli php tests/wp-policy-runtime.php
+          docker run --rm --network=none -v "$PWD:/work:ro" -w /work php:7.4-cli bash tests/wp-policy-summary.sh
+      - name: Fast and Full use unified policy view
+        run: |
+          grep -q 'wp-settings' suites/fast.sh
+          grep -q 'wp-settings' suites/full.sh
+          ! grep -q 'wp-auto-updates' suites/fast.sh
+          ! grep -q 'wp-auto-updates' suites/full.sh
+      - name: Site-level progress is measured and incomplete-safe
+        run: |
+          grep -q 'WordPress policy: 100%.*sites processed' checks/wp-settings.sh
+          grep -q 'WordPress policy: INCOMPLETE.*sites attempted' checks/wp-settings.sh
+      - name: No runtime process substitution
+        run: '! grep -R --include="*.sh" -nE "< <\\(|> >\\(" presswarden lib checks suites | grep -v "test"'
