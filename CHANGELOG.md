@@ -2,6 +2,15 @@
 
 All notable changes to PressWarden are documented here.
 
+## 1.1.11 — 2026-09-09
+
+WordPress automatic-update policy controls and suite-wide progress context.
+
+- Add `auto-updates status`, `auto-updates core minor|major|disabled`, and plugin/theme enable/disable actions for one website name, nested target, directory, or the full fleet. Core changes back up and verify wp-config.php; plugin/theme changes snapshot prior enabled-item preferences and verify the resulting counts.
+- Add a read-only `wp-auto-updates` check to Fast and Full. Fleet output is compact; detailed per-site policy remains in the private detail report. Known global blockers are shown separately and are never silently removed.
+- Add exact suite completion context to every check banner/RUN line. Existing PHP/JavaScript/database checks retain their measured inner progress; other checks show completed-check percentage rather than invented time/work estimates.
+- Preserve detector thresholds, remediation policy, verified quarantine, baselines, updater recovery, website-name targeting, private configuration and branding.
+
 ## 1.1.10 — 2026-09-09
 
 Visible progress for quiet intelligence checks.

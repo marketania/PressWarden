@@ -1,0 +1,23 @@
+name: Update Policy Quality
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  policy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: WordPress auto-update policy routing and mutation safety
+        run: bash tests/wp-auto-updates.sh
+      - name: Suite progress context on every check
+        run: bash tests/suite-progress.sh
+      - name: Bash syntax
+        run: |
+          bash -n presswarden lib/_runner.sh lib/ui.sh checks/wp-auto-updates.sh suites/fast.sh suites/full.sh tests/wp-auto-updates.sh tests/suite-progress.sh
+      - name: No legacy runtime process substitution
+        run: '! grep -R --include="*.sh" -nE "< <\\(|> >\\(" presswarden lib checks suites | grep -v "test"'
