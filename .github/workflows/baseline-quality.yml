@@ -1,0 +1,27 @@
+name: Baseline Quality
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Strict inert inventory CSV
+        run: php -d memory_limit=64M tests/baseline-csv.php
+      - name: Lost coverage, scope, legacy and state preservation
+        run: bash tests/baseline-coverage.sh
+      - name: Concurrent baselines, activation recovery and interruption
+        run: bash tests/baseline-transactions.sh
+      - name: Existing baseline, incident and fleet behavior
+        run: bash tests/baseline.sh && bash tests/incident.sh && bash tests/fleet-correlate.sh
+      - name: PHP 7.4 inventory compatibility
+        run: docker run --rm --network=none -v "$PWD:/work:ro" -w /work php:7.4-cli php -d memory_limit=64M tests/baseline-csv.php

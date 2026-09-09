@@ -69,7 +69,7 @@ grep -q $'^F\texample.com\twp-config.php\t' "$manifest"
 grep -q $'^P\texample.com\tdemo\tactive|1.0.0$' "$manifest"
 grep -q $'^T\texample.com\tdemo\tactive|1.0.0$' "$manifest"
 grep -q $'^A\texample.com\tsiteadmin\tadministrator$' "$manifest"
-grep -q $'^C\texample.com\twp_version_check\tTwice Daily$' "$manifest"
+grep -q $'^C\texample.com\twp_version_check\t\["Twice Daily"\]$' "$manifest"
 if grep -q 'TOP_SECRET_BASELINE_TEST' "$manifest"; then
   echo 'Baseline leaked file contents instead of storing hashes.' >&2
   exit 1

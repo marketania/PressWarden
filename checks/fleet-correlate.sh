@@ -7,32 +7,23 @@ PRESSWARDEN_DIR="${PRESSWARDEN_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 # shellcheck source=lib/baseline.sh
 . "$PRESSWARDEN_DIR/lib/baseline.sh"
 
-main() {
+main() (
   local scope current capture diff candidates findings
   banner
   sec "Fleet outbreak correlation" "baseline-filtered • review-only"
 
   scope=$(_pw_baseline_scope_dir)
   current="$scope/current"
-  if [ ! -s "$current/manifest.tsv" ] || [ ! -s "$current/meta.tsv" ]; then
+  if [ ! -e "$current" ] && [ ! -L "$current" ] && [ ! -e "$scope/.baseline.lock" ]; then
     note "No baseline exists for this scan root; fleet change correlation skipped."
     note "Create a baseline after validating a known-good state: ./presswarden baseline create [path]"
     finish
     return
   fi
-  if [ "$(_pw_meta_value "$current/meta.tsv" root)" != "$ROOT" ]; then
-    note "Saved baseline belongs to a different scan root; fleet change correlation skipped."
-    finish
-    return
-  fi
-
-  capture="$scope/.correlate.$$"
-  diff=$(tmpf); candidates=$(tmpf); findings=$(tmpf)
-  rm -rf "$capture"; mkdir -p "$capture" || die "cannot create fleet-correlation capture"
-  : > "$candidates"; : > "$findings"
-
-  _pw_baseline_capture "$capture"
-  _pw_baseline_build_diff "$current/manifest.tsv" "$capture/manifest.tsv" "$diff"
+  _pw_baseline_prepare_comparison || return 2
+  capture="$PW_BASELINE_CAPTURE"; diff="$PW_BASELINE_DIFF"
+  findings="$PW_BASELINE_WORK/findings"; : > "$findings" || return 2
+  candidates="$PW_BASELINE_WORK/candidates"; : > "$candidates" || return 2
 
   # Candidate set is deliberately restricted to current ADD/CHANGE deltas.
   # Existing duplicate WordPress/plugin files therefore never become findings
@@ -41,7 +32,7 @@ main() {
     ($1=="ADD" || $1=="CHANGE") && $2=="F" { split($5,a,":"); if (a[1] != "") print "F",a[1] }
     ($1=="ADD" || $1=="CHANGE") && $2=="A" { if ($4 != "") print "A",$4 }
     ($1=="ADD" || $1=="CHANGE") && $2=="C" { if ($4 != "") print "C",$4 "|" $5 }
-  ' "$diff" | sort -u > "$candidates"
+  ' "$diff" | sort -u > "$candidates" || return 2
 
   if [ -s "$candidates" ]; then
     awk -F '\t' 'BEGIN{OFS="\t"}
@@ -76,13 +67,13 @@ main() {
           }
         }
       }
-    ' "$candidates" "$capture/manifest.tsv" | sort > "$findings"
+    ' "$candidates" "$capture/manifest.tsv" | sort > "$findings" || return 2
   fi
 
   rm -rf "$capture"; rm -f "$diff" "$candidates"
   report "$findings" review "no repeated new/changed artifacts across multiple sites" noaction
   note "Fleet correlation is a spread signal, not automatic malware attribution; confirm with malware, integrity, persistence, or account evidence."
   finish
-}
+)
 
 run_logged fleet-correlate

@@ -101,19 +101,21 @@ _array_has() { local needle="$1"; shift; local x; for x in "$@"; do [ "$x" = "$n
 
 _refresh_scan_roots_uncached() {
   local candf rootsf f p label group parent nested depth
+  PW_DISCOVERY_FAILED=0
   SCAN_ROOTS=(); TREE_ROOTS=(); IGNORED_DOMAINS=(); MANUAL_EXCLUDED_DOMAINS=(); MANUAL_EXCLUDED_ROOTS=(); DISCOVERED_DOMAINS=(); NESTED_SITES=()
   [ -d "$ROOT" ] || die "scan root does not exist: $ROOT"
   depth="$PRESSWARDEN_DISCOVERY_DEPTH"; case "$depth" in ''|*[!0-9]*) depth=8 ;; esac; [ "$depth" -ge 1 ] || depth=8
   rootsf=$(tmpf); candf=$(tmpf); : > "$rootsf"; : > "$candf"
-  if _is_wordpress_root "$ROOT"; then printf '%s\n' "$ROOT" >> "$candf"; fi
-  find "$ROOT" -mindepth 1 -maxdepth "$depth" \
+  if _is_wordpress_root "$ROOT"; then printf '%s\0' "$ROOT" >> "$candf"; fi
+  if ! find "$ROOT" -mindepth 1 -maxdepth "$depth" \
     \( -type d \( -name wp-admin -o -name wp-includes -o -name wp-content -o -name vendor -o -name node_modules -o -name .git -o -name .svn -o -name .hg -o -name cache -o -name caches -o -name uploads -o -name backups -o -name backup -o -name logs -o -name tmp -o -name .cache -o -name .local -o -name .npm -o -name .composer \) -prune \) -o \
-    \( -type f -name 'wp-settings.php' -print \) 2>/dev/null >> "$candf"
-  while IFS= read -r f; do
+    \( -type f -name 'wp-settings.php' -print0 \) 2>/dev/null >> "$candf"; then PW_DISCOVERY_FAILED=1; fi
+  while IFS= read -r -d '' f; do
+    case "$f" in *[[:cntrl:]]*) PW_DISCOVERY_FAILED=1; continue ;; esac
     [ -n "$f" ] || continue; case "$f" in */wp-settings.php) p=${f%/wp-settings.php} ;; *) p="$f" ;; esac; _is_wordpress_root "$p" || continue
-    if _is_excluded_site "$p"; then label=$(site_label_from_root "$p"); _array_has "$label" "${MANUAL_EXCLUDED_DOMAINS[@]}" || MANUAL_EXCLUDED_DOMAINS+=("$label"); MANUAL_EXCLUDED_ROOTS+=("$p"); else printf '%s\n' "$p" >> "$rootsf"; fi
+    if _is_excluded_site "$p"; then label=$(site_label_from_root "$p"); _array_has "$label" "${MANUAL_EXCLUDED_DOMAINS[@]}" || MANUAL_EXCLUDED_DOMAINS+=("$label"); MANUAL_EXCLUDED_ROOTS+=("$p"); else printf '%s\n' "$p" >> "$rootsf" || PW_DISCOVERY_FAILED=1; fi
   done < "$candf"
-  rm -f "$candf"; sort -u "$rootsf" -o "$rootsf" 2>/dev/null || true
+  rm -f "$candf"; sort -u "$rootsf" -o "$rootsf" 2>/dev/null || PW_DISCOVERY_FAILED=1
   while IFS= read -r p; do [ -n "$p" ] && SCAN_ROOTS+=("$p"); done < "$rootsf"; rm -f "$rootsf"
   for p in "${SCAN_ROOTS[@]}"; do
     label=$(site_label_from_root "$p"); group=${label%%/*}; _array_has "$group" "${DISCOVERED_DOMAINS[@]}" || DISCOVERED_DOMAINS+=("$group"); nested=0
@@ -136,5 +138,5 @@ _save_discovery_cache() {
   for x in "${SCAN_ROOTS[@]}"; do printf 'ROOT\t%s\n' "$x" >> "$tmp"; done; for x in "${TREE_ROOTS[@]}"; do printf 'TREE\t%s\n' "$x" >> "$tmp"; done; for x in "${MANUAL_EXCLUDED_DOMAINS[@]}"; do printf 'EXCLUDED_LABEL\t%s\n' "$x" >> "$tmp"; done; for x in "${MANUAL_EXCLUDED_ROOTS[@]}"; do printf 'EXCLUDED_ROOT\t%s\n' "$x" >> "$tmp"; done; for x in "${DISCOVERED_DOMAINS[@]}"; do printf 'DOMAIN\t%s\n' "$x" >> "$tmp"; done; for x in "${NESTED_SITES[@]}"; do printf 'NESTED\t%s\n' "$x" >> "$tmp"; done
   mv -f "$tmp" "$cache" 2>/dev/null || { cp "$tmp" "$cache" 2>/dev/null && rm -f "$tmp"; }; chmod 600 "$cache" 2>/dev/null || true
 }
-refresh_scan_roots() { _load_discovery_cache && return 0; _refresh_scan_roots_uncached; _save_discovery_cache; }
+refresh_scan_roots() { _load_discovery_cache && { PW_DISCOVERY_FAILED=0; return 0; }; _refresh_scan_roots_uncached; [ "${PW_DISCOVERY_FAILED:-0}" -ne 0 ] || _save_discovery_cache; return 0; }
 refresh_scan_roots
