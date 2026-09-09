@@ -12,7 +12,7 @@
 
 **Fleet-scale WordPress security auditing from the shell.**
 
-![Version](https://img.shields.io/badge/version-1.1.8-2ea44f)
+![Version](https://img.shields.io/badge/version-1.1.9-2ea44f)
 ![Bash](https://img.shields.io/badge/bash-4%2B-4EAA25?logo=gnubash&logoColor=white)
 ![WordPress](https://img.shields.io/badge/WordPress-security-21759B?logo=wordpress&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Linux-FCC624?logo=linux&logoColor=black)
@@ -127,19 +127,46 @@ If you suspect a compromise:
 
 ---
 
+## Choose a website by name
+
+```bash
+./presswarden scan example.com
+./presswarden lock example.com
+./presswarden unlock example.com
+./presswarden lock-status example.com
+```
+
+Use the same website name with `full`, `incident`, `db`, `inspect`, `baseline`, `changes`, `cleanup`, and other site commands. No full hosting path needed.
+
+**All websites:** omit the name or use `all`, such as `./presswarden lock all`.
+**Nested website:** use `example.com/shop`. A parent website's directory still includes discovered nested installations, shown before lock/unlock approval.
+
+`./presswarden sites` lists local names and directories. Unknown, excluded or ambiguous names stop without selecting anything. Existing directory arguments still work. [How local names are resolved](docs/SITE-TARGETS.md).
+
 ## Recheck one area
 
 Run just the existing PHP, JavaScript, or database threat-intelligence check:
 
 ```bash
-./presswarden inspect php /home/example/public_html
-./presswarden inspect js /home/example/public_html
-./presswarden inspect db /home/example/public_html
+./presswarden inspect php example.com
+./presswarden inspect js example.com
+./presswarden inspect db example.com
 ```
 
-The directory is optional. These commands reuse discovery, exclusions, and reports without refreshing feeds, offering file removal, or running database maintenance. They cover only the selected intelligence layer—not a complete security audit. Database inspection still loads WordPress through WP-CLI. Use `./presswarden inspect help` for scope details.
+The website name is optional. These commands reuse discovery, exclusions, and reports without refreshing feeds, offering file removal, or running database maintenance. They cover only the selected intelligence layer—not a complete security audit. Database inspection still loads WordPress through WP-CLI. Use `./presswarden inspect help` for scope details.
 
 ---
+
+## A smaller PHP environment report
+
+Optional per-site PHP data now shows the common profile, consistency counts, and differences grouped by website. Shared custom settings and long domain lists stay in the private full report. Configuration differences are review items, not automatic vulnerabilities.
+
+```bash
+./presswarden inspect runtime example.com
+./presswarden inspect runtime example.com --details
+```
+
+The second command shows full values. Hostinger remains optional; the local PHP checks work on other hosts too.
 
 ## Keep PressWarden updated
 
@@ -460,41 +487,17 @@ Portable installations also try to locate common sibling directories such as `do
 
 ---
 
-## Lock WordPress file modifications
+## Lock or unlock WordPress changes
 
-PressWarden can manage:
+| Action | One website | All discovered websites |
+|---|---|---|
+| Lock | `./presswarden lock example.com` | `./presswarden lock all` |
+| Unlock | `./presswarden unlock example.com` | `./presswarden unlock all` |
+| Status | `./presswarden lock-status example.com` | `./presswarden lock-status all` |
 
-```php
-define('DISALLOW_FILE_MODS', true);
-```
+Locking sets `DISALLOW_FILE_MODS=true`; unlock for trusted WordPress updates, then lock again. This is a WordPress restriction, not an operating-system file lock. Changes require confirmation unless intentionally running in noninteractive mode. Website names include nested installations beneath that directory; use `example.com/shop` for a nested site.
 
-across all discovered WordPress installations.
-
-Check status:
-
-```bash
-./presswarden lock-status
-```
-
-Temporarily unlock sites before trusted maintenance or updates:
-
-```bash
-./presswarden unlock
-```
-
-After updates are finished:
-
-```bash
-./presswarden lock
-```
-
-The older interface remains available for compatibility:
-
-```bash
-./presswarden file-mods status
-./presswarden file-mods on
-./presswarden file-mods off
-```
+The legacy `file-mods status|on|off [target]` interface remains supported.
 
 ---
 

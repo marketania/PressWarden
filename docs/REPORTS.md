@@ -12,6 +12,8 @@ Use these to retest a finding without running unrelated checks. `php` runs only 
 
 These checks offer no generic file-removal prompts, do not refresh vulnerability feeds and do not run database maintenance. They are a focused subset, not a replacement for `fast`, `full`, `incident` or `intel scan`. They still create normal reports/cache entries. Database inspection still boots WordPress through WP-CLI: plugins skipped by WP-CLI do not constitute a sandbox for MU plugins, configuration or drop-ins. The check's own SELECT-only queries do not prevent bootstrap side effects. See [database scope](DATABASE-SCANNING.md).
 
+`inspect runtime [website or directory] [--details]` adds a focused PHP-environment check in 1.1.9. Website names work for all inspection modes; see [site targets and compact PHP output](SITE-TARGETS.md). Runtime checks may use optional php.net/hosting API lookups but do not load WordPress or refresh vulnerability feeds.
+
 ## Names, privacy and preservation
 
 Starting with 1.1.6, each check and suite reserves a random-suffixed run identifier. The existing flat layout is retained, for example:

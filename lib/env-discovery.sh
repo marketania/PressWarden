@@ -96,7 +96,10 @@ site_label_from_root() {
   esac
 }
 site_domain_from_root() { local label; label=$(site_label_from_root "$1"); printf '%s' "${label%%/*}"; }
-_is_excluded_site() { local p="$1" label group x; label=$(site_label_from_root "$p"); group=${label%%/*}; for x in $PRESSWARDEN_EXCLUDE; do [ "$x" = "$label" ] || [ "$x" = "$group" ] || [ "$x" = "$p" ] || continue; return 0; done; return 1; }
+_is_excluded_site() { local p="$1" label group x;
+  # Preserve exclusions resolved under the fleet root when a name narrows ROOT.
+  while IFS= read -r x; do [ -n "$x" ] || continue; case "$p" in "$x"|"$x"/*) return 0 ;; esac; done <<< "${_PW_TARGET_EXCLUSIONS:-}"
+  label=$(site_label_from_root "$p"); group=${label%%/*}; for x in $PRESSWARDEN_EXCLUDE; do [ "$x" = "$label" ] || [ "$x" = "$group" ] || [ "$x" = "$p" ] || continue; return 0; done; return 1; }
 _array_has() { local needle="$1"; shift; local x; for x in "$@"; do [ "$x" = "$needle" ] && return 0; done; return 1; }
 
 _refresh_scan_roots_uncached() {
@@ -123,7 +126,7 @@ _refresh_scan_roots_uncached() {
     if [ "$nested" -eq 1 ]; then NESTED_SITES+=("$label"); else TREE_ROOTS+=("$p"); fi
   done
 }
-_discovery_cache_key() { printf '%s\n' "$ROOT|$PRESSWARDEN_DISCOVERY_DEPTH|$PRESSWARDEN_EXCLUDE|$PRESSWARDEN_VERSION" | cksum | awk '{print $1":"$2}'; }
+_discovery_cache_key() { printf '%s\n' "$ROOT|$PRESSWARDEN_DISCOVERY_DEPTH|$PRESSWARDEN_EXCLUDE|$PRESSWARDEN_VERSION|${_PW_TARGET_EXCLUSIONS:-}" | cksum | awk '{print $1":"$2}'; }
 _load_discovery_cache() {
   local ttl="${PRESSWARDEN_DISCOVERY_CACHE_TTL:-300}" cache="$PRESSWARDEN_CACHE_DIR/discovery.tsv" now mt age key header_type header_key type val p
   case "$ttl" in ''|*[!0-9]*) ttl=300 ;; esac; [ "$ttl" -gt 0 ] || return 1; [ "${PRESSWARDEN_DISCOVERY_REFRESH:-0}" != "1" ] || return 1; [ -s "$cache" ] || return 1

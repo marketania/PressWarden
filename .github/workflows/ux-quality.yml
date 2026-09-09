@@ -1,0 +1,31 @@
+name: UX Quality
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  usability:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Local name parser and host layouts
+        run: php tests/site-target.php
+      - name: Commands, exclusions, ambiguity and no bootstrap
+        run: bash tests/site-target.sh
+      - name: Named lock and unlock scope
+        run: bash tests/site-lock.sh
+      - name: PHP numeric and empty-value precision
+        run: php tests/php-environment.php
+      - name: Compact reports, detail retention and failures
+        run: bash tests/php-environment-runtime.sh
+      - name: PHP 7.4 helper compatibility
+        run: |
+          docker run --rm --network=none -v "$PWD:/work:ro" -w /work php:7.4-cli php tests/site-target.php
+          docker run --rm --network=none -v "$PWD:/work:ro" -w /work php:7.4-cli php tests/php-environment.php

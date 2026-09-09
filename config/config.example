@@ -9,6 +9,9 @@ PRESSWARDEN_SCAN_ROOT=""
 PRESSWARDEN_DISCOVERY_DEPTH=8
 PRESSWARDEN_EXCLUDE=""
 PRESSWARDEN_DISCOVERY_CACHE_TTL=300
+# Optional private name=absolute-directory mapping for sites in unnamed folders.
+# Usually unnecessary: domain folders and plain WP_HOME/WP_SITEURL literals are recognized.
+PRESSWARDEN_SITE_ALIASES_FILE=""
 
 # Interaction / reports
 PRESSWARDEN_INTERACTIVE=1
@@ -19,6 +22,9 @@ PRESSWARDEN_BASELINE_MAX_CHANGES=100
 # Slow image-extension PHP scan in FULL: empty=ask, 1=always run, 0=always skip.
 PRESSWARDEN_UPLOADS_DEEP=""
 # PRESSWARDEN_NOCOLOR=1
+
+# Show full optional per-site PHP API settings in the console (always saved in reports).
+PRESSWARDEN_PHP_DETAILS=0
 
 # Network/cache tuning
 PRESSWARDEN_PHP_RELEASE_CACHE_TTL=86400
