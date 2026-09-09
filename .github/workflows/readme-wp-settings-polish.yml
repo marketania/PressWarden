@@ -1,0 +1,42 @@
+name: README WP Settings Polish
+on:
+  push:
+    branches: [quality/wp-settings-1.1.12]
+permissions:
+  contents: write
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: quality/wp-settings-1.1.12
+      - name: Update public README
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('README.md'); s=p.read_text()
+          s=s.replace('version-1.1.10-2ea44f','version-1.1.12-2ea44f',1)
+          old='- 🔒 **Fleet lock/unlock** for `DISALLOW_FILE_MODS`\n- 📊 **Human-readable and JSON reports**\n'
+          new='- 🔒 **Fleet lock/unlock** for `DISALLOW_FILE_MODS`\n- 🧭 **WordPress policy dashboard** with one-site detail and fleet baseline differences\n- 📊 **Human-readable and JSON reports**\n'
+          assert old in s; s=s.replace(old,new,1)
+          old='| `./presswarden cleanup` | Conservative log / disposable-file cleanup |\n'
+          new=old+'| `./presswarden wp-settings example.com` | WordPress policy, updates, cron, recovery, environment, debug, and config posture |\n'
+          assert old in s; s=s.replace(old,new,1)
+          old='./presswarden lock-status example.com\n```\n'
+          new='./presswarden lock-status example.com\n./presswarden wp-settings example.com\n```\n'
+          assert old in s; s=s.replace(old,new,1)
+          marker='`./presswarden sites` lists local names and directories. Unknown, excluded or ambiguous names stop without selecting anything. Existing directory arguments still work. [How local names are resolved](docs/SITE-TARGETS.md).\n\n'
+          section='''## WordPress policy dashboard\n\nSee the full normalized policy for one site:\n\n```bash\n./presswarden wp-settings example.com\n```\n\nFor a fleet, PressWarden shows the unique most-common policy as a comparison baseline and then **only the websites that differ**. Tied values are reported as `MIXED`; differences are informational and do not replace dedicated security findings. Fast and Full include this read-only view automatically.\n\n```bash\n./presswarden wp-settings all\n```\n\nSupported settings can be changed with the same website-name or `all` targeting, with confirmation, backup, and verification. For example:\n\n```bash\n./presswarden wp-settings set cron disabled example.com\n./presswarden wp-settings set environment production example.com\n./presswarden wp-settings set editor disabled all\n```\n\nCore/plugin/theme automatic-update controls remain under `auto-updates`. See [WordPress policy details](docs/WP-SETTINGS.md).\n\n'''
+          assert marker in s; s=s.replace(marker,marker+section,1)
+          p.write_text(s)
+          PY
+          git diff --check README.md
+      - name: Commit README only
+        run: |
+          git add README.md
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'docs: add WordPress policy dashboard to README'
+          git push origin HEAD:refs/heads/quality/wp-settings-1.1.12
