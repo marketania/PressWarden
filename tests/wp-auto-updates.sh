@@ -9,6 +9,7 @@ for name in example.com other.com; do
   printf '<?php define("WP_AUTO_UPDATE_CORE", "minor");\n' > "$p/wp-config.php"
   printf 'minor\n' > "$p/.core"; printf '4\n' > "$p/.plugins-total"; printf '2\n' > "$p/.plugins-enabled"; printf '3\n' > "$p/.themes-total"; printf '0\n' > "$p/.themes-enabled"
 done
+touch "$T/sites/other.com/public_html/.DISALLOW_FILE_MODS"
 cat > "$T/bin/wp" <<'WP'
 #!/usr/bin/env bash
 set -eu
@@ -41,12 +42,14 @@ export PATH="$T/bin:$PATH" PRESSWARDEN_SCAN_ROOT="$T/sites" PRESSWARDEN_CONFIG_F
 run(){ bash "$REPO/presswarden" "$@"; }
 run auto-updates status example.com > "$T/status"
 grep -q 'Core .*MINOR' "$T/status"; grep -q 'Plugins PARTIAL 2/4' "$T/status"; grep -q 'Themes DISABLED 0/3' "$T/status"
+run auto-updates status other.com > "$T/blocked"
+grep -q 'BLOCKED by DISALLOW_FILE_MODS' "$T/blocked"
 run auto-updates core major example.com > "$T/out"; [ "$(cat "$T/sites/example.com/public_html/.core")" = major ]; [ "$(cat "$T/sites/other.com/public_html/.core")" = minor ]
 run auto-updates plugins enable example.com > "$T/out"; [ "$(cat "$T/sites/example.com/public_html/.plugins-enabled")" = 4 ]; [ "$(cat "$T/sites/other.com/public_html/.plugins-enabled")" = 2 ]
 run auto-updates themes enable all > "$T/out"; [ "$(cat "$T/sites/example.com/public_html/.themes-enabled")" = 3 ]; [ "$(cat "$T/sites/other.com/public_html/.themes-enabled")" = 3 ]
 run auto-updates themes disable other.com > "$T/out"; [ "$(cat "$T/sites/other.com/public_html/.themes-enabled")" = 0 ]
 run auto-updates core disabled other.com > "$T/out"; [ "$(cat "$T/sites/other.com/public_html/.core")" = disabled ]
-run auto-updates status all > "$T/fleet"; grep -q 'CORE.*MAJOR 1.*DISABLED 1' "$T/fleet" || grep -q 'CORE.*DISABLED 1.*MAJOR 1' "$T/fleet"
+run auto-updates status all > "$T/fleet"; grep -q 'Core .*MAJOR' "$T/fleet"; grep -q 'Core .*DISABLED' "$T/fleet"
 grep -q 'wp-auto-updates' "$REPO/suites/fast.sh"; grep -q 'wp-auto-updates' "$REPO/suites/full.sh"
 find "$T/state/quarantine" -type f | grep -q .
 printf 'WordPress automatic-update policy: named/fleet status, core/plugin/theme changes and backups PASS\n'

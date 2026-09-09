@@ -64,7 +64,7 @@ _status_row() {
   pc=$(_item_counts "$site" plugin) || return 2; IFS=$'\t' read -r pt pe <<< "$pc"
   tc=$(_item_counts "$site" theme) || return 2; IFS=$'\t' read -r tt te <<< "$tc"
   ps=$(_item_state "$pt" "$pe"); ts=$(_item_state "$tt" "$te"); block=$(_blocker "$site")
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$label" "$core" "$ps" "$pe" "$pt" "$ts" "$te" "$tt" "$block"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$label" "$core" "$ps" "$pe" "$pt" "$ts" "$te" "$tt" "$block"
 }
 
 _save_status_details() {
@@ -125,7 +125,7 @@ _backup_config() {
 }
 
 _set_core() {
-  local site label backup_root backup desired now block fail=0
+  local site label backup_root backup desired now block rc fail=0
   require_wp; discover_sites
   backup_root="$QUARANTINE/auto-updates-core-$(date -u +%Y%m%dT%H%M%SZ)-$$"; mkdir -p "$backup_root" || return 2; chmod 700 "$backup_root" 2>/dev/null || true
   for site in "${WP_SITES[@]}"; do
