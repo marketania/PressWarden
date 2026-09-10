@@ -9,6 +9,8 @@ for name in example.com other.com; do
   printf '<?php define("WP_AUTO_UPDATE_CORE", "minor");\n' > "$p/wp-config.php"
   printf 'minor\n' > "$p/.core"; printf '4\n' > "$p/.plugins-total"; printf '2\n' > "$p/.plugins-enabled"; printf '3\n' > "$p/.themes-total"; printf '0\n' > "$p/.themes-enabled"
 done
+# Keep one mixed theme state to reproduce WP-CLI's batch warning/error behavior.
+printf '1\n' > "$T/sites/other.com/public_html/.themes-enabled"
 touch "$T/sites/other.com/public_html/.DISALLOW_FILE_MODS"
 cat > "$T/bin/wp" <<'WP'
 #!/usr/bin/env bash
@@ -29,9 +31,31 @@ case "$1" in
    [ "$2" = auto-updates ] || exit 91
    case "$3" in
     status)
-      case " $* " in *' --field=name '*) i=1; while [ "$i" -le "$enabled" ]; do echo "$type$i"; i=$((i+1)); done ;; *' --enabled-only '*) echo "$enabled" ;; *) echo "$total" ;; esac ;;
-    enable) if [ "${4:-}" = --all ]; then echo "$total" > "$p/.${type}s-enabled"; else cur=$(cat "$p/.${type}s-enabled"); [ "$cur" -lt "$total" ] && echo $((cur+1)) > "$p/.${type}s-enabled"; fi ;;
-    disable) if [ "${4:-}" = --all ]; then echo 0 > "$p/.${type}s-enabled"; fi ;;
+      [ ! -f "$p/.status-fail-$type" ] || exit 95
+      case " $* " in
+       *' --field=name '*) i=1; while [ "$i" -le "$enabled" ]; do echo "$type$i"; i=$((i+1)); done ;;
+       *' --enabled-only '*) echo "$enabled" ;;
+       *) echo "$total" ;;
+      esac
+      ;;
+    enable)
+      if [ "${4:-}" = --all ]; then
+        case " $* " in
+          *' --disabled-only '*) [ "$enabled" -lt "$total" ] || exit 96; echo "$total" > "$p/.${type}s-enabled" ;;
+          *) [ "$enabled" -eq 0 ] || exit 97; echo "$total" > "$p/.${type}s-enabled" ;;
+        esac
+      else
+        cur=$(cat "$p/.${type}s-enabled"); [ "$cur" -lt "$total" ] && echo $((cur+1)) > "$p/.${type}s-enabled"
+      fi
+      ;;
+    disable)
+      if [ "${4:-}" = --all ]; then
+        case " $* " in
+          *' --enabled-only '*) [ "$enabled" -gt 0 ] || exit 98; echo 0 > "$p/.${type}s-enabled" ;;
+          *) [ "$enabled" -eq "$total" ] || exit 99; echo 0 > "$p/.${type}s-enabled" ;;
+        esac
+      fi
+      ;;
     *) exit 92 ;;
    esac ;;
  *) exit 93 ;;
@@ -40,18 +64,52 @@ WP
 chmod +x "$T/bin/wp"
 export PATH="$T/bin:$PATH" PRESSWARDEN_SCAN_ROOT="$T/sites" PRESSWARDEN_CONFIG_FILE="$T/no-config" PRESSWARDEN_STATE_DIR="$T/state" PRESSWARDEN_CACHE_DIR="$T/cache" PRESSWARDEN_INTERACTIVE=0 PRESSWARDEN_NOCOLOR=1 PRESSWARDEN_PROGRESS=0
 run(){ bash "$REPO/presswarden" "$@"; }
+
 run auto-updates status example.com > "$T/status"
 grep -q 'Core .*MINOR' "$T/status"; grep -q 'Plugins PARTIAL 2/4' "$T/status"; grep -q 'Themes DISABLED 0/3' "$T/status"
+run auto-update status example.com > "$T/status-alias"
+grep -q 'Core .*MINOR' "$T/status-alias"
 run auto-updates status other.com > "$T/blocked"
 grep -q 'BLOCKED by DISALLOW_FILE_MODS' "$T/blocked"
+
+# Mixed plugin state: unfiltered `disable --all` is modeled as nonzero, matching
+# WP-CLI batch semantics when some items are already disabled. PressWarden must
+# operate on enabled items only, then treat a second disable as an idempotent no-op.
+run auto-updates plugins disable other.com > "$T/out"
+[ "$(cat "$T/sites/other.com/public_html/.plugins-enabled")" = 0 ]
+grep -q 'Plugins auto-updates DISABLED' "$T/out"
+run auto-updates plugins disable other.com > "$T/out"
+grep -q 'already DISABLED' "$T/out"
+
 run auto-updates core major example.com > "$T/out"; [ "$(cat "$T/sites/example.com/public_html/.core")" = major ]; [ "$(cat "$T/sites/other.com/public_html/.core")" = minor ]
-run auto-updates plugins enable example.com > "$T/out"; [ "$(cat "$T/sites/example.com/public_html/.plugins-enabled")" = 4 ]; [ "$(cat "$T/sites/other.com/public_html/.plugins-enabled")" = 2 ]
+
+# Mixed plugin state on example.com must also enable cleanly by selecting only
+# disabled items. A repeated enable is a successful no-op, not a batch failure.
+run auto-updates plugins enable example.com > "$T/out"; [ "$(cat "$T/sites/example.com/public_html/.plugins-enabled")" = 4 ]; [ "$(cat "$T/sites/other.com/public_html/.plugins-enabled")" = 0 ]
+run auto-updates plugins enable example.com > "$T/out"; grep -q 'already ENABLED' "$T/out"
+
+# other.com starts with 1/3 theme auto-updates enabled, so fleet enable also
+# exercises the real mixed-state failure that was seen in production.
 run auto-updates themes enable all > "$T/out"; [ "$(cat "$T/sites/example.com/public_html/.themes-enabled")" = 3 ]; [ "$(cat "$T/sites/other.com/public_html/.themes-enabled")" = 3 ]
 run auto-updates themes disable other.com > "$T/out"; [ "$(cat "$T/sites/other.com/public_html/.themes-enabled")" = 0 ]
+run auto-updates themes disable other.com > "$T/out"; grep -q 'already DISABLED' "$T/out"
+
 run auto-updates core disabled other.com > "$T/out"; [ "$(cat "$T/sites/other.com/public_html/.core")" = disabled ]
 run auto-updates status all > "$T/fleet"; grep -q 'Core .*MAJOR' "$T/fleet"; grep -q 'Core .*DISABLED' "$T/fleet"
-# Standalone mutation/status commands remain; Fast/Full now use the unified policy dashboard.
+
+# One unreadable site must not hide the readable site's status. The command
+# remains exit 2 / INCOMPLETE because fleet coverage is partial.
+touch "$T/sites/other.com/public_html/.status-fail-plugin"
+if run auto-updates status all > "$T/partial" 2>&1; then
+  echo 'partial fleet auto-update status unexpectedly returned success' >&2; exit 1
+fi
+grep -q 'example.com' "$T/partial"
+grep -q 'INCOMPLETE.*1/2 site' "$T/partial"
+grep -q 'other.com.*plugin auto-update inventory failed' "$T/partial"
+rm -f "$T/sites/other.com/public_html/.status-fail-plugin"
+
+# Standalone mutation/status commands remain; Fast/Full use the unified policy dashboard.
 grep -q 'wp-settings' "$REPO/suites/fast.sh"; grep -q 'wp-settings' "$REPO/suites/full.sh"
 ! grep -q 'wp-auto-updates' "$REPO/suites/fast.sh"; ! grep -q 'wp-auto-updates' "$REPO/suites/full.sh"
 find "$T/state/quarantine" -type f | grep -q .
-printf 'WordPress automatic-update policy: named/fleet status, core/plugin/theme changes and backups PASS\n'
+printf 'WordPress automatic-update policy: idempotent mixed-state changes, partial status, targeting and backups PASS\n'

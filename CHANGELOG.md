@@ -2,6 +2,15 @@
 
 All notable changes to PressWarden are documented here.
 
+## 1.1.13 — 2026-09-10
+
+Automatic-update reliability fixes from live fleet testing.
+
+- Make plugin/theme auto-update enable/disable idempotent. Change only items that need changing (`--disabled-only` / `--enabled-only`) so WP-CLI does not turn already-correct items into a false batch failure. Repeated commands are successful no-ops.
+- Harden preference rollback to clear only currently enabled items before restoring the saved enabled-name list. Existing per-site preference snapshots and verification remain in place.
+- Keep readable standalone fleet status when one site cannot be inspected: show available results, identify the failed site and stage, retain partial detail evidence, and still return INCOMPLETE (2). Add measured site progress to this status command.
+- Accept `auto-update` as a convenience alias for the canonical `auto-updates` command. Preserve website-name targeting, Fast/Full `wp-settings` integration, updater blockers, private state, detection rules and remediation behavior.
+
 ## 1.1.12 — 2026-09-09
 
 Unified WordPress policy dashboard and fleet baseline differences.

@@ -386,7 +386,7 @@ case "$cmd" in
       exec bash "$PRESSWARDEN_DIR/checks/wp-settings.sh" status
     fi
     ;;
-  auto-updates)
+  auto-updates|auto-update)
     area="${1:-status}"; [ "$#" -gt 0 ] && shift || true
     case "$area" in
       status)
