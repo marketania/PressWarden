@@ -1,0 +1,55 @@
+name: Stage Auto Update Polish
+on:
+  push:
+    branches: [fix/auto-updates-1.1.13]
+    paths: [.github/workflows/stage-auto-update-polish.yml]
+permissions:
+  contents: write
+jobs:
+  stage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/auto-updates-1.1.13
+      - name: Apply release polish
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('presswarden')
+          s = p.read_text()
+          old = '  auto-updates)\n'
+          assert old in s
+          p.write_text(s.replace(old, '  auto-updates|auto-update)\n', 1))
+
+          p = Path('tests/wp-auto-updates.sh')
+          s = p.read_text()
+          old = "run auto-updates status example.com > \"$T/status\"\ngrep -q 'Core .*MINOR' \"$T/status\"; grep -q 'Plugins PARTIAL 2/4' \"$T/status\"; grep -q 'Themes DISABLED 0/3' \"$T/status\"\n"
+          new = old + "run auto-update status example.com > \"$T/status-alias\"\ngrep -q 'Core .*MINOR' \"$T/status-alias\"\n"
+          assert old in s
+          p.write_text(s.replace(old, new, 1))
+
+          p = Path('CHANGELOG.md')
+          s = p.read_text()
+          marker = 'All notable changes to PressWarden are documented here.\n\n'
+          entry = '''## 1.1.13 — 2026-09-10\n\nAutomatic-update reliability fixes from live fleet testing.\n\n- Make plugin/theme auto-update enable/disable idempotent. Change only items that need changing (`--disabled-only` / `--enabled-only`) so WP-CLI does not turn already-correct items into a false batch failure. Repeated commands are successful no-ops.\n- Harden preference rollback to clear only currently enabled items before restoring the saved enabled-name list. Existing per-site preference snapshots and verification remain in place.\n- Keep readable standalone fleet status when one site cannot be inspected: show available results, identify the failed site and stage, retain partial detail evidence, and still return INCOMPLETE (2). Add measured site progress to this status command.\n- Accept `auto-update` as a convenience alias for the canonical `auto-updates` command. Preserve website-name targeting, Fast/Full `wp-settings` integration, updater blockers, private state, detection rules and remediation behavior.\n\n'''
+          assert marker in s
+          p.write_text(s.replace(marker, marker + entry, 1))
+
+          p = Path('README.md')
+          s = p.read_text()
+          assert 'version-1.1.12-2ea44f' in s
+          p.write_text(s.replace('version-1.1.12-2ea44f', 'version-1.1.13-2ea44f', 1))
+          PY
+          git diff --check
+          bash -n presswarden checks/wp-auto-updates.sh tests/wp-auto-updates.sh
+          bash tests/wp-auto-updates.sh
+      - name: Commit polish
+        run: |
+          git add presswarden tests/wp-auto-updates.sh CHANGELOG.md README.md
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix: polish auto-update fleet controls'
+          git push origin HEAD:refs/heads/fix/auto-updates-1.1.13
