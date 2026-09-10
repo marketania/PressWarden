@@ -11,6 +11,7 @@ PRESSWARDEN_DIR="$PW_TEST_REPO"; ROOT="$PW_TEST_REPO"
 REPORTS="$PW_TEST_REPORTS"; PRESSWARDEN_VERSION=test; T0=$(date +%s)
 B=''; C=''; X=''; D=''; Y=''; G=''; R=''; BL=''; W=60
 SCAN_ROOTS=("$ROOT"); NESTED_SITES=(); MANUAL_EXCLUDED_DOMAINS=()
+PW_DISCOVERY_FAILED="${PW_TEST_DISCOVERY_FAILED:-0}"
 [ "${PW_TEST_EMPTY:-0}" = 0 ] || SCAN_ROOTS=()
 count_sites() { echo "${#SCAN_ROOTS[@]}"; }
 count_domains() { echo 1; }
@@ -33,7 +34,8 @@ run_case() {
   rc=$?
   set -e
   [ "$rc" -eq "$expected" ] || { cat "$TMP/$name.log"; echo "wrong exit code $rc" >&2; exit 1; }
-  php -r '$j=json_decode(file_get_contents($argv[1]),true); if(!$j || $j["coverage_status"]!==$argv[2] || $j["exit_code"]!==(int)$argv[3])exit(1);' "$TMP/reports/$name-latest-summary.json" "$coverage" "$expected"
+  local discovery_status="${5:-complete}"
+  php -r '$j=json_decode(file_get_contents($argv[1]),true); if(!$j || $j["coverage_status"]!==$argv[2] || $j["exit_code"]!==(int)$argv[3] || ($j["discovery_status"]??null)!==$argv[4])exit(1);' "$TMP/reports/$name-latest-summary.json" "$coverage" "$expected" "$discovery_status"
   if [ "$coverage" != complete ]; then ! grep -q 'ALL CLEAR' "$TMP/$name.log"; fi
 }
 run_case success 'good' 0 complete
@@ -46,6 +48,9 @@ run_case nothing 'wp-access wp-uploads-deep' 2 incomplete
 export PW_TEST_EMPTY=1
 run_case nosites 'good' 2 incomplete
 unset PW_TEST_EMPTY
+export PW_TEST_DISCOVERY_FAILED=1
+run_case discovery 'good' 2 incomplete incomplete
+unset PW_TEST_DISCOVERY_FAILED
 
 # A validator failure is not a clean scan. The new CLI does not execute a file.
 printf '%s\0' "$TMP/not-present.js" > "$TMP/paths"

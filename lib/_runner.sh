@@ -3,7 +3,8 @@ NAME="${RUN_NAME:-runall}"; DESC="${RUN_DESC:-}"
 SUITE_DOES="${RUN_DOES:-}"
 SUITE_WHY="${RUN_WHY:-}"
 . "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
-# Refresh discovery once per suite; children reuse the validated snapshot.
+SUITE_DISCOVERY_INCOMPLETE="${PW_DISCOVERY_FAILED:-0}"
+# Refresh discovery once per suite; children reuse the validated snapshot when available.
 PRESSWARDEN_DISCOVERY_REFRESH=0; export PRESSWARDEN_DISCOVERY_REFRESH
 
 strip_ansi() { sed $'s/\033\\[[0-9;]*[[:alpha:]]//g'; }
@@ -37,7 +38,7 @@ uploads_deep_check_wanted() {
 }
 
 _run_checks() {
-  local c rc n out seen="" start elapsed force="" total_checks=0 current_check=0 check_path completed_before suite_percent
+  local c rc n out seen="" start elapsed force="" total_checks=0 current_check=0 check_path completed_before suite_percent discovery_incomplete="${SUITE_DISCOVERY_INCOMPLETE:-0}"
   local -a pipeline_status
   [ -n "$C" ] && force=1
   total_checks=$(printf '%s\n' $CHECKS | sort -u | grep -c .)
@@ -50,6 +51,7 @@ _run_checks() {
   _meta_field 10 "WHY" "$SUITE_WHY"
   printf '  %s%-10s%s %s\n' "$D" "ROOT" "$X" "$ROOT"
   printf '  %s%-10s%s %s%s%s WordPress install(s) across %s site group(s)\n' "$D" "SITES" "$X" "$B" "$(count_sites)" "$X" "$(count_domains)"
+  [ "$discovery_incomplete" -eq 0 ] || _meta_field 10 "COVERAGE" "INCOMPLETE discovery: checks will continue on validated sites, but this suite cannot be ALL CLEAR."
   [ "${#NESTED_SITES[@]}" -gt 0 ] && _meta_field 10 "NESTED" "$(nested_sites_summary)"
   [ "${#MANUAL_EXCLUDED_DOMAINS[@]}" -gt 0 ] && _meta_field 10 "EXCLUDED" "$(manual_exclusions_summary)"
   printf '  %s%-10s%s %s\n' "$D" "COUNT" "$X" "$total_checks"
@@ -113,7 +115,7 @@ _run_checks() {
     printf '  %-20s %10s   %s%s %-10s%s   %s\n' "$c" "$n" "$B" "$col" "$icon $st" "$X" "$(human_time "${tm:-0}")"
   done < "$RES"
   _rule
-  if [ "$failed" -gt 0 ] || [ "$completed" -eq 0 ]; then
+  if [ "$failed" -gt 0 ] || [ "$completed" -eq 0 ] || [ "$discovery_incomplete" -ne 0 ]; then
     printf '  %s%s⚠ INCOMPLETE%s  findings: %s   failed: %s   completed: %s   skipped: %s\n' "$B" "$Y" "$X" "$grand" "$failed" "$completed" "$skipped"
   elif [ "$grand" -gt 0 ]; then
     printf '  %s%s✖ ATTENTION%s  total findings: %s   skipped: %s   elapsed: %s\n' "$B" "$R" "$X" "$grand" "$skipped" "$(human_time "$el")"
@@ -122,8 +124,9 @@ _run_checks() {
   else
     printf '  %s%s✓ ALL CLEAR%s  total findings: %s   elapsed: %s\n' "$B" "$G" "$X" "$grand" "$(human_time "$el")"
   fi
+  [ "$discovery_incomplete" -eq 0 ] || printf '  Discovery coverage is INCOMPLETE; successful check results above are retained for validated sites.\n'
   printf '  %sindividual reports:%s %s\n\n' "$D" "$X" "$REPORTS"
-  [ "$failed" -eq 0 ] && [ "$completed" -gt 0 ] || return 2
+  [ "$failed" -eq 0 ] && [ "$completed" -gt 0 ] && [ "$discovery_incomplete" -eq 0 ] || return 2
   [ "$grand" -eq 0 ]
 }
 
@@ -138,7 +141,7 @@ run_all() {
   fi
   if [ "${PRESSWARDEN_OUTPUT_JSON:-1}" != "0" ] && command -v php >/dev/null 2>&1; then
     json="$PW_REPORT_PREFIX-summary.json"
-    if ! php "$PRESSWARDEN_DIR/lib/suite-summary.php" "$RES" "$json" "$NAME" "$PRESSWARDEN_VERSION" "$ROOT" "$(count_sites)" "$(count_domains)" "$rc" "$LOG"; then
+    if ! php "$PRESSWARDEN_DIR/lib/suite-summary.php" "$RES" "$json" "$NAME" "$PRESSWARDEN_VERSION" "$ROOT" "$(count_sites)" "$(count_domains)" "$rc" "$LOG" "${SUITE_DISCOVERY_INCOMPLETE:-0}"; then
       printf 'INCOMPLETE: suite JSON report could not be written.\n' >&2; rc=2
     else
       json_written=1

@@ -127,19 +127,100 @@ _refresh_scan_roots_uncached() {
   done
 }
 _discovery_cache_key() { printf '%s\n' "$ROOT|$PRESSWARDEN_DISCOVERY_DEPTH|$PRESSWARDEN_EXCLUDE|$PRESSWARDEN_VERSION|${_PW_TARGET_EXCLUSIONS:-}" | cksum | awk '{print $1":"$2}'; }
+_discovery_text_safe() {
+  local v="$1"
+  [ -n "$v" ] || return 1
+  [[ "$v" != *[[:cntrl:]]* ]]
+}
+_discovery_path_safe() {
+  local p="$1" rr pr
+  _discovery_text_safe "$p" || return 1
+  case "$p" in "$ROOT"|"$ROOT"/*) ;; *) return 1 ;; esac
+  if command -v realpath >/dev/null 2>&1; then
+    rr=$(realpath "$ROOT" 2>/dev/null) || return 1
+    pr=$(realpath "$p" 2>/dev/null) || return 1
+    case "$pr" in "$rr"|"$rr"/*) ;; *) return 1 ;; esac
+  fi
+  return 0
+}
+_discovery_rebuild_derived() {
+  local p label group parent nested
+  TREE_ROOTS=(); DISCOVERED_DOMAINS=(); NESTED_SITES=(); MANUAL_EXCLUDED_DOMAINS=()
+  for p in "${MANUAL_EXCLUDED_ROOTS[@]}"; do
+    label=$(site_label_from_root "$p"); _discovery_text_safe "$label" || return 1
+    _array_has "$label" "${MANUAL_EXCLUDED_DOMAINS[@]}" || MANUAL_EXCLUDED_DOMAINS+=("$label")
+  done
+  for p in "${SCAN_ROOTS[@]}"; do
+    label=$(site_label_from_root "$p"); _discovery_text_safe "$label" || return 1
+    group=${label%%/*}; _discovery_text_safe "$group" || return 1
+    _array_has "$group" "${DISCOVERED_DOMAINS[@]}" || DISCOVERED_DOMAINS+=("$group")
+    nested=0
+    for parent in "${TREE_ROOTS[@]}"; do case "$p" in "$parent"/*) nested=1; break ;; esac; done
+    if [ "$nested" -eq 1 ]; then NESTED_SITES+=("$label"); else TREE_ROOTS+=("$p"); fi
+  done
+  return 0
+}
 _load_discovery_cache() {
-  local ttl="${PRESSWARDEN_DISCOVERY_CACHE_TTL:-300}" cache="$PRESSWARDEN_CACHE_DIR/discovery.tsv" now mt age key header_type header_key type val p
-  case "$ttl" in ''|*[!0-9]*) ttl=300 ;; esac; [ "$ttl" -gt 0 ] || return 1; [ "${PRESSWARDEN_DISCOVERY_REFRESH:-0}" != "1" ] || return 1; [ -s "$cache" ] || return 1
-  now=$(date +%s); mt=$(stat -c %Y "$cache" 2>/dev/null || printf '0'); case "$mt" in ''|*[!0-9]*) return 1 ;; esac; age=$((now-mt)); [ "$age" -ge 0 ] && [ "$age" -le "$ttl" ] || return 1
-  key=$(_discovery_cache_key); IFS=$'\t' read -r header_type header_key < "$cache" || return 1; [ "$header_type" = "META" ] && [ "$header_key" = "$key" ] || return 1
+  local ttl="${PRESSWARDEN_DISCOVERY_CACHE_TTL:-300}" cache="$PRESSWARDEN_CACHE_DIR/discovery.tsv" now mt age key type val extra p size lines first=1
+  case "$ttl" in ''|*[!0-9]*) ttl=300 ;; esac
+  [ "$ttl" -gt 0 ] || return 1
+  [ "${PRESSWARDEN_DISCOVERY_REFRESH:-0}" != "1" ] || return 1
+  [ -f "$cache" ] && [ ! -L "$cache" ] || return 1
+  size=$(wc -c < "$cache" 2>/dev/null | tr -d '[:space:]') || return 1
+  lines=$(wc -l < "$cache" 2>/dev/null | tr -d '[:space:]') || return 1
+  case "$size:$lines" in *[!0-9:]*|:*|*:) return 1 ;; esac
+  [ "$size" -gt 0 ] && [ "$size" -le 4194304 ] && [ "$lines" -le 50000 ] || return 1
+  now=$(date +%s); mt=$(stat -c %Y "$cache" 2>/dev/null || printf '0')
+  case "$mt" in ''|*[!0-9]*) return 1 ;; esac
+  age=$((now-mt)); [ "$age" -ge 0 ] && [ "$age" -le "$ttl" ] || return 1
+  key=$(_discovery_cache_key)
   SCAN_ROOTS=(); TREE_ROOTS=(); IGNORED_DOMAINS=(); MANUAL_EXCLUDED_DOMAINS=(); MANUAL_EXCLUDED_ROOTS=(); DISCOVERED_DOMAINS=(); NESTED_SITES=()
-  while IFS=$'\t' read -r type val; do [ -n "$type" ] || continue; case "$type" in META) ;; ROOT) SCAN_ROOTS+=("$val") ;; TREE) TREE_ROOTS+=("$val") ;; EXCLUDED_LABEL) MANUAL_EXCLUDED_DOMAINS+=("$val") ;; EXCLUDED_ROOT) MANUAL_EXCLUDED_ROOTS+=("$val") ;; DOMAIN) DISCOVERED_DOMAINS+=("$val") ;; NESTED) NESTED_SITES+=("$val") ;; esac; done < "$cache"
-  [ "${#SCAN_ROOTS[@]}" -gt 0 ] || return 1; for p in "${SCAN_ROOTS[@]}"; do _is_wordpress_root "$p" || return 1; done
+  while IFS=$'\t' read -r type val extra || [ -n "$type$val$extra" ]; do
+    if [ "$first" -eq 1 ]; then
+      [ "$type" = META ] && [ "$val" = "$key" ] && [ -z "$extra" ] || return 1
+      first=0; continue
+    fi
+    [ -z "$extra" ] || return 1
+    case "$type" in
+      ROOT)
+        _discovery_path_safe "$val" || return 1
+        _is_wordpress_root "$val" || return 1
+        _is_excluded_site "$val" && return 1
+        _array_has "$val" "${SCAN_ROOTS[@]}" || SCAN_ROOTS+=("$val")
+        [ "${#SCAN_ROOTS[@]}" -le 5000 ] || return 1
+        ;;
+      EXCLUDED_ROOT)
+        _discovery_path_safe "$val" || return 1
+        _array_has "$val" "${MANUAL_EXCLUDED_ROOTS[@]}" || MANUAL_EXCLUDED_ROOTS+=("$val")
+        ;;
+      TREE) _discovery_path_safe "$val" || return 1 ;;
+      EXCLUDED_LABEL|DOMAIN|NESTED) _discovery_text_safe "$val" || return 1 ;;
+      META|'') return 1 ;;
+      *) return 1 ;;
+    esac
+  done < "$cache"
+  [ "$first" -eq 0 ] && [ "${#SCAN_ROOTS[@]}" -gt 0 ] || return 1
+  _discovery_rebuild_derived || return 1
+  return 0
 }
 _save_discovery_cache() {
-  local cache="$PRESSWARDEN_CACHE_DIR/discovery.tsv" tmp key x; mkdir -p "$PRESSWARDEN_CACHE_DIR" 2>/dev/null || return 0; tmp=$(tmpf); key=$(_discovery_cache_key); printf 'META\t%s\n' "$key" > "$tmp"
-  for x in "${SCAN_ROOTS[@]}"; do printf 'ROOT\t%s\n' "$x" >> "$tmp"; done; for x in "${TREE_ROOTS[@]}"; do printf 'TREE\t%s\n' "$x" >> "$tmp"; done; for x in "${MANUAL_EXCLUDED_DOMAINS[@]}"; do printf 'EXCLUDED_LABEL\t%s\n' "$x" >> "$tmp"; done; for x in "${MANUAL_EXCLUDED_ROOTS[@]}"; do printf 'EXCLUDED_ROOT\t%s\n' "$x" >> "$tmp"; done; for x in "${DISCOVERED_DOMAINS[@]}"; do printf 'DOMAIN\t%s\n' "$x" >> "$tmp"; done; for x in "${NESTED_SITES[@]}"; do printf 'NESTED\t%s\n' "$x" >> "$tmp"; done
-  mv -f "$tmp" "$cache" 2>/dev/null || { cp "$tmp" "$cache" 2>/dev/null && rm -f "$tmp"; }; chmod 600 "$cache" 2>/dev/null || true
+  local cache="$PRESSWARDEN_CACHE_DIR/discovery.tsv" tmp key x
+  mkdir -p "$PRESSWARDEN_CACHE_DIR" 2>/dev/null || return 0
+  if [ -e "$cache" ] || [ -L "$cache" ]; then [ -f "$cache" ] && [ ! -L "$cache" ] || return 0; fi
+  tmp=$( (umask 077; mktemp "$PRESSWARDEN_CACHE_DIR/.discovery.XXXXXX") ) || return 0
+  key=$(_discovery_cache_key)
+  {
+    printf 'META\t%s\n' "$key"
+    for x in "${SCAN_ROOTS[@]}"; do printf 'ROOT\t%s\n' "$x"; done
+    for x in "${TREE_ROOTS[@]}"; do printf 'TREE\t%s\n' "$x"; done
+    for x in "${MANUAL_EXCLUDED_DOMAINS[@]}"; do printf 'EXCLUDED_LABEL\t%s\n' "$x"; done
+    for x in "${MANUAL_EXCLUDED_ROOTS[@]}"; do printf 'EXCLUDED_ROOT\t%s\n' "$x"; done
+    for x in "${DISCOVERED_DOMAINS[@]}"; do printf 'DOMAIN\t%s\n' "$x"; done
+    for x in "${NESTED_SITES[@]}"; do printf 'NESTED\t%s\n' "$x"; done
+  } > "$tmp" || { rm -f "$tmp"; return 0; }
+  chmod 600 "$tmp" 2>/dev/null || true
+  mv -f "$tmp" "$cache" 2>/dev/null || rm -f "$tmp"
 }
 refresh_scan_roots() { _load_discovery_cache && { PW_DISCOVERY_FAILED=0; return 0; }; _refresh_scan_roots_uncached; [ "${PW_DISCOVERY_FAILED:-0}" -ne 0 ] || _save_discovery_cache; return 0; }
+
 refresh_scan_roots

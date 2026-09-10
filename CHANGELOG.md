@@ -2,6 +2,15 @@
 
 All notable changes to PressWarden are documented here.
 
+## 1.1.14 — 2026-09-10
+
+Discovery completeness and cache-boundary reliability.
+
+- Propagate partial WordPress discovery into direct-check and suite verdicts. Validated-site results still run and remain visible, but a traversal/discovery failure can no longer end as CLEAN or ALL CLEAR; suite JSON now includes `discovery_status`.
+- Harden discovery-cache trust: require a bounded regular non-symlink cache, reject malformed/unknown records, validate cached WordPress roots inside the selected scan root (including canonical containment when `realpath` is available), deduplicate roots, and rebuild derived labels/tree/domain data from validated paths rather than trusting cached display metadata.
+- Publish discovery cache through a private same-directory temporary file and atomic rename. Incomplete discovery is never cached, and an unsafe existing cache object is left untouched rather than followed.
+- Add regressions for traversal returning partial candidates, direct-check/suite false-clean prevention, out-of-root cache poisoning, symlinked cache files, oversized cache input, private permissions, and existing runtime behavior. No malware rules, target semantics, remediation, quarantine, baseline, or WordPress policy thresholds changed.
+
 ## 1.1.13 — 2026-09-10
 
 Automatic-update reliability fixes from live fleet testing.
