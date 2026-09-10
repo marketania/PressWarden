@@ -67,6 +67,8 @@ run(){ bash "$REPO/presswarden" "$@"; }
 
 run auto-updates status example.com > "$T/status"
 grep -q 'Core .*MINOR' "$T/status"; grep -q 'Plugins PARTIAL 2/4' "$T/status"; grep -q 'Themes DISABLED 0/3' "$T/status"
+run auto-update status example.com > "$T/status-alias"
+grep -q 'Core .*MINOR' "$T/status-alias"
 run auto-updates status other.com > "$T/blocked"
 grep -q 'BLOCKED by DISALLOW_FILE_MODS' "$T/blocked"
 
