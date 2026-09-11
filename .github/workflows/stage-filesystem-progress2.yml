@@ -1,0 +1,38 @@
+name: Stage Filesystem Progress 2
+on:
+  push:
+    branches:
+      - reliability/discovery-completeness-1.1.14
+    paths:
+      - .github/workflows/stage-filesystem-progress2.yml
+permissions:
+  contents: write
+jobs:
+  stage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: reliability/discovery-completeness-1.1.14
+      - name: Apply staged source changes
+        shell: bash
+        run: python3 tests/.stage-filesystem-progress.py
+      - name: Validate focused regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          bash -n checks/filesystem-security-full.sh checks/filesystem-security.sh lib/remediation.sh tests/discovery-reliability.sh tests/runtime-reliability.sh
+          python3 tests/filesystem-progress.py
+          bash tests/discovery-reliability.sh
+          bash tests/runtime-reliability.sh
+      - name: Commit source changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add checks/filesystem-security-full.sh checks/filesystem-security.sh lib/remediation.sh tests/filesystem-progress.py CHANGELOG.md .github/workflows/progress-quality.yml .github/workflows/ci.yml
+          git commit -m 'fix: add trustworthy recursive filesystem progress'
+          git push origin HEAD:reliability/discovery-completeness-1.1.14
