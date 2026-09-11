@@ -2,6 +2,17 @@
 
 All notable changes to PressWarden are documented here.
 
+## 1.1.16 — 2026-09-11
+
+Resilient suite run state and interruption visibility.
+
+- Add a private atomic per-suite run-state journal keyed by the existing unique report run ID. Track the selected checks, active step, per-check result/finding count, discovery completeness, site counts, report path, timestamps, signal and final exit state without storing WordPress secrets or payload contents.
+- Catch `HUP`, `INT` and `TERM` in the shared suite runner and record `INTERRUPTED` with the active check before exiting. Unexpected shell exits are recorded as `FAILED`; normal finished suites record `COMPLETED` or `INCOMPLETE`. A run-state write failure lets validated checks continue but forces the suite verdict INCOMPLETE.
+- Add read-only `last-run` and `run-status [RUN_ID]` commands that do not discover sites or bootstrap WordPress. A stale RUNNING record can report that its recorded PID is no longer present when PHP POSIX support is available; uncatchable SIGKILL is never falsely described as a clean completion.
+- Keep run history bounded to allowlisted operational metadata with private run directories, 0600 atomic JSON publication, safe run IDs, symlink/non-regular refusal and a private atomic `latest` pointer. Historical run IDs are never overwritten.
+- Deliberately do not add automatic resume yet: replaying partially completed suites safely requires stronger version/scope/exclusion/check-plan compatibility guarantees, especially around stateful or destructive operations.
+- Add interruption, unexpected-exit, completed-run, malformed-state, symlink, privacy and PHP 7.4 regressions. Existing malware thresholds, quarantine semantics, baseline transactions, updater recovery, website targeting and shared-host portability remain unchanged.
+
 ## 1.1.15 — 2026-09-11
 
 Quarantine stale-selection diagnostics and operator clarity.

@@ -134,7 +134,13 @@ function pwrs_validate_check($state, $check) {
     return $check;
 }
 function pwrs_show($runs, $id = '') {
-    $runs = pwrs_plain_dir($runs, false);
+    $runsRaw = rtrim(pwrs_text($runs, false, 8192), '/');
+    if ($runsRaw === '') $runsRaw = '/';
+    if (!file_exists($runsRaw) && !is_link($runsRaw)) {
+        fwrite(STDOUT, "No recorded PressWarden suite runs.\n");
+        return 0;
+    }
+    $runs = pwrs_plain_dir($runsRaw, false);
     if ($id === '' || $id === 'latest') {
         $latest = $runs.'/latest';
         if (!file_exists($latest) && !is_link($latest)) {
@@ -199,7 +205,7 @@ try {
         $total = pwrs_uint($argv[9], PW_RUN_STATE_MAX_CHECKS); $discovery = $argv[10];
         if ($discovery !== 'complete' && $discovery !== 'incomplete') pwrs_fail('invalid discovery status');
         $pid = pwrs_uint($argv[11], 2147483647); $checks = pwrs_parse_checks($argv[12]);
-        $report = pwrs_text($argv[13], true, 8192); $startedEpoch = pwrs_uint($argv[14], 2147483647);
+        $report = pwrs_text($argv[13], true, 8192); $startedEpoch = pwrs_uint($argv[14], 4102444800);
         if ($total !== count($checks)) pwrs_fail('check count mismatch');
         $runDir = $runs.'/'.$id;
         if (file_exists($runDir) || is_link($runDir)) pwrs_fail('run id already exists');
