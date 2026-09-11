@@ -10,6 +10,8 @@ Discovery completeness and cache-boundary reliability.
 - Harden discovery-cache trust: require a bounded regular non-symlink cache, reject malformed/unknown records, validate cached WordPress roots inside the selected scan root (including canonical containment when `realpath` is available), deduplicate roots, and rebuild derived labels/tree/domain data from validated paths rather than trusting cached display metadata.
 - Publish discovery cache through a private same-directory temporary file and atomic rename. Incomplete discovery is never cached, and an unsafe existing cache object is left untouched rather than followed.
 - Add regressions for traversal returning partial candidates, direct-check/suite false-clean prevention, out-of-root cache poisoning, symlinked cache files, oversized cache input, private permissions, and existing runtime behavior. No malware rules, target semantics, remediation, quarantine, baseline, or WordPress policy thresholds changed.
+- Add measured per-WordPress-tree progress to FULL recursive world-writable and symlink scans. Recursive traversal failures retain completed findings but make the check INCOMPLETE instead of allowing a false clean result.
+- Treat permission and symlink posture findings as read-only in FAST/FULL filesystem checks; they no longer offer generic delete/quarantine remediation.
 
 ## 1.1.13 — 2026-09-10
 
