@@ -44,6 +44,7 @@ banner() {
   printf '  %s%-11s%s %s\n' "$D" "ROOT" "$X" "$ROOT"
   [ "$PRESSWARDEN_CONFIG_LOADED" -eq 1 ] && printf '  %s%-11s%s %s\n' "$D" "CONFIG" "$X" "$PRESSWARDEN_CONFIG_FILE"
   printf '  %s%-11s%s %s%s%s WordPress install(s) across %s site group(s)\n' "$D" "SITES" "$X" "$B" "$(count_sites)" "$X" "$(count_domains)"
+  [ "${PW_DISCOVERY_FAILED:-0}" -eq 0 ] || _meta_field 11 "COVERAGE" "INCOMPLETE discovery: validated sites are shown, but one or more paths could not be fully inspected."
   [ "${#NESTED_SITES[@]}" -gt 0 ] && _meta_field 11 "NESTED" "$(nested_sites_summary)"
   [ "${#MANUAL_EXCLUDED_DOMAINS[@]}" -gt 0 ] && _meta_field 11 "EXCLUDED" "$(manual_exclusions_summary)"
   printf '  %s%-11s%s %s\n' "$D" "STARTED" "$X" "$(date '+%Y-%m-%d %H:%M:%S')"

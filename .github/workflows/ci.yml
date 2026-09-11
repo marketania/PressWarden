@@ -36,6 +36,10 @@ jobs:
         shell: bash
         run: bash tests/smoke.sh
 
+      - name: Discovery completeness and cache boundaries
+        shell: bash
+        run: bash tests/discovery-reliability.sh
+
       - name: Safe self update preservation
         shell: bash
         run: bash tests/update.sh

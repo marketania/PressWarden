@@ -19,6 +19,8 @@ jobs:
         run: php tests/progress.php
       - name: Real terminal rendering, safe counts and report isolation
         run: python3 tests/progress-terminal.py
+      - name: Recursive filesystem progress and traversal failures
+        run: python3 tests/filesystem-progress.py
       - name: Existing PHP, JS and database failure contracts
         run: |
           bash tests/php-intel-runtime.sh

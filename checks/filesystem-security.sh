@@ -36,7 +36,7 @@ main() {
     [ -d "$d" ] && find "$d" -xdev -mindepth 1 -maxdepth 2 -type d -perm -0002 -print 2>/dev/null >> "$L"
   done
   sort -u "$L" -o "$L"
-  report "$L" issue "no world-writable high-risk paths"
+  report "$L" issue "no world-writable high-risk paths" noaction
   note "FAST checks root/critical files, plugin/theme/MU roots (depth 2), and upload directories (depth 2)."
   note "runall-full uses filesystem-security-full.sh for exhaustive recursive permission coverage."
 
@@ -50,7 +50,7 @@ main() {
       *[2367][0-7]|*[0-7][2367]) printf '%s mode=%s (group/other writable)\n' "$f" "$mode" >> "$L" ;;
     esac
   done
-  report "$L" issue "no wp-config.php file is group/other writable"
+  report "$L" issue "no wp-config.php file is group/other writable" noaction
   printf '    %sℹ MODES%s  ' "$C" "$X"
   cut -d'|' -f1 "$modes" | sort | uniq -c | awk '{printf "%s=%s site(s)  ",$2,$1} END{print ""}'
   note "Mode inventory is informational; shared-host ownership models vary, so read-only differences are not auto-flagged."
@@ -76,7 +76,7 @@ main() {
   done
   rm -f "$L.candidates"
   sort -u "$L" -o "$L"
-  report "$L" review "no escaping symlinks in targeted high-risk paths"
+  report "$L" review "no escaping symlinks in targeted high-risk paths" noaction
 
   finish
 }

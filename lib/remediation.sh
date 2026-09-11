@@ -67,6 +67,7 @@ _prompt_file_action() {
   local findings="$1" sev="$2" del prot nd np ans
   [ "$sev" != info ] || return 0
   [ "${PW_REMEDIATION_FAILED:-0}" -eq 0 ] || return 2
+  [ "${PW_CHECK_INCOMPLETE:-0}" -eq 0 ] || return 2
   [ "$PRESSWARDEN_INTERACTIVE" != 0 ] || return 0
   [ -t 0 ] || { printf '    %sℹ%s  non-interactive session — remediation skipped\n' "$C" "$X"; return 0; }
 
@@ -176,7 +177,7 @@ report() {
 finish() {
   local el=$(( $(date +%s) - T0 )) col status
   printf '\n'; _rule
-  if [ "${PW_REPORT_FAILED:-0}" -ne 0 ] || [ "${PW_REMEDIATION_FAILED:-0}" -ne 0 ]; then col="$Y"; status='INCOMPLETE'
+  if [ "${PW_REPORT_FAILED:-0}" -ne 0 ] || [ "${PW_REMEDIATION_FAILED:-0}" -ne 0 ] || [ "${PW_DISCOVERY_FAILED:-0}" -ne 0 ] || [ "${PW_CHECK_INCOMPLETE:-0}" -ne 0 ]; then col="$Y"; status='INCOMPLETE'
   elif [ "$ALERTS" -gt 0 ]; then col="$R"; status='ATTENTION REQUIRED'
   elif [ "$REVIEWS" -gt 0 ]; then col="$Y"; status='REVIEW RECOMMENDED'
   else col="$G"; status='CLEAN'; fi
@@ -191,9 +192,15 @@ finish() {
   if [ "${PW_REMEDIATION_FAILED:-0}" -ne 0 ]; then
     printf '  Partial removal is possible; deleted counts only completed targets. Inspect the retained quarantine case.\n'
   fi
+  if [ "${PW_DISCOVERY_FAILED:-0}" -ne 0 ]; then
+    printf '  Discovery coverage is INCOMPLETE; results above cover validated sites only.\n'
+  fi
+  if [ "${PW_CHECK_INCOMPLETE:-0}" -ne 0 ]; then
+    printf '  Check coverage is INCOMPLETE; successful findings above are retained.\n'
+  fi
   _rule
   printf '\n'
-  [ "${PW_REPORT_FAILED:-0}" -eq 0 ] && [ "${PW_REMEDIATION_FAILED:-0}" -eq 0 ] || return 2
+  [ "${PW_REPORT_FAILED:-0}" -eq 0 ] && [ "${PW_REMEDIATION_FAILED:-0}" -eq 0 ] && [ "${PW_DISCOVERY_FAILED:-0}" -eq 0 ] && [ "${PW_CHECK_INCOMPLETE:-0}" -eq 0 ] || return 2
   [ "$TOTAL" -eq 0 ] && return 0 || return 1
 }
 
@@ -205,6 +212,10 @@ run_logged() {
   local rc=${log_status[0]}
   if [ "${log_status[1]}" -ne 0 ]; then
     printf 'INCOMPLETE: console report could not be written completely.\n' >&2
+    rc=2
+  fi
+  if [ "${PW_DISCOVERY_FAILED:-0}" -ne 0 ] && [ "$rc" -lt 2 ]; then
+    printf 'INCOMPLETE: WordPress discovery was incomplete; validated-site results are retained.\n' | tee -a "$LOG" >&2 || true
     rc=2
   fi
   pw_report_remove_empty

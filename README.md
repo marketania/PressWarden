@@ -12,7 +12,7 @@
 
 **Fleet-scale WordPress security auditing from the shell.**
 
-![Version](https://img.shields.io/badge/version-1.1.13-2ea44f)
+![Version](https://img.shields.io/badge/version-1.1.14-2ea44f)
 ![Bash](https://img.shields.io/badge/bash-4%2B-4EAA25?logo=gnubash&logoColor=white)
 ![WordPress](https://img.shields.io/badge/WordPress-security-21759B?logo=wordpress&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Linux-FCC624?logo=linux&logoColor=black)
@@ -239,7 +239,7 @@ PressWarden is exception-first, so healthy items are kept concise while importan
 ⚠ INCOMPLETE  A check could not finish; this is not a clean verdict
 ```
 
-A finding is evidence for investigation, not automatic proof that a site is compromised. For JavaScript, an encoded external URL with visitor targeting is `REVIEW`; the report identifies the rule, source line, and browser operation without offering bulk deletion.
+A finding is evidence for investigation, not automatic proof that a site is compromised. If WordPress discovery is incomplete, validated-site findings are retained but the run is INCOMPLETE and cannot be ALL CLEAR. For JavaScript, an encoded external URL with visitor targeting is `REVIEW`; the report identifies the rule, source line, and browser operation without offering bulk deletion.
 
 Example:
 
