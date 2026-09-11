@@ -1,0 +1,240 @@
+name: Stage Filesystem Progress
+on:
+  push:
+    branches: [reliability/discovery-completeness-1.1.14]
+    paths: [.github/workflows/stage-filesystem-progress.yml]
+permissions:
+  contents: write
+jobs:
+  stage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: reliability/discovery-completeness-1.1.14
+      - name: Apply filesystem progress and safety changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          Path('checks/filesystem-security-full.sh').write_text(r'''#!/usr/bin/env bash
+# filesystem-security-full — exhaustive recursive permission/symlink audit; FULL suite only
+NAME=filesystem-security-full; DESC="FULL recursive filesystem permissions + symlink containment"
+SCAN_DOES="Recursively checks every WordPress file and directory for world-writable permissions and unsafe symlink targets."
+SCAN_WHY="The exhaustive pass finds deeply nested permission weaknesses that the targeted FAST scan intentionally skips."
+. "$(cd "$(dirname "$0")/.." && pwd)/lib/_lib.sh"
+
+main() {
+  banner
+  local L s f mode modes target owner CAND tmp failures label failed_n
+  local tree_total tree_done percent world_failed=0 symlink_failed=0
+
+  sec "World-writable files and directories" "FULL recursive scan • mode other-write bit set"
+  L=$(tmpf); failures=$(tmpf); : > "$L"; : > "$failures"
+  tree_total=${#TREE_ROOTS[@]}; tree_done=0
+  pw_progress_init
+  pw_progress_draw "World-writable: 0% | 0/$tree_total trees processed" 1
+  for s in "${TREE_ROOTS[@]}"; do
+    label=$(site_label_from_root "$s")
+    tmp=$(tmpf); : > "$tmp"
+    if ! find "$s" -xdev \( -type f -o -type d \) -perm -0002 \
+      -not -path '*/.private/*' -print > "$tmp" 2>/dev/null; then
+      world_failed=1
+      printf '%s\n' "$label" >> "$failures"
+    fi
+    cat "$tmp" >> "$L" || world_failed=1
+    rm -f "$tmp"
+    tree_done=$((tree_done+1)); percent=0
+    [ "$tree_total" -gt 0 ] && percent=$((tree_done*100/tree_total))
+    if [ "$tree_done" -eq "$tree_total" ] && [ "$world_failed" -ne 0 ]; then
+      pw_progress_draw "World-writable: INCOMPLETE | $tree_done/$tree_total trees attempted | $label" 1
+    else
+      pw_progress_draw "World-writable: $percent% | $tree_done/$tree_total trees processed | $label" "$([ "$tree_done" -eq "$tree_total" ] && printf 1 || printf 0)"
+    fi
+  done
+  pw_progress_end
+  sort -u "$L" -o "$L"
+  if [ "$world_failed" -ne 0 ]; then
+    PW_CHECK_INCOMPLETE=1
+    if [ -s "$L" ]; then
+      report "$L" issue "" noaction
+    else
+      rm -f "$L"
+      printf '    %s⚠ INCOMPLETE%s  no world-writable items found in successfully traversed portions\n' "$Y" "$X"
+    fi
+    failed_n=$(sort -u "$failures" | grep -c . 2>/dev/null || true); failed_n=${failed_n:-0}
+    printf '    Recursive permission traversal failed for %s WordPress tree(s); validated findings are retained.\n' "$failed_n"
+  else
+    report "$L" issue "no world-writable files/directories anywhere in WordPress trees" noaction
+  fi
+  rm -f "$failures"
+  note "Permission findings are configuration posture only; PressWarden never offers generic delete/quarantine for them."
+
+  sec "wp-config.php permission posture" "inventory; group/other WRITE is an alert"
+  L=$(tmpf); modes=$(tmpf); : > "$L"; : > "$modes"
+  for s in "${SCAN_ROOTS[@]}"; do
+    f="$s/wp-config.php"; [ -f "$f" ] || continue
+    mode=$(stat -c '%a' "$f" 2>/dev/null || echo unknown)
+    printf '%s|%s\n' "$mode" "$(site_domain "$s")" >> "$modes"
+    case "$mode" in
+      *[2367][0-7]|*[0-7][2367]) printf '%s mode=%s (group/other writable)\n' "$f" "$mode" >> "$L" ;;
+    esac
+  done
+  report "$L" issue "no wp-config.php file is group/other writable" noaction
+  printf '    %sℹ MODES%s  ' "$C" "$X"
+  cut -d'|' -f1 "$modes" | sort | uniq -c | awk '{printf "%s=%s site(s)  ",$2,$1} END{print ""}'
+  note "Mode inventory is informational; shared-host ownership models vary, so read-only differences are not auto-flagged."
+  rm -f "$modes"
+
+  sec "Symlinks escaping a WordPress site root" "FULL recursive scan"
+  L=$(tmpf); failures=$(tmpf); : > "$L"; : > "$failures"
+  tree_total=${#TREE_ROOTS[@]}; tree_done=0
+  pw_progress_init
+  pw_progress_draw "Symlinks: 0% | 0/$tree_total trees processed" 1
+  for s in "${TREE_ROOTS[@]}"; do
+    label=$(site_label_from_root "$s")
+    CAND=$(tmpf); : > "$CAND"
+    if ! find "$s" -xdev -type l -not -path '*/.private/*' -print > "$CAND" 2>/dev/null; then
+      symlink_failed=1
+      printf '%s\n' "$label" >> "$failures"
+    fi
+    while IFS= read -r f; do
+      [ -n "$f" ] || continue
+      target=$(readlink -f "$f" 2>/dev/null || true); [ -n "$target" ] || continue
+      owner=$(_site_root_for_path "$f" 2>/dev/null || true); [ -n "$owner" ] || owner="$s"
+      case "$target" in "$owner"|"$owner"/*) : ;; *) printf '%s -> %s\n' "$f" "$target" ;; esac
+    done < "$CAND" >> "$L"
+    rm -f "$CAND"
+    tree_done=$((tree_done+1)); percent=0
+    [ "$tree_total" -gt 0 ] && percent=$((tree_done*100/tree_total))
+    if [ "$tree_done" -eq "$tree_total" ] && [ "$symlink_failed" -ne 0 ]; then
+      pw_progress_draw "Symlinks: INCOMPLETE | $tree_done/$tree_total trees attempted | $label" 1
+    else
+      pw_progress_draw "Symlinks: $percent% | $tree_done/$tree_total trees processed | $label" "$([ "$tree_done" -eq "$tree_total" ] && printf 1 || printf 0)"
+    fi
+  done
+  pw_progress_end
+  sort -u "$L" -o "$L"
+  if [ "$symlink_failed" -ne 0 ]; then
+    PW_CHECK_INCOMPLETE=1
+    if [ -s "$L" ]; then
+      report "$L" review "" noaction
+    else
+      rm -f "$L"
+      printf '    %s⚠ INCOMPLETE%s  no escaping symlinks found in successfully traversed portions\n' "$Y" "$X"
+    fi
+    failed_n=$(sort -u "$failures" | grep -c . 2>/dev/null || true); failed_n=${failed_n:-0}
+    printf '    Recursive symlink traversal failed for %s WordPress tree(s); validated findings are retained.\n' "$failed_n"
+  else
+    report "$L" review "no symlink escapes detected anywhere in WordPress trees" noaction
+  fi
+  rm -f "$failures"
+
+  finish
+}
+run_logged filesystem-security-full
+''')
+
+          p = Path('checks/filesystem-security.sh')
+          s = p.read_text()
+          pairs = [
+              ('report "$L" issue "no world-writable high-risk paths"', 'report "$L" issue "no world-writable high-risk paths" noaction'),
+              ('report "$L" issue "no wp-config.php file is group/other writable"', 'report "$L" issue "no wp-config.php file is group/other writable" noaction'),
+              ('report "$L" review "no escaping symlinks in targeted high-risk paths"', 'report "$L" review "no escaping symlinks in targeted high-risk paths" noaction'),
+          ]
+          for old, new in pairs:
+              assert old in s, old
+              s = s.replace(old, new, 1)
+          p.write_text(s)
+
+          p = Path('lib/remediation.sh')
+          s = p.read_text()
+          old = '''  [ "${PW_REMEDIATION_FAILED:-0}" -eq 0 ] || return 2\n  [ "$PRESSWARDEN_INTERACTIVE" != 0 ] || return 0\n'''
+          new = '''  [ "${PW_REMEDIATION_FAILED:-0}" -eq 0 ] || return 2\n  [ "${PW_CHECK_INCOMPLETE:-0}" -eq 0 ] || return 2\n  [ "$PRESSWARDEN_INTERACTIVE" != 0 ] || return 0\n'''
+          assert old in s; s = s.replace(old, new, 1)
+          old = '''  if [ "${PW_REPORT_FAILED:-0}" -ne 0 ] || [ "${PW_REMEDIATION_FAILED:-0}" -ne 0 ] || [ "${PW_DISCOVERY_FAILED:-0}" -ne 0 ]; then col="$Y"; status='INCOMPLETE'\n'''
+          new = '''  if [ "${PW_REPORT_FAILED:-0}" -ne 0 ] || [ "${PW_REMEDIATION_FAILED:-0}" -ne 0 ] || [ "${PW_DISCOVERY_FAILED:-0}" -ne 0 ] || [ "${PW_CHECK_INCOMPLETE:-0}" -ne 0 ]; then col="$Y"; status='INCOMPLETE'\n'''
+          assert old in s; s = s.replace(old, new, 1)
+          old = '''  if [ "${PW_DISCOVERY_FAILED:-0}" -ne 0 ]; then\n    printf '  Discovery coverage is INCOMPLETE; results above cover validated sites only.\\n'\n  fi\n  _rule\n'''
+          new = '''  if [ "${PW_DISCOVERY_FAILED:-0}" -ne 0 ]; then\n    printf '  Discovery coverage is INCOMPLETE; results above cover validated sites only.\\n'\n  fi\n  if [ "${PW_CHECK_INCOMPLETE:-0}" -ne 0 ]; then\n    printf '  Check coverage is INCOMPLETE; successful findings above are retained.\\n'\n  fi\n  _rule\n'''
+          assert old in s; s = s.replace(old, new, 1)
+          old = '''  [ "${PW_REPORT_FAILED:-0}" -eq 0 ] && [ "${PW_REMEDIATION_FAILED:-0}" -eq 0 ] && [ "${PW_DISCOVERY_FAILED:-0}" -eq 0 ] || return 2\n'''
+          new = '''  [ "${PW_REPORT_FAILED:-0}" -eq 0 ] && [ "${PW_REMEDIATION_FAILED:-0}" -eq 0 ] && [ "${PW_DISCOVERY_FAILED:-0}" -eq 0 ] && [ "${PW_CHECK_INCOMPLETE:-0}" -eq 0 ] || return 2\n'''
+          assert old in s; s = s.replace(old, new, 1)
+          p.write_text(s)
+
+          p = Path('tests/progress-terminal.py')
+          s = p.read_text()
+          marker = '''    # Denominator counts attempted files. A validator failure cannot show 100%.\n'''
+          block = r'''    # FULL recursive filesystem checks expose measured per-tree progress, keep it terminal-only,
+    # and never offer delete/quarantine for permission/symlink posture findings.
+    world = site/'wp-content'/'world-writable.php'
+    world.write_text('<?php // permission fixture\n')
+    world.chmod(0o666)
+    fs_reports = base/'reports-filesystem-full'
+    fs_env = dict(env, ROOT=str(root), PRESSWARDEN_SCAN_ROOT=str(root),
+                  REPORTS=str(fs_reports), PRESSWARDEN_INTERACTIVE='1')
+    rc, out = terminal(['bash', str(REPO/'checks/filesystem-security-full.sh')], fs_env)
+    expect(rc == 1, out)
+    expect('World-writable: 0% | 0/1 trees processed' in out, out)
+    expect('World-writable: 100% | 1/1 trees processed' in out, out)
+    expect('Symlinks: 100% | 1/1 trees processed' in out, out)
+    expect('ACTION' not in out, 'permission posture offered destructive remediation')
+    fs_logs = list(fs_reports.glob('filesystem-security-full-*.log'))
+    expect(bool(fs_logs), 'filesystem full report missing')
+    for report in fs_logs:
+        text = report.read_bytes()
+        expect(b'World-writable:' not in text and b'Symlinks:' not in text and b'\r' not in text,
+               'filesystem progress leaked into saved report: '+report.name)
+
+    # A recursive find failure must preserve any completed findings but end INCOMPLETE,
+    # and the activity line must not claim a successful 100% traversal.
+    find_wrapper = binpath/'find'
+    find_wrapper.write_text('#!/usr/bin/env bash\n/usr/bin/find "$@"\nrc=$?\nfor a in "$@"; do [ "$a" != "-perm" ] || exit 1; done\nexit "$rc"\n')
+    find_wrapper.chmod(0o700)
+    failed_reports = base/'reports-filesystem-failed'
+    failed_env = dict(fs_env, REPORTS=str(failed_reports))
+    rc, out = terminal(['bash', str(REPO/'checks/filesystem-security-full.sh')], failed_env)
+    expect(rc == 2, out)
+    expect('World-writable: INCOMPLETE | 1/1 trees attempted' in out, out)
+    expect('World-writable: 100%' not in out, out)
+    expect('INCOMPLETE  filesystem-security-full' in out, out)
+    expect('CLEAN  filesystem-security-full' not in out, out)
+    expect('ACTION' not in out, 'incomplete permission posture offered remediation')
+    find_wrapper.unlink()
+'''
+          assert marker in s
+          p.write_text(s.replace(marker, block + marker, 1))
+
+          p = Path('CHANGELOG.md')
+          s = p.read_text()
+          marker = '- Add regressions for traversal returning partial candidates, direct-check/suite false-clean prevention, out-of-root cache poisoning, symlinked cache files, oversized cache input, private permissions, and existing runtime behavior. No malware rules, target semantics, remediation, quarantine, baseline, or WordPress policy thresholds changed.\n'
+          addition = marker + '- Add measured per-WordPress-tree progress to FULL recursive world-writable and symlink scans. Recursive traversal failures now retain completed findings but make the check INCOMPLETE instead of allowing a false clean result.\n- Treat permission and symlink posture findings as read-only in FAST/FULL filesystem checks; they no longer offer generic delete/quarantine remediation.\n'
+          assert marker in s
+          p.write_text(s.replace(marker, addition, 1))
+
+          p = Path('.github/workflows/ci.yml')
+          s = p.read_text()
+          marker = '''      - name: Host-agnostic discovery smoke test\n        shell: bash\n        run: bash tests/smoke.sh\n'''
+          addition = marker + '''\n      - name: Discovery completeness and cache boundaries\n        shell: bash\n        run: bash tests/discovery-reliability.sh\n'''
+          assert marker in s
+          p.write_text(s.replace(marker, addition, 1))
+          PY
+          git diff --check
+          bash -n checks/filesystem-security-full.sh checks/filesystem-security.sh lib/remediation.sh tests/discovery-reliability.sh tests/runtime-reliability.sh
+          php -l lib/suite-summary.php >/dev/null
+          bash tests/discovery-reliability.sh
+          bash tests/runtime-reliability.sh
+          python3 tests/progress-terminal.py
+      - name: Commit source changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add checks/filesystem-security-full.sh checks/filesystem-security.sh lib/remediation.sh tests/progress-terminal.py CHANGELOG.md .github/workflows/ci.yml
+          git commit -m 'fix: add trustworthy recursive filesystem progress'
+          git push origin HEAD:reliability/discovery-completeness-1.1.14
