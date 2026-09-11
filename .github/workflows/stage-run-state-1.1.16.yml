@@ -13,12 +13,14 @@ jobs:
         with:
           ref: feature/resilient-run-state-1.1.16
       - name: Apply staged integration
-        run: python3 tests/.stage-run-state-1.1.16.py
+        run: |
+          python3 tests/.stage-run-state-1.1.16.py
+          python3 tests/.stage-run-state-fixture.py
       - name: Validate focused run-state regressions
         run: |
           set -euo pipefail
           git diff --check
-          bash -n presswarden lib/_runner.sh lib/run-state.sh tests/run-state.sh
+          bash -n presswarden lib/_runner.sh lib/run-state.sh tests/run-state.sh tests/runtime-reliability.sh
           php -l lib/run-state.php >/dev/null
           bash tests/run-state.sh
           bash tests/runtime-reliability.sh
@@ -35,6 +37,6 @@ jobs:
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add lib/run-state.php lib/run-state.sh lib/_runner.sh presswarden tests/run-state.sh docs/RUN-STATE.md VERSION CHANGELOG.md README.md
+          git add lib/run-state.php lib/run-state.sh lib/_runner.sh presswarden tests/run-state.sh tests/runtime-reliability.sh docs/RUN-STATE.md VERSION CHANGELOG.md README.md
           git commit -m 'feat: resilient suite run state and interruption tracking'
           git push origin HEAD:feature/resilient-run-state-1.1.16
