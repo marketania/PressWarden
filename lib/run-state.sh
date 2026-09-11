@@ -62,7 +62,12 @@ pw_run_state_finish() {
     if ! _pw_run_state_php finish "$PW_RUN_STATE_FILE" "$status" "$rc"; then _pw_run_state_warn; return 2; fi
   fi
   PW_RUN_STATE_FINALIZED=1
+  _pw_run_state_cleanup_marker
   return 0
+}
+
+_pw_run_state_cleanup_marker() {
+  [ -z "${PW_RUN_STATE_ERROR_FILE:-}" ] || rm -f -- "$PW_RUN_STATE_ERROR_FILE" 2>/dev/null || true
 }
 
 pw_run_state_signal() {
@@ -74,6 +79,7 @@ pw_run_state_signal() {
     fi
     PW_RUN_STATE_FINALIZED=1
   fi
+  _pw_run_state_cleanup_marker
   printf '\nINCOMPLETE: PressWarden suite interrupted by %s; partial validated reports were retained. Use ./presswarden last-run to inspect the recorded state.\n' "$sig" >&2
   exit "$code"
 }

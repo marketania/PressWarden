@@ -160,6 +160,7 @@ run_all() {
   if [ "${pipeline_status[1]:-0}" -ne 0 ]; then
     printf 'INCOMPLETE: suite console log could not be written.\n' >&2; rc=2
   fi
+  if [ "${PW_RUN_STATE_FAILED:-0}" -ne 0 ] || [ -s "$PW_RUN_STATE_ERROR_FILE" ]; then rc=2; fi
   if [ "${PRESSWARDEN_OUTPUT_JSON:-1}" != "0" ] && command -v php >/dev/null 2>&1; then
     json="$PW_REPORT_PREFIX-summary.json"
     if ! php "$PRESSWARDEN_DIR/lib/suite-summary.php" "$RES" "$json" "$NAME" "$PRESSWARDEN_VERSION" "$ROOT" "$(count_sites)" "$(count_domains)" "$rc" "$LOG" "${SUITE_DISCOVERY_INCOMPLETE:-0}"; then
@@ -171,7 +172,6 @@ run_all() {
   fi
   rm -f "$RES"
   pw_report_remove_empty
-  if [ "${PW_RUN_STATE_FAILED:-0}" -ne 0 ] || [ -s "$PW_RUN_STATE_ERROR_FILE" ]; then rc=2; fi
   state_status=COMPLETED
   [ "$rc" -eq 2 ] && state_status=INCOMPLETE
   [ "$rc" -le 2 ] || state_status=FAILED
