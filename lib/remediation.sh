@@ -93,7 +93,7 @@ _prompt_file_action() {
     IFS= read -r ans || ans='s'
     case "$ans" in
       d|D|delete|DELETE)
-        printf '    %sℹ%s  backing up to quarantine before removal...\n' "$C" "$X"
+        printf '    %sℹ%s  revalidating approved snapshot, then backing up before removal...\n' "$C" "$X"
         _quarantine_delete "$del" "$PW_Q_WORK/plan.json" || true
         ;;
       *) printf '    %s%s↷ SKIPPED%s  no files changed\n' "$B" "$Y" "$X" ;;
