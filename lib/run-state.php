@@ -88,6 +88,27 @@ function pwrs_atomic_write($path, $data, $createOnly = false) {
     if (!@rename($tmp, $path)) { @unlink($tmp); pwrs_fail('cannot publish run-state'); }
 }
 function pwrs_atomic_json($path, $state, $createOnly = false) { pwrs_atomic_write($path, pwrs_encode($state), $createOnly); }
+function pwrs_create_lock($runDir) {
+    $path = $runDir.'/.lock';
+    $old = umask(0077);
+    try { $h = @fopen($path, 'xb'); } finally { umask($old); }
+    if ($h === false) pwrs_fail('cannot create run-state lock');
+    if (!@fclose($h)) pwrs_fail('run-state lock close failed');
+    pwrs_regular_file($path, 4096);
+}
+function pwrs_open_lock($statePath) {
+    $path = dirname($statePath).'/.lock';
+    $expected = pwrs_regular_file($path, 4096);
+    $h = @fopen($path, 'r+');
+    if ($h === false) pwrs_fail('cannot open run-state lock');
+    $actual = @fstat($h);
+    if (!$actual || $actual['dev'] !== $expected['dev'] || $actual['ino'] !== $expected['ino']
+        || ($actual['mode'] & 0170000) !== 0100000 || $actual['nlink'] !== 1) {
+        @fclose($h); pwrs_fail('run-state lock changed');
+    }
+    if (!@flock($h, LOCK_EX)) { @fclose($h); pwrs_fail('cannot lock run-state'); }
+    return $h;
+}
 function pwrs_atomic_text($path, $text) {
     if (file_exists($path) || is_link($path)) pwrs_regular_file($path, 4096);
     pwrs_atomic_write($path, $text, false);
@@ -122,10 +143,16 @@ function pwrs_parse_checks($raw) {
     return $out;
 }
 function pwrs_update($path, $mutator) {
-    $state = pwrs_read($path);
-    $state = $mutator($state);
-    $state['updated_at'] = pwrs_now();
-    pwrs_atomic_json($path, $state, false);
+    $lock = pwrs_open_lock($path);
+    try {
+        $state = pwrs_read($path);
+        $state = $mutator($state);
+        $state['updated_at'] = pwrs_now();
+        pwrs_atomic_json($path, $state, false);
+    } finally {
+        @flock($lock, LOCK_UN);
+        @fclose($lock);
+    }
 }
 function pwrs_validate_check($state, $check) {
     $check = pwrs_text($check, false, 96);
@@ -211,6 +238,7 @@ try {
         if (file_exists($runDir) || is_link($runDir)) pwrs_fail('run id already exists');
         $old = umask(0077); try { $ok = @mkdir($runDir, 0700); } finally { umask($old); }
         if (!$ok) pwrs_fail('cannot create run directory');
+        pwrs_create_lock($runDir);
         $state = array(
             'format'=>PW_RUN_STATE_FORMAT, 'tool'=>'PressWarden', 'run_id'=>$id, 'suite'=>$suite, 'version'=>$version,
             'root'=>$root, 'sites'=>$sites, 'domains'=>$domains, 'discovery_status'=>$discovery, 'pid'=>$pid,

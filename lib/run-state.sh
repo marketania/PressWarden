@@ -10,6 +10,7 @@ PW_RUN_STATE_RUNS=''
 _pw_run_state_warn() {
   [ "${PW_RUN_STATE_FAILED:-0}" -eq 0 ] || return 0
   PW_RUN_STATE_FAILED=1
+  if [ -n "${PW_RUN_STATE_ERROR_FILE:-}" ]; then printf 'failed\n' > "$PW_RUN_STATE_ERROR_FILE" 2>/dev/null || true; fi
   printf 'INCOMPLETE: persistent run-state tracking failed; scan results will continue, but this suite cannot be considered complete.\n' >&2
 }
 

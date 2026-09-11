@@ -17,8 +17,20 @@ php "$PHP" init "$RUNS" "$ID" full 1.1.16 "$TMP/root" 86 85 2 complete 12345 'on
 [ "$(stat -c %a "$RUNS/$ID/state.json" 2>/dev/null)" = 600 ]
 grep -q '"status": "RUNNING"' "$RUNS/$ID/state.json"
 grep -q '"checks_total": 2' "$RUNS/$ID/state.json"
+[ "$(stat -c %a "$RUNS/$ID/.lock" 2>/dev/null)" = 600 ]
 
-php "$PHP" step "$RUNS/$ID/state.json" 1 2 one
+# A second writer must wait while another process owns the per-run advisory lock.
+php -r '$h=fopen($argv[1],"r+"); if(!$h||!flock($h,LOCK_EX))exit(2); file_put_contents($argv[2],"ready"); usleep(400000);' "$RUNS/$ID/.lock" "$TMP/lock-ready" & holder=$!
+for _ in 1 2 3 4 5 6 7 8 9 10; do [ -f "$TMP/lock-ready" ] && break; sleep 0.05; done
+[ -f "$TMP/lock-ready" ]
+php "$PHP" step "$RUNS/$ID/state.json" 1 2 one > "$TMP/locked-step.out" 2>&1 & waiter=$!
+sleep 0.10
+kill -0 "$waiter" 2>/dev/null
+wait "$holder"
+wait "$waiter"
+
+grep -q '"current_check": "one"' "$RUNS/$ID/state.json"
+
 php "$PHP" result "$RUNS/$ID/state.json" one findings 3 7
 php "$PHP" step "$RUNS/$ID/state.json" 2 2 two
 php "$PHP" show "$RUNS" > "$TMP/live.out"
@@ -125,5 +137,15 @@ set -e
 # Run state is allowlisted metadata: unrelated secrets in the environment never appear.
 DB_PASSWORD='super-secret-test-value' API_KEY='another-secret' php "$PHP" show "$RUNS" "$ID" > "$TMP/privacy.out"
 ! grep -R -q 'super-secret-test-value\|another-secret' "$RUNS"
+
+# CLI status is read-only and must work before history exists without discovery.
+PRESSWARDEN_STATE_DIR="$TMP/cli-empty" PRESSWARDEN_CONFIG_FILE="$TMP/no-config" bash "$REPO/presswarden" last-run > "$TMP/cli-empty.out"
+grep -q 'No recorded PressWarden suite runs' "$TMP/cli-empty.out"
+PRESSWARDEN_STATE_DIR="$TMP" PRESSWARDEN_CONFIG_FILE="$TMP/no-config" bash "$REPO/presswarden" run-status "$ID" > "$TMP/cli-status.out"
+grep -q 'STATUS     COMPLETED' "$TMP/cli-status.out"
+set +e
+PRESSWARDEN_STATE_DIR="$TMP" PRESSWARDEN_CONFIG_FILE="$TMP/no-config" bash "$REPO/presswarden" run-status '../escape' > "$TMP/cli-bad.out" 2>&1; rc=$?
+set -e
+[ "$rc" -eq 2 ]; grep -q 'invalid run id' "$TMP/cli-bad.out"
 
 printf 'Run-state atomicity, interruption, privacy and fail-closed semantics: PASS\n'

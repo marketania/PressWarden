@@ -152,8 +152,10 @@ run_all() {
   local json rc json_written=0 total_checks state_status
   local -a pipeline_status
   total_checks=$(printf '%s\n' $CHECKS | sort -u | grep -c .)
+  PW_RUN_STATE_ERROR_FILE=$(tmpf) || { pw_report_remove_empty; return 2; }
+  : > "$PW_RUN_STATE_ERROR_FILE" || { rm -f "$PW_RUN_STATE_ERROR_FILE"; pw_report_remove_empty; return 2; }
   pw_run_state_init "$NAME" "$total_checks" "$CHECKS" || true
-  RES=$(tmpf) || { pw_report_remove_empty; return 2; }
+  RES=$(tmpf) || { rm -f "$PW_RUN_STATE_ERROR_FILE"; pw_report_remove_empty; return 2; }
   _run_checks 2>&1 | tee "$LOG"; pipeline_status=("${PIPESTATUS[@]}"); rc=${pipeline_status[0]}
   if [ "${pipeline_status[1]:-0}" -ne 0 ]; then
     printf 'INCOMPLETE: suite console log could not be written.\n' >&2; rc=2
@@ -169,7 +171,7 @@ run_all() {
   fi
   rm -f "$RES"
   pw_report_remove_empty
-  [ "${PW_RUN_STATE_FAILED:-0}" -eq 0 ] || rc=2
+  if [ "${PW_RUN_STATE_FAILED:-0}" -ne 0 ] || [ -s "$PW_RUN_STATE_ERROR_FILE" ]; then rc=2; fi
   state_status=COMPLETED
   [ "$rc" -eq 2 ] && state_status=INCOMPLETE
   [ "$rc" -le 2 ] || state_status=FAILED
@@ -177,5 +179,6 @@ run_all() {
   printf '%ssummary log:%s %s\n' "$D" "$X" "$LOG"
   [ "$json_written" -eq 1 ] && printf '%sJSON summary:%s %s\n' "$D" "$X" "$json"
   [ "${PW_RUN_STATE_ACTIVE:-0}" -eq 1 ] && printf '%srun state:%s %s\n' "$D" "$X" "$PW_RUN_STATE_FILE"
+  rm -f "$PW_RUN_STATE_ERROR_FILE"
   return "$rc"
 }
