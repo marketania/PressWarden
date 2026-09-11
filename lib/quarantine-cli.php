@@ -54,7 +54,15 @@ try {
     } else throw new RuntimeException('invalid arguments');
 } catch (Throwable $e) {
     // Do not echo arbitrary exception messages, file contents or filesystem diagnostics.
-    if ($e instanceof PressWardenQuarantineError) fwrite(STDERR, "Quarantine safeguard: ".$e->getMessage().".\n");
+    if ($e instanceof PressWardenQuarantineError) {
+        $reason = $e->getMessage();
+        fwrite(STDERR, "Quarantine safeguard: ".$reason.".\n");
+        if (strpos($reason, 'approved selection revalidation failed:') === 0
+            || $reason === 'approved selection changed since snapshot') {
+            fwrite(STDERR, "INCOMPLETE: selected content changed or became unavailable after the approval snapshot. No removal started; rerun the current check to refresh the action list.\n");
+            exit(2);
+        }
+    }
     fwrite(STDERR, "INCOMPLETE: quarantine operation refused or failed. Existing evidence was retained; inspect permissions, paths, limits and docs/QUARANTINE.md.\n");
     exit(2);
 }

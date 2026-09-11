@@ -4,6 +4,12 @@ _pw_quarantine_failure() {
   printf 'INCOMPLETE: quarantine action did not complete; existing evidence is retained.\n' >&2
   return 2
 }
+_pw_quarantine_mark_failed() {
+  # The PHP helper already emitted a controlled safeguard and INCOMPLETE line.
+  # Mark the check incomplete without duplicating a third generic message.
+  PW_REMEDIATION_FAILED=1
+  return 2
+}
 _pw_quarantine_discard_plan() {
   # Only ephemeral plans are removed; quarantine cases are never cleaned here.
   [ -z "${PW_Q_WORK:-}" ] || rm -rf -- "$PW_Q_WORK"
@@ -27,11 +33,11 @@ _pw_quarantine_prepare() {
     while IFS= read -r p || [ -n "$p" ]; do [ -z "$p" ] || printf 'target\0%s\0' "$p"; done < "$list"
   } > "$PW_Q_WORK/context" || { _pw_quarantine_discard_plan; _pw_quarantine_failure; return 2; }
   if ! php "$PRESSWARDEN_DIR/lib/quarantine-cli.php" --prepare "$PW_Q_WORK/context" "$PW_Q_WORK/plan.json"; then
-    _pw_quarantine_discard_plan; _pw_quarantine_failure; return 2
+    _pw_quarantine_discard_plan; _pw_quarantine_mark_failed; return 2
   fi
 }
 _quarantine_delete() {
-  local list="$1" plan="${2:-}" mode="${3:-generic}" own_plan=0 out rc kind caseid original extra removed=0 completed=0 expected_case=''
+  local list="$1" plan="${2:-}" mode="${3:-generic}" own_plan=0 out rc helper_rc kind caseid original extra removed=0 completed=0 expected_case=''
   [ "${PW_REPORT_FAILED:-0}" -eq 0 ] && [ "${PW_REMEDIATION_FAILED:-0}" -eq 0 ] || return 2
   if [ -z "$plan" ]; then
     _pw_quarantine_prepare "$list" "$mode" || return 2
@@ -43,7 +49,7 @@ _quarantine_delete() {
     _pw_quarantine_failure; return 2
   fi
   out=$(tmpf)
-  php "$PRESSWARDEN_DIR/lib/quarantine-cli.php" --apply "$plan" > "$out"; rc=$?
+  php "$PRESSWARDEN_DIR/lib/quarantine-cli.php" --apply "$plan" > "$out"; helper_rc=$?; rc=$helper_rc
   while IFS=$'\t' read -r kind caseid original extra; do
     if [ -n "$extra" ] || [ "$completed" -ne 0 ] || ! [[ "$caseid" =~ ^case-[0-9]{8}T[0-9]{6}Z-[a-f0-9]{16}$ ]]; then rc=2; continue; fi
     [ -z "$expected_case" ] && expected_case="$caseid"
@@ -67,6 +73,9 @@ _quarantine_delete() {
   done < "$out"
   rm -f -- "$out"
   [ "$own_plan" -eq 0 ] || _pw_quarantine_discard_plan
-  [ "$rc" -eq 0 ] && [ "$completed" -eq 1 ] && [ "$removed" -gt 0 ] || { _pw_quarantine_failure; return 2; }
+  if ! { [ "$rc" -eq 0 ] && [ "$completed" -eq 1 ] && [ "$removed" -gt 0 ]; }; then
+    if [ "${helper_rc:-0}" -ne 0 ]; then _pw_quarantine_mark_failed; else _pw_quarantine_failure; fi
+    return 2
+  fi
   return 0
 }

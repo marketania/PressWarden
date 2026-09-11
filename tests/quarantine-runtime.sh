@@ -56,6 +56,32 @@ STUB
 printf 'old state' > "$SITE/changed.php"
 set +e; bash "$TMP/changed.sh" "$TMP/change-list" > "$TMP/changed.out" 2>&1; rc=$?; set -e
 [ "$rc" -eq 2 ]; [ "$(cat "$SITE/changed.php")" = 'new state' ]; grep -q INCOMPLETE "$TMP/changed.out"
+grep -q 'approved selection changed since snapshot' "$TMP/changed.out"
+grep -q 'No removal started; rerun the current check to refresh the action list' "$TMP/changed.out"
+! grep -q 'quarantine action did not complete' "$TMP/changed.out"
+# A target can also disappear while the operator is deciding. The exact approved
+# batch is then stale, so nothing else in that batch may be removed.
+cat > "$TMP/missing.sh" <<'STUB'
+set -uo pipefail
+. "$PW_TEST_REPO/lib/_lib.sh"
+pw_report_init missing
+printf '%s\n' "$PW_TEST_SITE/missing-a.php" "$PW_TEST_SITE/missing-b.php" > "$1"
+_pw_quarantine_prepare "$1" || exit 9
+rm -f "$PW_TEST_SITE/missing-a.php"
+_quarantine_delete "$1" "$PW_Q_WORK/plan.json"; rc=$?
+_pw_quarantine_discard_plan
+[ "$rc" -eq 2 ] && [ "$PW_REMEDIATION_FAILED" -eq 1 ] || exit 9
+finish
+STUB
+printf 'gone before approval completes\n' > "$SITE/missing-a.php"
+printf 'must remain untouched\n' > "$SITE/missing-b.php"
+before_cases=$(find "$TMP/state/quarantine" -mindepth 1 -maxdepth 1 -type d -name 'case-*' 2>/dev/null | wc -l)
+set +e; bash "$TMP/missing.sh" "$TMP/missing-list" > "$TMP/missing.out" 2>&1; rc=$?; set -e
+after_cases=$(find "$TMP/state/quarantine" -mindepth 1 -maxdepth 1 -type d -name 'case-*' 2>/dev/null | wc -l)
+[ "$rc" -eq 2 ]; [ -f "$SITE/missing-b.php" ]; [ "$before_cases" -eq "$after_cases" ]
+grep -q 'approved selection revalidation failed: unreadable or missing path' "$TMP/missing.out"
+grep -q 'No removal started; rerun the current check to refresh the action list' "$TMP/missing.out"
+! grep -q 'quarantine action did not complete' "$TMP/missing.out"
 # Non-interactive findings never invoke a quarantine plan, let alone delete.
 cat > "$TMP/noaction.sh" <<'STUB'
 set -uo pipefail

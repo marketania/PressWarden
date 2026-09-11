@@ -2,6 +2,16 @@
 
 All notable changes to PressWarden are documented here.
 
+## 1.1.15 — 2026-09-11
+
+Quarantine stale-selection diagnostics and operator clarity.
+
+- Preserve the exact-content approval guarantee: quarantine snapshots still bind interactive approval to the bytes that produced the finding, and any target that changes or disappears before removal still refuses the whole batch.
+- Contextualize the pre-removal whole-selection revalidation so missing/unreadable targets are reported as an approved-selection change rather than an unexplained generic quarantine failure.
+- State explicitly when the stale-selection failure happens before any removal starts and tell the operator to rerun the current check to refresh findings/action scope.
+- Remove the redundant third shell-level INCOMPLETE line when the PHP quarantine helper already emitted controlled failure diagnostics.
+- Add runtime regressions for changed content and a target disappearing after the approval snapshot; verify an unchanged sibling remains untouched and no quarantine case is created for the refused stale batch.
+
 ## 1.1.14 — 2026-09-10
 
 Discovery completeness and cache-boundary reliability.

@@ -274,7 +274,16 @@ class PressWardenQuarantine {
         $this->parentItem = null; $this->parentIndex = [];
         $targets = array_column($plan['items'], 'original');
         // Never trust a saved plan as current state. Whole-selection precheck.
-        if ($this->plan($policy, $targets)['items'] !== $plan['items']) $this->fail('source changed since approval snapshot');
+        // The snapshot intentionally predates interactive approval so approval remains
+        // bound to the exact bytes that produced the finding. If a target changes or
+        // disappears while the operator is deciding, refuse the entire batch rather
+        // than deleting content that was not part of the approved snapshot.
+        try {
+            $current = $this->plan($policy, $targets);
+        } catch (PressWardenQuarantineError $e) {
+            $this->fail('approved selection revalidation failed: '.$e->getMessage());
+        }
+        if ($current['items'] !== $plan['items']) $this->fail('approved selection changed since snapshot');
         $q = $policy['quarantine'];
         foreach ($policy['sites'] as $s) if ($this->inside($q, $s)) $this->fail('quarantine must be outside WordPress sites');
         for ($p = $q; $p !== '/'; $p = dirname($p)) {
