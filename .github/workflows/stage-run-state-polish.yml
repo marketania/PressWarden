@@ -1,0 +1,43 @@
+name: Stage Run State Polish
+on:
+  push:
+    branches: [feature/resilient-run-state-1.1.16]
+permissions:
+  contents: write
+jobs:
+  polish:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/resilient-run-state-1.1.16
+      - name: Apply concurrency hardening
+        run: python3 tests/.stage-run-state-polish.py
+      - name: Validate focused and existing regressions
+        run: |
+          set -euo pipefail
+          git diff --check
+          bash -n presswarden lib/_runner.sh lib/run-state.sh tests/run-state.sh tests/runtime-reliability.sh
+          php -l lib/run-state.php >/dev/null
+          bash tests/run-state.sh
+          bash tests/runtime-reliability.sh
+          bash tests/suite-progress.sh
+          python3 tests/progress-terminal.py
+          bash tests/smoke.sh
+          bash tests/quarantine-runtime.sh
+          bash tests/baseline.sh
+      - name: PHP 7.4 run-state compatibility
+        run: |
+          set -euo pipefail
+          docker run --rm -v "$PWD:/work" -w /work php:7.4-cli php -l lib/run-state.php >/dev/null
+          docker run --rm -v "$PWD:/work" -w /work php:7.4-cli bash tests/run-state.sh
+      - name: Commit tested hardening
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add lib/run-state.php lib/run-state.sh lib/_runner.sh tests/run-state.sh CHANGELOG.md
+          git commit -m 'fix: serialize run-state writers and propagate child failures'
+          git push origin HEAD:feature/resilient-run-state-1.1.16
