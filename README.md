@@ -12,7 +12,7 @@
 
 **Fleet-scale WordPress security auditing from the shell.**
 
-![Version](https://img.shields.io/badge/version-1.1.15-2ea44f)
+![Version](https://img.shields.io/badge/version-1.1.16-2ea44f)
 ![Bash](https://img.shields.io/badge/bash-4%2B-4EAA25?logo=gnubash&logoColor=white)
 ![WordPress](https://img.shields.io/badge/WordPress-security-21759B?logo=wordpress&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Linux-FCC624?logo=linux&logoColor=black)
@@ -62,6 +62,7 @@ PressWarden focuses on **high-signal findings**. A PHP function such as `base64_
 - 🔒 **Fleet lock/unlock** for `DISALLOW_FILE_MODS`
 - 🧭 **WordPress policy dashboard** with one-site detail and fleet baseline differences
 - 📊 **Human-readable and JSON reports**
+- 🧾 **Persistent suite run state** so interrupted SSH scans are not mistaken for completed audits
 
 ---
 
@@ -114,6 +115,7 @@ That is the recommended starting point for most users.
 | `./presswarden doctor` | Checking setup, dependencies, discovery, and integrations |
 | `./presswarden cleanup` | Conservative log / disposable-file cleanup |
 | `./presswarden wp-settings example.com` | WordPress policy, updates, cron, recovery, environment, debug, and config posture |
+| `./presswarden last-run` | See whether the latest suite completed, was incomplete, or was interrupted and where it stopped |
 
 For routine use, start with:
 
@@ -183,6 +185,17 @@ Run just the existing PHP, JavaScript, or database threat-intelligence check:
 The website name is optional. These commands reuse discovery, exclusions, and reports without refreshing feeds, offering file removal, or running database maintenance. They cover only the selected intelligence layer—not a complete security audit. Database inspection still loads WordPress through WP-CLI. Use `./presswarden inspect help` for scope details.
 
 Long PHP/JavaScript checks now show a live file percentage; database inspection shows sites processed. The terminal line stays separate from saved reports. Disable with `PRESSWARDEN_PROGRESS=0`. See [progress details](docs/PROGRESS.md).
+
+## Interrupted scans and last-run status
+
+Suite runs now maintain a small private atomic state record while they execute. If SSH closes or the suite receives `HUP`, `INT`, or `TERM`, the latest run is marked `INTERRUPTED` with the active check instead of being left ambiguous.
+
+```bash
+./presswarden last-run
+./presswarden run-status RUN_ID
+```
+
+A catchable interruption retains partial validated reports but never becomes a completed audit. `SIGKILL` cannot be trapped; when process liveness is available, `run-status` identifies a stale `RUNNING` record as an interrupted/abandoned run rather than inventing completion. Automatic resume is intentionally not provided yet. See [suite run-state details](docs/RUN-STATE.md).
 
 ---
 

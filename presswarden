@@ -82,6 +82,8 @@ Usage:
   ./presswarden quarantine ACTION    list|verify CASE_ID (read-only evidence checks)
   ./presswarden cleanup [target]       Logs + disposable metadata/inode cleanup
   ./presswarden doctor [target]        Dependencies, config, integrations, discovery
+  ./presswarden last-run               Show the most recently started suite run state
+  ./presswarden run-status [RUN_ID]    Show latest or a specific suite run state
   ./presswarden lock [target]          Lock WordPress file modifications across discovered sites
   ./presswarden unlock [target]        Unlock WordPress file modifications for updates/maintenance
   ./presswarden lock-status [target]   Show DISALLOW_FILE_MODS status across discovered sites
@@ -190,6 +192,7 @@ show_config() {
   printf 'Cache directory:    %s\n' "$cache"
   printf 'Intel directory:    %s\n' "$intel"
   printf 'Baseline directory: %s\n' "$baseline"
+  printf 'Run-state directory:%s %s\n' ' ' "$state/runs"
 }
 
 confirm_fleet_file_mods() {
@@ -246,6 +249,22 @@ case "$cmd" in
   -V|--version|version) printf 'PressWarden %s\n' "$VERSION" ;;
   help|-h|--help) usage ;;
   config) show_config ;;
+  last-run|run-status)
+    if [ "$cmd" = last-run ]; then
+      [ "$#" -eq 0 ] || { printf 'Usage: ./presswarden last-run\n' >&2; exit 2; }
+      run_id=''
+    else
+      [ "$#" -le 1 ] || { printf 'Usage: ./presswarden run-status [RUN_ID]\n' >&2; exit 2; }
+      run_id="${1:-}"
+    fi
+    command -v php >/dev/null 2>&1 || { printf 'Run-status inspection requires PHP CLI.\n' >&2; exit 2; }
+    if [ "$PRESSWARDEN_PORTABLE" = 1 ]; then
+      state="${PRESSWARDEN_STATE_DIR:-$PRESSWARDEN_DIR/var}"
+    else
+      state="${PRESSWARDEN_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/presswarden}"
+    fi
+    exec php "$PRESSWARDEN_DIR/lib/run-state.php" show "$state/runs" "$run_id"
+    ;;
   sites)
     [ "$#" -le 1 ] || { printf 'Usage: ./presswarden sites [directory]\n' >&2; exit 2; }
     ROOT=$(resolve_root "${1:-}")

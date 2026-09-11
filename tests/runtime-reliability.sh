@@ -4,11 +4,11 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/presswarden-reliability.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
 mkdir -p "$TMP/repo/lib" "$TMP/repo/checks" "$TMP/reports"
-cp "$REPO/lib/_runner.sh" "$REPO/lib/suite-summary.php" "$REPO/lib/reports.sh" "$REPO/lib/report-json.php" "$TMP/repo/lib/"
+cp "$REPO/lib/_runner.sh" "$REPO/lib/suite-summary.php" "$REPO/lib/reports.sh" "$REPO/lib/report-json.php" "$REPO/lib/run-state.sh" "$REPO/lib/run-state.php" "$TMP/repo/lib/"
 # Synthetic runtime exercises the actual suite driver, not a copy of its logic.
 cat > "$TMP/repo/lib/_lib.sh" <<'EOF'
 PRESSWARDEN_DIR="$PW_TEST_REPO"; ROOT="$PW_TEST_REPO"
-REPORTS="$PW_TEST_REPORTS"; PRESSWARDEN_VERSION=test; T0=$(date +%s)
+REPORTS="$PW_TEST_REPORTS"; PRESSWARDEN_STATE_DIR="$PW_TEST_STATE"; PRESSWARDEN_VERSION=test; T0=$(date +%s)
 B=''; C=''; X=''; D=''; Y=''; G=''; R=''; BL=''; W=60
 SCAN_ROOTS=("$ROOT"); NESTED_SITES=(); MANUAL_EXCLUDED_DOMAINS=()
 PW_DISCOVERY_FAILED="${PW_TEST_DISCOVERY_FAILED:-0}"
@@ -29,7 +29,7 @@ printf 'echo "validator failed" >&2; exit 2\n' > "$TMP/repo/checks/bad.sh"
 run_case() {
   local name=$1 checks=$2 expected=$3 coverage=$4 rc
   set +e
-  PW_TEST_REPO="$TMP/repo" PW_TEST_REPORTS="$TMP/reports" PRESSWARDEN_INTERACTIVE=0 \
+  PW_TEST_REPO="$TMP/repo" PW_TEST_REPORTS="$TMP/reports" PW_TEST_STATE="$TMP/state" PRESSWARDEN_INTERACTIVE=0 \
     bash -c 'RUN_NAME="$1"; CHECKS="$2"; . "$3/lib/_runner.sh"; run_all' _ "$name" "$checks" "$TMP/repo" > "$TMP/$name.log" 2>&1
   rc=$?
   set -e

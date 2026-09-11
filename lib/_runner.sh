@@ -3,6 +3,7 @@ NAME="${RUN_NAME:-runall}"; DESC="${RUN_DESC:-}"
 SUITE_DOES="${RUN_DOES:-}"
 SUITE_WHY="${RUN_WHY:-}"
 . "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/run-state.sh"
 SUITE_DISCOVERY_INCOMPLETE="${PW_DISCOVERY_FAILED:-0}"
 # Refresh discovery once per suite; children reuse the validated snapshot when available.
 PRESSWARDEN_DISCOVERY_REFRESH=0; export PRESSWARDEN_DISCOVERY_REFRESH
@@ -67,17 +68,24 @@ _run_checks() {
     seen="$seen $c"; current_check=$((current_check+1)); check_path="$PRESSWARDEN_DIR/checks/$c.sh"
     completed_before=$((current_check-1)); suite_percent=$((completed_before*100/total_checks))
     export PW_SUITE_CURRENT="$current_check" PW_SUITE_TOTAL="$total_checks" PW_SUITE_COMPLETED="$completed_before" PW_SUITE_PERCENT="$suite_percent"
+    pw_run_state_step "$current_check" "$total_checks" "$c" || true
     if [ "$c" = "wp-access" ] && ! admin_check_wanted; then
       printf '\n%s%s▶ SKIP%s %s[%s/%s]%s  %s%s%s  %s(administrator checks skipped • suite %s%% complete)%s\n' "$B" "$Y" "$X" "$B" "$current_check" "$total_checks" "$X" "$B" "$c" "$X" "$D" "$suite_percent" "$X"
-      printf '%s|0|skipped|0\n' "$c" >> "$RES" || return 2; continue
+      printf '%s|0|skipped|0\n' "$c" >> "$RES" || return 2
+      pw_run_state_result "$c" skipped 0 0 || true
+      continue
     fi
     if [ "$c" = "wp-uploads-deep" ] && ! uploads_deep_check_wanted; then
       printf '\n%s%s▶ SKIP%s %s[%s/%s]%s  %s%s%s  %s(slow image-content scan skipped • suite %s%% complete)%s\n' "$B" "$Y" "$X" "$B" "$current_check" "$total_checks" "$X" "$B" "$c" "$X" "$D" "$suite_percent" "$X"
-      printf '%s|0|skipped|0\n' "$c" >> "$RES" || return 2; continue
+      printf '%s|0|skipped|0\n' "$c" >> "$RES" || return 2
+      pw_run_state_result "$c" skipped 0 0 || true
+      continue
     fi
     if [ ! -r "$check_path" ]; then
       printf '\n%s%s▶ RUN%s  %s[%s/%s]%s  %s%s%s  %s(missing/unreadable • suite %s%% complete)%s\n' "$B" "$BL" "$X" "$B" "$current_check" "$total_checks" "$X" "$B" "$c" "$X" "$Y" "$suite_percent" "$X"
-      printf '%s|-|missing|0\n' "$c" >> "$RES" || return 2; continue
+      printf '%s|-|missing|0\n' "$c" >> "$RES" || return 2
+      pw_run_state_result "$c" missing - 0 || true
+      continue
     fi
     printf '\n%s%s▶ RUN%s  %s[%s/%s]%s  %s%s%s  %s(suite %s%% complete)%s\n' "$B" "$BL" "$X" "$B" "$current_check" "$total_checks" "$X" "$B" "$c" "$X" "$D" "$suite_percent" "$X"
     start=$(date +%s); out=$(tmpf)
@@ -94,9 +102,18 @@ _run_checks() {
     n=$(strip_ansi < "$out" | grep -oE 'findings:[[:space:]]*[0-9]+' | tail -1 | grep -oE '[0-9]+$')
     rm -f "$out"
     case "$rc" in
-      0) printf '%s|%s|clean|%s\n' "$c" "${n:-0}" "$elapsed" >> "$RES" || return 2 ;;
-      1) printf '%s|%s|findings|%s\n' "$c" "${n:-0}" "$elapsed" >> "$RES" || return 2 ;;
-      *) printf '%s|%s|ERROR rc=%s|%s\n' "$c" "${n:--}" "$rc" "$elapsed" >> "$RES" || return 2 ;;
+      0)
+        printf '%s|%s|clean|%s\n' "$c" "${n:-0}" "$elapsed" >> "$RES" || return 2
+        pw_run_state_result "$c" clean "${n:-0}" "$elapsed" || true
+        ;;
+      1)
+        printf '%s|%s|findings|%s\n' "$c" "${n:-0}" "$elapsed" >> "$RES" || return 2
+        pw_run_state_result "$c" findings "${n:-0}" "$elapsed" || true
+        ;;
+      *)
+        printf '%s|%s|ERROR rc=%s|%s\n' "$c" "${n:--}" "$rc" "$elapsed" >> "$RES" || return 2
+        pw_run_state_result "$c" error "${n:--}" "$elapsed" || true
+        ;;
     esac
   done
 
@@ -132,13 +149,18 @@ _run_checks() {
 
 run_all() {
   pw_report_init "$NAME" || return 2
-  local json rc json_written=0
+  local json rc json_written=0 total_checks state_status
   local -a pipeline_status
-  RES=$(tmpf) || { pw_report_remove_empty; return 2; }
+  total_checks=$(printf '%s\n' $CHECKS | sort -u | grep -c .)
+  PW_RUN_STATE_ERROR_FILE=$(tmpf) || { pw_report_remove_empty; return 2; }
+  : > "$PW_RUN_STATE_ERROR_FILE" || { rm -f "$PW_RUN_STATE_ERROR_FILE"; pw_report_remove_empty; return 2; }
+  pw_run_state_init "$NAME" "$total_checks" "$CHECKS" || true
+  RES=$(tmpf) || { rm -f "$PW_RUN_STATE_ERROR_FILE"; pw_report_remove_empty; return 2; }
   _run_checks 2>&1 | tee "$LOG"; pipeline_status=("${PIPESTATUS[@]}"); rc=${pipeline_status[0]}
   if [ "${pipeline_status[1]:-0}" -ne 0 ]; then
     printf 'INCOMPLETE: suite console log could not be written.\n' >&2; rc=2
   fi
+  if [ "${PW_RUN_STATE_FAILED:-0}" -ne 0 ] || [ -s "$PW_RUN_STATE_ERROR_FILE" ]; then rc=2; fi
   if [ "${PRESSWARDEN_OUTPUT_JSON:-1}" != "0" ] && command -v php >/dev/null 2>&1; then
     json="$PW_REPORT_PREFIX-summary.json"
     if ! php "$PRESSWARDEN_DIR/lib/suite-summary.php" "$RES" "$json" "$NAME" "$PRESSWARDEN_VERSION" "$ROOT" "$(count_sites)" "$(count_domains)" "$rc" "$LOG" "${SUITE_DISCOVERY_INCOMPLETE:-0}"; then
@@ -150,7 +172,13 @@ run_all() {
   fi
   rm -f "$RES"
   pw_report_remove_empty
+  state_status=COMPLETED
+  [ "$rc" -eq 2 ] && state_status=INCOMPLETE
+  [ "$rc" -le 2 ] || state_status=FAILED
+  if ! pw_run_state_finish "$state_status" "$rc"; then rc=2; fi
   printf '%ssummary log:%s %s\n' "$D" "$X" "$LOG"
   [ "$json_written" -eq 1 ] && printf '%sJSON summary:%s %s\n' "$D" "$X" "$json"
+  [ "${PW_RUN_STATE_ACTIVE:-0}" -eq 1 ] && printf '%srun state:%s %s\n' "$D" "$X" "$PW_RUN_STATE_FILE"
+  rm -f "$PW_RUN_STATE_ERROR_FILE"
   return "$rc"
 }
