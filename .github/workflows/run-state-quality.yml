@@ -1,0 +1,26 @@
+name: Run State Quality
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  resilience:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run-state interruption, locking and privacy
+        run: |
+          set -euo pipefail
+          bash -n presswarden lib/_runner.sh lib/run-state.sh tests/run-state.sh tests/runtime-reliability.sh
+          php -l lib/run-state.php >/dev/null
+          bash tests/run-state.sh
+          bash tests/runtime-reliability.sh
+          bash tests/suite-progress.sh
+      - name: PHP 7.4 compatibility
+        run: |
+          set -euo pipefail
+          docker run --rm -v "$PWD:/work" -w /work php:7.4-cli php -l lib/run-state.php >/dev/null
+          docker run --rm -v "$PWD:/work" -w /work php:7.4-cli bash tests/run-state.sh
