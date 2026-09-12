@@ -37,12 +37,12 @@ replace_once('tests/wp-settings.sh',
 '''for a in "$@"; do case "$a" in --path=*) p=${a#--path=} ;; --skip-*|--no-color) ;; *) args+=("$a") ;; esac; done\nset -- "${args[@]}"; [ -n "$p" ] || exit 90\n''',
 '''for a in "$@"; do case "$a" in --path=*) p=${a#--path=} ;; --config-file=*) cfg=${a#--config-file=} ;; --skip-*|--no-color|--type=constant|--format=json|--raw) ;; *) args+=("$a") ;; esac; done\nset -- "${args[@]}"; [ -n "$p" ] || exit 90\n[ -n "$cfg" ] || cfg="$p/wp-config.php"\n''')
 start=''' config)\n   case "$2" in\n'''
-end='''   esac\n   ;;\n *) exit 94 ;;;\nesac\nWP\n'''
+end='''   esac\n   ;;\n *) exit 94 ;;\nesac\nWP\n'''
 s=read('tests/wp-settings.sh'); a=s.find(start)
 if a<0: raise SystemExit('wp-settings config start missing')
 b=s.find(end,a)
 if b<0: raise SystemExit('wp-settings config end missing')
-config_block=''' config)\n   case "$2" in\n    set)\n      key=$3; value=$4; tmp="$cfg.tmp.$$"\n      grep -v "define(\\\"$key\\\"" "$cfg" > "$tmp" || true\n      case "$key" in\n       WP_ENVIRONMENT_TYPE|WP_DEVELOPMENT_MODE) printf 'define("%s", "%s");\\n' "$key" "$value" >> "$tmp" ;;\n       DISALLOW_FILE_EDIT|DISABLE_WP_CRON|WP_DISABLE_FATAL_ERROR_HANDLER|WP_DEBUG|FORCE_SSL_ADMIN|ALTERNATE_WP_CRON) printf 'define("%s", %s);\\n' "$key" "$value" >> "$tmp" ;;\n       *) rm -f "$tmp"; exit 91 ;;\n      esac\n      mv "$tmp" "$cfg"\n      ;;\n    get)\n      key=$3\n      grep -q "define(\\\"$key\\\"" "$cfg" || exit 92\n      case "$key" in\n       WP_ENVIRONMENT_TYPE|WP_DEVELOPMENT_MODE) sed -n -E "s/.*define\\(\\\"$key\\\", \\\"([^\\\"]*)\\\"\\).*/\\\"\\1\\\"/p" "$cfg" | tail -1 ;;\n       *) grep "define(\\\"$key\\\"" "$cfg" | tail -1 | grep -q ', true)' && echo true || echo false ;;\n      esac\n      ;;\n    is-true) [ "$3" = DISALLOW_FILE_MODS ] && [ "$(cat "$p/.filemods")" = locked ] ;;\n    *) exit 93 ;;\n   esac\n   ;;\n *) exit 94 ;;;\nesac\nWP\n'''
+config_block=''' config)\n   case "$2" in\n    set)\n      key=$3; value=$4; tmp="$cfg.tmp.$$"\n      grep -v "define(\\\"$key\\\"" "$cfg" > "$tmp" || true\n      case "$key" in\n       WP_ENVIRONMENT_TYPE|WP_DEVELOPMENT_MODE) printf 'define("%s", "%s");\\n' "$key" "$value" >> "$tmp" ;;\n       DISALLOW_FILE_EDIT|DISABLE_WP_CRON|WP_DISABLE_FATAL_ERROR_HANDLER|WP_DEBUG|FORCE_SSL_ADMIN|ALTERNATE_WP_CRON) printf 'define("%s", %s);\\n' "$key" "$value" >> "$tmp" ;;\n       *) rm -f "$tmp"; exit 91 ;;\n      esac\n      mv "$tmp" "$cfg"\n      ;;\n    get)\n      key=$3\n      grep -q "define(\\\"$key\\\"" "$cfg" || exit 92\n      case "$key" in\n       WP_ENVIRONMENT_TYPE|WP_DEVELOPMENT_MODE) sed -n -E "s/.*define\\(\\\"$key\\\", \\\"([^\\\"]*)\\\"\\).*/\\\"\\1\\\"/p" "$cfg" | tail -1 ;;\n       *) grep "define(\\\"$key\\\"" "$cfg" | tail -1 | grep -q ', true)' && echo true || echo false ;;\n      esac\n      ;;\n    is-true) [ "$3" = DISALLOW_FILE_MODS ] && [ "$(cat "$p/.filemods")" = locked ] ;;\n    *) exit 93 ;;\n   esac\n   ;;\n *) exit 94 ;;\nesac\nWP\n'''
 write('tests/wp-settings.sh', s[:a]+config_block+s[b+len(end):])
 repls={
 '''run wp-settings set editor enabled a.com > "$T/set"; grep -q 'effective editor remains disabled' "$T/set"; [ "$(cat "$T/sites/a.com/public_html/.editor")" = enabled ]''':'''run wp-settings set editor enabled a.com > "$T/set"; grep -q 'effective editor remains disabled' "$T/set"; grep -q 'define("DISALLOW_FILE_EDIT", false)' "$T/sites/a.com/public_html/wp-config.php"''',
@@ -70,8 +70,8 @@ replace_once('tests/wp-auto-updates.sh',
 '''run auto-updates core disabled other.com > "$T/out"; [ "$(cat "$T/sites/other.com/public_html/.core")" = disabled ]''',
 '''run auto-updates core disabled other.com > "$T/out"; grep -q 'WP_AUTO_UPDATE_CORE", false' "$T/sites/other.com/public_html/wp-config.php"''')
 replace_once('tests/wp-auto-updates.sh',
-'''find "$T/state/quarantine" -type f | grep -q .\nprintf 'WordPress automatic-update policy: idempotent mixed-state changes, partial status, targeting and backups PASS\\n' ''',
-'''find "$T/state/config-transactions" -name wp-config.php | grep -q .\nfind "$T/state/quarantine" -type f | grep -q .\nprintf 'WordPress automatic-update policy: idempotent mixed-state changes, partial status, targeting and transactional core backups PASS\\n' ''')
+"""find "$T/state/quarantine" -type f | grep -q .\nprintf 'WordPress automatic-update policy: idempotent mixed-state changes, partial status, targeting and backups PASS\\n'""",
+"""find "$T/state/config-transactions" -name wp-config.php | grep -q .\nfind "$T/state/quarantine" -type f | grep -q .\nprintf 'WordPress automatic-update policy: idempotent mixed-state changes, partial status, targeting and transactional core backups PASS\\n'""")
 
 (root/'VERSION').write_text('1.1.18\n')
 replace_once('README.md','version-1.1.17-2ea44f','version-1.1.18-2ea44f')
