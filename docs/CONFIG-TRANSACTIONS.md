@@ -27,8 +27,8 @@ For each selected WordPress installation PressWarden:
 6. Creates a private staged copy and runs WP-CLI `config set` against that copy using `--config-file`. The live site's config is not the WP-CLI mutation target.
 7. Reads the requested value back from the staged copy using WP-CLI `config get --config-file` and refuses publication if the value is not exact.
 8. Re-reads the live config and requires its identity and bytes to still match the original snapshot. If another process changed it during staging, PressWarden preserves that external change and refuses publication.
-9. Writes the verified staged bytes to a new temporary file in the live config directory and atomically renames it over `wp-config.php` only after one final source revalidation.
-10. Verifies the published bytes, mode and requested WordPress constant.
+9. Writes the verified staged bytes to a new temporary file in the live config directory, requires that the replacement inode can preserve the original mode/owner/group, and atomically renames it over `wp-config.php` only after one final source revalidation.
+10. Verifies the published bytes, mode, owner/group and requested WordPress constant.
 11. If final live verification fails, automatic rollback is attempted only while the live file is still exactly the bytes PressWarden just published. Otherwise the verified backup is retained and PressWarden refuses to overwrite a potentially newer external change.
 
 ## Evidence and privacy

@@ -14,6 +14,7 @@ make_site() {
   printf '<?php define("DB_PASSWORD", "secret-sentinel"); define("DISALLOW_FILE_MODS", false); define("WP_ENVIRONMENT_TYPE", "production");\n' > "$p/wp-config.php"
 }
 for name in a.com b.com c.com d.com e.com f.com; do make_site "$name"; done
+chmod 640 "$T/sites/a.com/public_html/wp-config.php"
 
 cat > "$T/bin/wp-real" <<'WP'
 #!/usr/bin/env bash
@@ -86,6 +87,7 @@ run_tx() { php "$helper" set "$T/state" "$1" "$2" "$3" "$4" "$5" "$T/bin/wp"; }
 out=$(run_tx "$T/sites/a.com/public_html" a.com DISALLOW_FILE_MODS bool true)
 grep -q $'OK\tCHANGED\t' <<< "$out"
 grep -q 'DISALLOW_FILE_MODS", true' "$T/sites/a.com/public_html/wp-config.php"
+[ "$(stat -c %a "$T/sites/a.com/public_html/wp-config.php")" = 640 ]
 
 before=$(find "$T/state/config-transactions" -maxdepth 1 -type d -name 'tx-*' | wc -l)
 out=$(run_tx "$T/sites/a.com/public_html" a.com DISALLOW_FILE_MODS bool true)

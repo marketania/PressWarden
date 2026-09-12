@@ -168,7 +168,8 @@ function pwct_snapshot($path, $what = 'wp-config.php') {
 }
 
 function pwct_same($a, $b, $identity = true) {
-    if ($a['sha256'] !== $b['sha256'] || $a['size'] !== $b['size'] || $a['mode'] !== $b['mode']) {
+    if ($a['sha256'] !== $b['sha256'] || $a['size'] !== $b['size'] || $a['mode'] !== $b['mode']
+        || $a['uid'] !== $b['uid'] || $a['gid'] !== $b['gid']) {
         return false;
     }
     return !$identity || ($a['dev'] === $b['dev'] && $a['ino'] === $b['ino']);
@@ -283,6 +284,20 @@ function pwct_run_wp($wpBinary, $site, $args, $capture = false) {
     $stdout = array('file', $null, 'w');
     if ($capture) {
         $temp = sys_get_temp_dir().'/presswarden-config-tx.'.bin2hex(random_bytes(8));
+        $oldMask = umask(0077);
+        try {
+            $captureHandle = @fopen($temp, 'xb');
+        } finally {
+            umask($oldMask);
+        }
+        if ($captureHandle === false) {
+            return array(127, '');
+        }
+        @fclose($captureHandle);
+        if (!@chmod($temp, 0600)) {
+            @unlink($temp);
+            return array(127, '');
+        }
         $stdout = array('file', $temp, 'w');
     }
     $spec = array(
@@ -367,7 +382,16 @@ function pwct_publish($config, $bytes, $mode, $expectedCurrent) {
         throw $e;
     }
     @fclose($handle);
-    @chmod($temp, $mode);
+    if (!@chmod($temp, $mode)) {
+        @unlink($temp);
+        pwct_fail('cannot preserve wp-config.php mode; live file was not modified');
+    }
+    $tempStat = pwct_regular($temp, PWCT_MAX_CONFIG, 'publication staging file');
+    if ((int)$tempStat['uid'] !== (int)$expectedCurrent['uid']
+        || (int)$tempStat['gid'] !== (int)$expectedCurrent['gid']) {
+        @unlink($temp);
+        pwct_fail('atomic replacement would change wp-config.php ownership; live file was not modified');
+    }
 
     clearstatcache(true, $config);
     $current = pwct_snapshot($config);
@@ -383,7 +407,8 @@ function pwct_publish($config, $bytes, $mode, $expectedCurrent) {
     clearstatcache(true, $config);
     $published = pwct_snapshot($config);
     if ($published['sha256'] !== hash('sha256', $bytes)
-        || $published['size'] !== strlen($bytes) || $published['mode'] !== $mode) {
+        || $published['size'] !== strlen($bytes) || $published['mode'] !== $mode
+        || $published['uid'] !== $expectedCurrent['uid'] || $published['gid'] !== $expectedCurrent['gid']) {
         pwct_fail('published wp-config.php verification failed');
     }
     return $published;
