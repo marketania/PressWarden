@@ -17,6 +17,7 @@ jobs:
         run: |
           python3 tests/.stage-safe-continue-1.1.17.py
           python3 tests/.stage-safe-continue-fixture.py
+          python3 tests/.stage-safe-continue-fixes.py
       - name: Validate focused and existing regressions
         run: |
           set -euo pipefail
