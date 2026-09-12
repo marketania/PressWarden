@@ -1,0 +1,29 @@
+name: Config Transaction Quality
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  transactions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Transactional wp-config mutations
+        run: |
+          set -euo pipefail
+          git diff --check
+          bash -n lib/config-transaction.sh checks/file-mods.sh checks/wp-settings.sh checks/wp-auto-updates.sh tests/config-transaction.sh tests/site-lock.sh tests/wp-settings.sh tests/wp-auto-updates.sh
+          php -l lib/config-transaction.php >/dev/null
+          bash tests/config-transaction.sh
+          bash tests/site-lock.sh
+          bash tests/wp-settings.sh
+          bash tests/wp-auto-updates.sh
+          bash tests/run-continuation.sh
+      - name: PHP 7.4 compatibility
+        run: |
+          set -euo pipefail
+          docker run --rm -v "$PWD:/work" -w /work php:7.4-cli php -l lib/config-transaction.php >/dev/null
+          docker run --rm -v "$PWD:/work" -w /work php:7.4-cli bash tests/config-transaction.sh
