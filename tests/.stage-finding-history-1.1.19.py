@@ -5,11 +5,12 @@ root=Path(__file__).resolve().parents[1]
 import json
 PAYLOADS=json.loads((root/'tests/.stage-finding-history-payloads.json').read_text())
 for rel,data in PAYLOADS.items():
+    data = data + ('=' * (-len(data) % 4))
     p=root/rel; p.parent.mkdir(parents=True,exist_ok=True); p.write_bytes(gzip.decompress(base64.b64decode(data)))
 
 def replace_once(rel, old, new):
     p=root/rel; s=p.read_text()
-    if old not in s: raise SystemExit(f"anchor not found: {rel}: {old[:100]!r}")
+    if old not in s: raise SystemExit(f'anchor not found: {rel}: {old[:100]!r}')
     p.write_text(s.replace(old,new,1))
 
 replace_once('lib/_lib.sh',
