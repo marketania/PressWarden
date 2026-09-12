@@ -1,0 +1,45 @@
+name: Stage Finding History 1.1.19
+on:
+  push:
+    branches: [feature/finding-history-1.1.19]
+permissions:
+  contents: write
+jobs:
+  stage:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/finding-history-1.1.19
+      - name: Apply staged finding history
+        run: python3 tests/.stage-finding-history-1.1.19.py
+      - name: Validate focused and adjacent regressions
+        run: |
+          set -euo pipefail
+          git diff --check
+          bash -n presswarden lib/_runner.sh lib/_lib.sh lib/remediation.sh lib/finding-history.sh tests/finding-history.sh tests/runtime-reliability.sh
+          php -l lib/finding-history.php >/dev/null
+          PWFH_REPO="$PWD" bash tests/finding-history.sh
+          bash tests/run-state.sh
+          bash tests/run-continuation.sh
+          bash tests/runtime-reliability.sh
+          bash tests/suite-progress.sh
+          bash tests/smoke.sh
+          bash tests/quarantine-runtime.sh
+          bash tests/baseline.sh
+          bash tests/config-transaction.sh
+      - name: PHP 7.4 finding-history compatibility
+        run: |
+          set -euo pipefail
+          docker run --rm -v "$PWD:/work" -w /work php:7.4-cli php -l lib/finding-history.php >/dev/null
+          docker run --rm -e PWFH_REPO=/work -v "$PWD:/work" -w /work php:7.4-cli bash tests/finding-history.sh
+      - name: Commit tested production changes
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add lib/finding-history.php lib/finding-history.sh lib/_lib.sh lib/_runner.sh lib/remediation.sh presswarden tests/finding-history.sh tests/runtime-reliability.sh docs/FINDING-HISTORY.md .github/workflows/finding-history-quality.yml VERSION CHANGELOG.md README.md
+          git commit -m 'feat: structured finding history with fail-closed resolution'
+          git push origin HEAD:feature/finding-history-1.1.19
