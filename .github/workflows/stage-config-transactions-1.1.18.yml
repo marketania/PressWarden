@@ -16,12 +16,7 @@ jobs:
       - name: Apply caller and fixture integration
         run: |
           set -euo pipefail
-          # Remove one overly exact test-tail replacement from the staging helper;
-          # the two equivalent edits are applied directly below.
-          sed -i 's/exit 94 ;;;/exit 94 ;;/g;82,84d' tests/.stage-config-transactions-1.1.18.py
           python3 tests/.stage-config-transactions-1.1.18.py
-          sed -i '/find "$T\/state\/quarantine" -type f | grep -q ./i find "$T/state/config-transactions" -name wp-config.php | grep -q .' tests/wp-auto-updates.sh
-          sed -i 's/targeting and backups PASS/targeting and transactional core backups PASS/' tests/wp-auto-updates.sh
       - name: Validate transactional mutations
         run: |
           set -euo pipefail
