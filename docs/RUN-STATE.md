@@ -2,7 +2,7 @@
 
 PressWarden records a small private state file while a suite is running so a dropped SSH session, terminal close, or catchable signal cannot be confused with a completed audit.
 
-This applies to suite-driven commands such as `fast`, `full`, `incident`, `db`, focused `inspect` suites, and threat-intelligence scans. It does not turn destructive operations such as quarantine, baseline activation, updates, or configuration changes into resumable jobs.
+This applies to suite-driven commands such as `fast`, `full`, `incident`, `db`, focused `inspect` suites, and threat-intelligence scans. It does not turn quarantine, baseline activation, updates, or configuration changes into resumable jobs.
 
 ## Status values
 
@@ -24,7 +24,7 @@ Show the most recently started suite run:
 ./presswarden last-run
 ```
 
-The equivalent command is:
+The equivalent status command is:
 
 ```bash
 ./presswarden run-status
@@ -36,7 +36,21 @@ Inspect a particular run ID shown in a report or previous status output:
 ./presswarden run-status full-20260911-202000.ABC123
 ```
 
-These commands are read-only. They do not discover websites, bootstrap WordPress, modify site content, or create a new report.
+Safely continue the latest eligible interrupted/failed run:
+
+```bash
+./presswarden continue
+```
+
+Or name the parent run explicitly:
+
+```bash
+./presswarden continue full-20260911-202000.ABC123
+```
+
+`resume` is accepted as a compatibility alias for `continue`.
+
+`last-run` and `run-status` are read-only. `continue` starts a new suite run; it never revives the old shell process or reuses a previous remediation approval.
 
 ## What is stored
 
@@ -46,10 +60,12 @@ Run state is kept under the private PressWarden state directory:
 var/runs/
   latest
   RUN_ID/
+    .lock
     state.json
+    scope.json
 ```
 
-The record contains only bounded operational metadata such as:
+The state record contains only bounded operational metadata such as:
 
 - PressWarden version
 - run ID and suite name
@@ -63,9 +79,17 @@ The record contains only bounded operational metadata such as:
 - signal and exit code when applicable
 - the corresponding suite report-log path
 
+Starting with 1.1.17, `scope.json` also records the private continuation boundary:
+
+- selected scan root
+- discovery depth
+- exact discovered WordPress roots
+- target-specific exclusions
+- a SHA-256 fingerprint over that normalized scope
+
 It does **not** store database passwords, WordPress salts, API keys, malware payload bodies, database values, or arbitrary `wp-config.php` constants.
 
-New run directories are private. State publication is atomic and refuses unsafe symlink/non-regular state paths. Each run uses the already unique report run ID, so historical run records are not replaced by later runs.
+New run directories are private. State/scope publication is atomic and refuses unsafe symlink/non-regular paths. Each run uses the already unique report run ID, so historical run records are not replaced by later runs.
 
 ## SSH disconnects
 
@@ -86,8 +110,22 @@ NOTE       This run did not complete. Partial reports may still contain useful v
 
 The finding/report files produced before interruption remain useful evidence, but the interrupted suite must not be treated as a completed security audit.
 
-## No automatic resume yet
+## Safe continuation
 
-Version 1.1.16 deliberately does not add automatic `resume` behavior. Replaying a partially completed suite safely requires stronger compatibility checks for scanner version, selected checks, discovery scope, exclusions, and any stateful/destructive step.
+Version 1.1.17 adds fail-closed suite continuation. PressWarden starts a **new** run, carries only the parent's contiguous completed prefix, and reruns the first unfinished check from the beginning before continuing with the rest of the original plan.
 
-For now, use `last-run` to identify where the suite stopped, then rerun the affected read-only check or rerun the suite. PressWarden prefers a trustworthy rerun over mixing incompatible evidence from two executions.
+Before carrying anything, PressWarden requires:
+
+- the same PressWarden version;
+- complete original discovery;
+- the same suite and exact check plan;
+- fresh discovery of the exact same WordPress roots;
+- the same root, discovery depth, and target-specific exclusions.
+
+If any of those boundaries changed, PressWarden refuses to combine the two audits and tells the operator to run the suite again.
+
+Runs created before 1.1.17 cannot be continued because they do not contain the required `scope.json` evidence. A currently active `RUNNING` record is never continued. A stale RUNNING record is eligible only when process liveness can be checked and its recorded PID is no longer active.
+
+The write-capable `wp-db-maintenance` check is deliberately not replayed if it was the interrupted check. Its repair/optimization operations may have partly completed before the disconnect, so the operator must run a fresh DB or Full suite explicitly. Other checks restart from current live state, and any interactive remediation requires fresh confirmation and existing quarantine/revalidation safeguards.
+
+See [Safe suite continuation](CONTINUATION.md) for the complete rules and limitations.
