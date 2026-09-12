@@ -25,7 +25,7 @@ jobs:
           php -l lib/run-state.php >/dev/null
           php -l lib/run-continuation.php >/dev/null
           php -l lib/suite-summary.php >/dev/null
-          bash tests/run-continuation.sh
+          bash -x tests/run-continuation.sh
           bash tests/run-state.sh
           bash tests/runtime-reliability.sh
           bash tests/suite-progress.sh
