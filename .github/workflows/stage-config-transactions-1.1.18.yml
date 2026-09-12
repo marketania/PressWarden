@@ -17,6 +17,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 tests/.stage-config-transactions-1.1.18.py
+          sed -i 's|chmod +x "$T/bin/wp"WP|chmod +x "$T/bin/wp"|' tests/site-lock.sh
       - name: Validate transactional mutations
         run: |
           set -euo pipefail
