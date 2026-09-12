@@ -2,6 +2,17 @@
 
 All notable changes to PressWarden are documented here.
 
+## 1.1.17 — 2026-09-11
+
+Safe continuation of interrupted suite scans.
+
+- Add `continue [RUN_ID]` with `resume` as a compatibility alias. A continuation starts a new run, carries only the parent's completed clean/findings/skipped prefix, reruns the first unfinished check from the beginning, and executes the remaining original plan.
+- Capture a private exact scope snapshot for every new suite run: selected WordPress roots, target-specific exclusions, root and discovery depth. Continuation fresh-discovers sites and refuses when the PressWarden version, suite, check plan, or scope differs. Pre-1.1.17 runs intentionally cannot be continued because they lack this compatibility evidence.
+- Preserve prior findings in the combined continuation summary and expose `continued_from` / `checks_carried` in JSON. Carried checks are visibly labeled in the terminal and are not re-executed.
+- Refuse continuation when the interrupted step is `wp-db-maintenance`, because that check performs automatic database writes and an interrupted write-capable step must not be blindly replayed. Other interrupted checks are rerun from current live state; any interactive remediation requires fresh confirmation/revalidation.
+- Allow continuation only for INTERRUPTED/FAILED or provably abandoned RUNNING records. Completed or ordinary incomplete runs are not treated as resumable.
+- Add scope mismatch, version/check-plan mismatch, old-run refusal, DB-maintenance refusal, privacy and PHP 7.4 regressions. No malware thresholds, quarantine guarantees, baseline semantics or updater behavior are weakened.
+
 ## 1.1.16 — 2026-09-11
 
 Resilient suite run state and interruption visibility.

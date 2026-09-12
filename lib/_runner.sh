@@ -4,6 +4,7 @@ SUITE_DOES="${RUN_DOES:-}"
 SUITE_WHY="${RUN_WHY:-}"
 . "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
 . "$(dirname "${BASH_SOURCE[0]}")/run-state.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/run-continuation.sh"
 SUITE_DISCOVERY_INCOMPLETE="${PW_DISCOVERY_FAILED:-0}"
 # Refresh discovery once per suite; children reuse the validated snapshot when available.
 PRESSWARDEN_DISCOVERY_REFRESH=0; export PRESSWARDEN_DISCOVERY_REFRESH
@@ -39,7 +40,7 @@ uploads_deep_check_wanted() {
 }
 
 _run_checks() {
-  local c rc n out seen="" start elapsed force="" total_checks=0 current_check=0 check_path completed_before suite_percent discovery_incomplete="${SUITE_DISCOVERY_INCOMPLETE:-0}"
+  local c rc n out seen="" start elapsed force="" total_checks=0 current_check=0 check_path completed_before suite_percent discovery_incomplete="${SUITE_DISCOVERY_INCOMPLETE:-0}" carried carry_check carry_n carry_st carry_tm
   local -a pipeline_status
   [ -n "$C" ] && force=1
   total_checks=$(printf '%s\n' $CHECKS | sort -u | grep -c .)
@@ -50,6 +51,7 @@ _run_checks() {
   _meta_field 10 "MODE" "$DESC"
   _meta_field 10 "CHECKS" "$SUITE_DOES"
   _meta_field 10 "WHY" "$SUITE_WHY"
+  [ -z "${PRESSWARDEN_CONTINUE_FROM:-}" ] || _meta_field 10 "CONTINUE" "from ${PRESSWARDEN_CONTINUE_FROM} • carried ${PW_CONTINUE_CARRIED:-0} completed check(s) • rerun starts at ${PW_CONTINUE_START:-unknown}"
   printf '  %s%-10s%s %s\n' "$D" "ROOT" "$X" "$ROOT"
   printf '  %s%-10s%s %s%s%s WordPress install(s) across %s site group(s)\n' "$D" "SITES" "$X" "$B" "$(count_sites)" "$X" "$(count_domains)"
   [ "$discovery_incomplete" -eq 0 ] || _meta_field 10 "COVERAGE" "INCOMPLETE discovery: checks will continue on validated sites, but this suite cannot be ALL CLEAR."
@@ -69,6 +71,13 @@ _run_checks() {
     completed_before=$((current_check-1)); suite_percent=$((completed_before*100/total_checks))
     export PW_SUITE_CURRENT="$current_check" PW_SUITE_TOTAL="$total_checks" PW_SUITE_COMPLETED="$completed_before" PW_SUITE_PERCENT="$suite_percent"
     pw_run_state_step "$current_check" "$total_checks" "$c" || true
+    if carried=$(pw_continue_carried_row "$c" 2>/dev/null); then
+      IFS=$'\t' read -r carry_check carry_n carry_st carry_tm <<< "$carried"
+      printf '\n%s%s▶ CARRY%s %s[%s/%s]%s  %s%s%s  %s(completed in parent run • suite %s%% complete)%s\n' "$B" "$C" "$X" "$B" "$current_check" "$total_checks" "$X" "$B" "$c" "$X" "$D" "$suite_percent" "$X"
+      printf '%s|%s|%s|%s\n' "$c" "$carry_n" "$carry_st" "$carry_tm" >> "$RES" || return 2
+      pw_run_state_result "$c" "$carry_st" "$carry_n" "$carry_tm" || true
+      continue
+    fi
     if [ "$c" = "wp-access" ] && ! admin_check_wanted; then
       printf '\n%s%s▶ SKIP%s %s[%s/%s]%s  %s%s%s  %s(administrator checks skipped • suite %s%% complete)%s\n' "$B" "$Y" "$X" "$B" "$current_check" "$total_checks" "$X" "$B" "$c" "$X" "$D" "$suite_percent" "$X"
       printf '%s|0|skipped|0\n' "$c" >> "$RES" || return 2
@@ -148,14 +157,16 @@ _run_checks() {
 }
 
 run_all() {
-  pw_report_init "$NAME" || return 2
   local json rc json_written=0 total_checks state_status
   local -a pipeline_status
+  if ! pw_continue_prepare "$NAME" "$CHECKS"; then return 2; fi
+  if ! pw_report_init "$NAME"; then pw_continue_cleanup; return 2; fi
   total_checks=$(printf '%s\n' $CHECKS | sort -u | grep -c .)
   PW_RUN_STATE_ERROR_FILE=$(tmpf) || { pw_report_remove_empty; return 2; }
   : > "$PW_RUN_STATE_ERROR_FILE" || { rm -f "$PW_RUN_STATE_ERROR_FILE"; pw_report_remove_empty; return 2; }
   pw_run_state_init "$NAME" "$total_checks" "$CHECKS" || true
-  RES=$(tmpf) || { rm -f "$PW_RUN_STATE_ERROR_FILE"; pw_report_remove_empty; return 2; }
+  if ! pw_continue_capture_scope; then _pw_run_state_warn; fi
+  RES=$(tmpf) || { rm -f "$PW_RUN_STATE_ERROR_FILE"; pw_continue_cleanup; pw_report_remove_empty; return 2; }
   _run_checks 2>&1 | tee "$LOG"; pipeline_status=("${PIPESTATUS[@]}"); rc=${pipeline_status[0]}
   if [ "${pipeline_status[1]:-0}" -ne 0 ]; then
     printf 'INCOMPLETE: suite console log could not be written.\n' >&2; rc=2
@@ -163,7 +174,7 @@ run_all() {
   if [ "${PW_RUN_STATE_FAILED:-0}" -ne 0 ] || [ -s "$PW_RUN_STATE_ERROR_FILE" ]; then rc=2; fi
   if [ "${PRESSWARDEN_OUTPUT_JSON:-1}" != "0" ] && command -v php >/dev/null 2>&1; then
     json="$PW_REPORT_PREFIX-summary.json"
-    if ! php "$PRESSWARDEN_DIR/lib/suite-summary.php" "$RES" "$json" "$NAME" "$PRESSWARDEN_VERSION" "$ROOT" "$(count_sites)" "$(count_domains)" "$rc" "$LOG" "${SUITE_DISCOVERY_INCOMPLETE:-0}"; then
+    if ! php "$PRESSWARDEN_DIR/lib/suite-summary.php" "$RES" "$json" "$NAME" "$PRESSWARDEN_VERSION" "$ROOT" "$(count_sites)" "$(count_domains)" "$rc" "$LOG" "${SUITE_DISCOVERY_INCOMPLETE:-0}" "${PRESSWARDEN_CONTINUE_FROM:-}" "${PW_CONTINUE_CARRIED:-0}"; then
       printf 'INCOMPLETE: suite JSON report could not be written.\n' >&2; rc=2
     else
       json_written=1
@@ -180,5 +191,6 @@ run_all() {
   [ "$json_written" -eq 1 ] && printf '%sJSON summary:%s %s\n' "$D" "$X" "$json"
   [ "${PW_RUN_STATE_ACTIVE:-0}" -eq 1 ] && printf '%srun state:%s %s\n' "$D" "$X" "$PW_RUN_STATE_FILE"
   rm -f "$PW_RUN_STATE_ERROR_FILE"
+  pw_continue_cleanup
   return "$rc"
 }

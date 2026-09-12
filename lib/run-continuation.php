@@ -48,7 +48,7 @@ function pwc_scope_from_tsv($path){
     $base=['root'=>$root,'discovery_depth'=>(int)$depth,'scan_roots'=>$sites,'target_exclusions'=>$ex];
     $canon=json_encode($base,JSON_UNESCAPED_SLASHES);if($canon===false)pwc_fail('scope encoding failed');$base['fingerprint']=hash('sha256',$canon);return $base;
 }
-function pwc_scope_read($runDir){$j=pwc_read_json($runDir.'/scope.json');if(($j['format']??null)!==1||($j['tool']??null)!=='PressWarden'||!isset($j['fingerprint'],$j['scan_roots'],$j['root'],$j['discovery_depth'],$j['target_exclusions']))pwc_fail('run predates safe continuation scope metadata; rerun the suite before using continue');return $j;}
+function pwc_scope_read($runDir){$path=$runDir.'/scope.json';if(!file_exists($path)&&!is_link($path))pwc_fail('run predates safe continuation scope metadata; rerun the suite before using continue');$j=pwc_read_json($path);if(($j['format']??null)!==1||($j['tool']??null)!=='PressWarden'||!isset($j['fingerprint'],$j['scan_roots'],$j['root'],$j['discovery_depth'],$j['target_exclusions']))pwc_fail('run predates safe continuation scope metadata; rerun the suite before using continue');return $j;}
 function pwc_resolve_run($runs,$id){
     $runs=pwc_plain_dir($runs);if($id===''||$id==='latest'){$latest=$runs.'/latest';pwc_regular($latest,4096);$id=trim((string)@file_get_contents($latest,false,null,0,4097));}
     $id=pwc_id($id);$dir=pwc_plain_dir($runs.'/'.$id);$state=pwc_read_json($dir.'/state.json');if(($state['tool']??null)!=='PressWarden')pwc_fail('invalid PressWarden run state');return [$id,$dir,$state,pwc_scope_read($dir)];
@@ -92,7 +92,18 @@ try{
         if($argc!==5)pwc_fail('invalid plan arguments');$p=pwc_plan_data($argv[2],$argv[3],$argv[4]);pwc_emit_plan($p);exit(0);
     }
     if($cmd==='verify'){
-        if($argc!==8)pwc_fail('invalid verify arguments');$p=pwc_plan_data($argv[2],$argv[3],$argv[4]);$suite=pwc_text($argv[5],false,96);if($suite!==$p['suite'])pwc_fail('suite changed since interrupted run');$currentChecks=preg_split('/[[:space:]]+/',trim(pwc_text($argv[6],false,16384)));if($currentChecks!==$p['checks'])pwc_fail('check plan changed since interrupted run');$scope=pwc_scope_from_tsv($argv[7]);if(!hash_equals((string)$p['scope']['fingerprint'],(string)$scope['fingerprint']))pwc_fail('site scope changed since interrupted run; rerun the suite for trustworthy coverage');$carryPath=$argv[8]??'';pwc_fail('invalid verify arguments');
+        if($argc!==9)pwc_fail('invalid verify arguments');
+        $p=pwc_plan_data($argv[2],$argv[3],$argv[4]);
+        $suite=pwc_text($argv[5],false,96); if($suite!==$p['suite'])pwc_fail('suite changed since interrupted run');
+        $rawChecks=trim(pwc_text($argv[6],false,16384)); $currentChecks=$rawChecks===''?[]:preg_split('/[[:space:]]+/',$rawChecks);
+        if($currentChecks!==$p['checks'])pwc_fail('check plan changed since interrupted run');
+        $scope=pwc_scope_from_tsv($argv[7]);
+        if(!hash_equals((string)$p['scope']['fingerprint'],(string)$scope['fingerprint']))pwc_fail('site scope changed since interrupted run; rerun the suite for trustworthy coverage');
+        pwc_write_carry($argv[8],$p['carry']);
+        echo "START	",$p['start'],"
+CARRY	",count($p['carry']),"
+";
+        exit(0);
     }
     pwc_fail('unknown continuation command');
 }catch(Throwable $e){fwrite(STDERR,'INCOMPLETE: '.preg_replace('/[\r\n\t]+/',' ',(string)$e->getMessage())."\n");exit(2);}
