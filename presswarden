@@ -84,6 +84,7 @@ Usage:
   ./presswarden doctor [target]        Dependencies, config, integrations, discovery
   ./presswarden last-run               Show the most recently started suite run state
   ./presswarden run-status [RUN_ID]    Show latest or a specific suite run state
+  ./presswarden continue [RUN_ID]      Safely continue an interrupted suite from its first unfinished check
   ./presswarden lock [target]          Lock WordPress file modifications across discovered sites
   ./presswarden unlock [target]        Unlock WordPress file modifications for updates/maintenance
   ./presswarden lock-status [target]   Show DISALLOW_FILE_MODS status across discovered sites
@@ -249,6 +250,33 @@ case "$cmd" in
   -V|--version|version) printf 'PressWarden %s\n' "$VERSION" ;;
   help|-h|--help) usage ;;
   config) show_config ;;
+  continue|resume)
+    [ "$#" -le 1 ] || { printf 'Usage: ./presswarden continue [RUN_ID]\n' >&2; exit 2; }
+    command -v php >/dev/null 2>&1 || { printf 'Safe continuation requires PHP CLI.\n' >&2; exit 2; }
+    if [ "$PRESSWARDEN_PORTABLE" = 1 ]; then state="${PRESSWARDEN_STATE_DIR:-$PRESSWARDEN_DIR/var}"; else state="${PRESSWARDEN_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/presswarden}"; fi
+    plan=$(php "$PRESSWARDEN_DIR/lib/run-continuation.php" plan "$state/runs" "${1:-latest}" "$VERSION") || exit 2
+    parent=''; suite=''; root=''; depth=''; start=''; index=''; total=''; carried=''; _PW_TARGET_EXCLUSIONS=''
+    while IFS=$'\t' read -r key value; do
+      case "$key" in
+        RUN) parent="$value" ;; SUITE) suite="$value" ;; ROOT) root="$value" ;; DEPTH) depth="$value" ;;
+        START) start="$value" ;; INDEX) index="$value" ;; TOTAL) total="$value" ;; CARRY) carried="$value" ;;
+        EXCLUDE) _PW_TARGET_EXCLUSIONS+="$value"$'\n' ;;
+      esac
+    done <<< "$plan"
+    [ -n "$parent" ] && [ -n "$suite" ] && [ -n "$root" ] && [ -n "$start" ] || { printf 'INCOMPLETE: continuation plan is invalid.\n' >&2; exit 2; }
+    ROOT="$root"; PRESSWARDEN_DISCOVERY_DEPTH="$depth"; PRESSWARDEN_CONTINUE_FROM="$parent"
+    export ROOT PRESSWARDEN_DIR PRESSWARDEN_DISCOVERY_DEPTH PRESSWARDEN_CONTINUE_FROM _PW_TARGET_EXCLUSIONS
+    printf 'Continuing %s run %s from [%s/%s] %s; carrying %s completed check(s).\n' "$suite" "$parent" "$index" "$total" "$start" "$carried" >&2
+    case "$suite" in
+      fast|full|incident|db) exec bash "$PRESSWARDEN_DIR/suites/$suite.sh" ;;
+      intel) exec bash "$PRESSWARDEN_DIR/suites/intel.sh" ;;
+      inspect-php) exec bash "$PRESSWARDEN_DIR/suites/inspect.sh" php ;;
+      inspect-js) exec bash "$PRESSWARDEN_DIR/suites/inspect.sh" js ;;
+      inspect-db) exec bash "$PRESSWARDEN_DIR/suites/inspect.sh" db ;;
+      inspect-runtime) exec bash "$PRESSWARDEN_DIR/suites/inspect.sh" runtime ;;
+      *) printf 'INCOMPLETE: suite is not continuation-enabled.\n' >&2; exit 2 ;;
+    esac
+    ;;
   last-run|run-status)
     if [ "$cmd" = last-run ]; then
       [ "$#" -eq 0 ] || { printf 'Usage: ./presswarden last-run\n' >&2; exit 2; }

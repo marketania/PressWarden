@@ -12,7 +12,7 @@
 
 **Fleet-scale WordPress security auditing from the shell.**
 
-![Version](https://img.shields.io/badge/version-1.1.16-2ea44f)
+![Version](https://img.shields.io/badge/version-1.1.17-2ea44f)
 ![Bash](https://img.shields.io/badge/bash-4%2B-4EAA25?logo=gnubash&logoColor=white)
 ![WordPress](https://img.shields.io/badge/WordPress-security-21759B?logo=wordpress&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Linux-FCC624?logo=linux&logoColor=black)
@@ -116,6 +116,7 @@ That is the recommended starting point for most users.
 | `./presswarden cleanup` | Conservative log / disposable-file cleanup |
 | `./presswarden wp-settings example.com` | WordPress policy, updates, cron, recovery, environment, debug, and config posture |
 | `./presswarden last-run` | See whether the latest suite completed, was incomplete, or was interrupted and where it stopped |
+| `./presswarden continue` | Safely continue an interrupted/failed suite from its first unfinished check after scope/version verification |
 
 For routine use, start with:
 
@@ -195,7 +196,7 @@ Suite runs now maintain a small private atomic state record while they execute. 
 ./presswarden run-status RUN_ID
 ```
 
-A catchable interruption retains partial validated reports but never becomes a completed audit. `SIGKILL` cannot be trapped; when process liveness is available, `run-status` identifies a stale `RUNNING` record as an interrupted/abandoned run rather than inventing completion. Automatic resume is intentionally not provided yet. See [suite run-state details](docs/RUN-STATE.md).
+A catchable interruption retains partial validated reports but never becomes a completed audit. `SIGKILL` cannot be trapped; when process liveness is available, `run-status` identifies a stale `RUNNING` record as an interrupted/abandoned run rather than inventing completion. Safe continuation is available with `./presswarden continue [RUN_ID]`. It carries only a completed prefix from the same PressWarden version and exact rediscovered scope, reruns the interrupted check from the beginning, and starts a new linked audit summary. Runs created before 1.1.17 do not contain the required scope snapshot. Automatic database maintenance is never replayed if it was the interrupted check. See [safe continuation](docs/CONTINUATION.md) and [suite run-state details](docs/RUN-STATE.md).
 
 ---
 

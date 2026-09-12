@@ -4,7 +4,7 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/presswarden-reliability.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
 mkdir -p "$TMP/repo/lib" "$TMP/repo/checks" "$TMP/reports"
-cp "$REPO/lib/_runner.sh" "$REPO/lib/suite-summary.php" "$REPO/lib/reports.sh" "$REPO/lib/report-json.php" "$REPO/lib/run-state.sh" "$REPO/lib/run-state.php" "$TMP/repo/lib/"
+cp "$REPO/lib/_runner.sh" "$REPO/lib/suite-summary.php" "$REPO/lib/reports.sh" "$REPO/lib/report-json.php" "$REPO/lib/run-state.sh" "$REPO/lib/run-state.php" "$REPO/lib/run-continuation.sh" "$REPO/lib/run-continuation.php" "$TMP/repo/lib/"
 # Synthetic runtime exercises the actual suite driver, not a copy of its logic.
 cat > "$TMP/repo/lib/_lib.sh" <<'EOF'
 PRESSWARDEN_DIR="$PW_TEST_REPO"; ROOT="$PW_TEST_REPO"

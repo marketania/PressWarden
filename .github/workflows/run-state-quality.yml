@@ -11,16 +11,20 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Run-state interruption, locking and privacy
+      - name: Run-state interruption, continuation, locking and privacy
         run: |
           set -euo pipefail
-          bash -n presswarden lib/_runner.sh lib/run-state.sh tests/run-state.sh tests/runtime-reliability.sh
+          bash -n presswarden lib/_runner.sh lib/run-state.sh lib/run-continuation.sh tests/run-state.sh tests/run-continuation.sh tests/runtime-reliability.sh
           php -l lib/run-state.php >/dev/null
+          php -l lib/run-continuation.php >/dev/null
           bash tests/run-state.sh
+          bash tests/run-continuation.sh
           bash tests/runtime-reliability.sh
           bash tests/suite-progress.sh
       - name: PHP 7.4 compatibility
         run: |
           set -euo pipefail
           docker run --rm -v "$PWD:/work" -w /work php:7.4-cli php -l lib/run-state.php >/dev/null
+          docker run --rm -v "$PWD:/work" -w /work php:7.4-cli php -l lib/run-continuation.php >/dev/null
           docker run --rm -v "$PWD:/work" -w /work php:7.4-cli bash tests/run-state.sh
+          docker run --rm -v "$PWD:/work" -w /work php:7.4-cli bash tests/run-continuation.sh

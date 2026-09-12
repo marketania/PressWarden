@@ -1,8 +1,10 @@
 <?php
 /** Generate a PressWarden suite report without treating failed checks as clean. */
 require_once __DIR__.'/report-json.php';
-if ($argc !== 11) { fwrite(STDERR, "Invalid suite summary arguments\n"); exit(2); }
-[$res, $out, $suite, $version, $root, $sites, $domains, $rc, $log, $discovery] = array_slice($argv, 1);
+if ($argc !== 11 && $argc !== 13) { fwrite(STDERR, "Invalid suite summary arguments\n"); exit(2); }
+[$res, $out, $suite, $version, $root, $sites, $domains, $rc, $log, $discovery] = array_slice($argv, 1, 10);
+$continuedFrom = $argc === 13 ? (string)$argv[11] : '';
+$checksCarried = $argc === 13 ? (int)$argv[12] : 0;
 $discoveryIncomplete = $discovery === '1';
 $lines = @file($res, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
 if ($lines === false) { fwrite(STDERR, "Cannot read suite results\n"); exit(2); }
@@ -25,6 +27,7 @@ $data = ['tool'=>'PressWarden', 'version'=>$version, 'suite'=>$suite, 'generated
     'checks_completed'=>$completed, 'checks_skipped'=>$skipped, 'checks_failed'=>$failed,
     'run_id'=>basename($log, '.log'), 'console_log'=>$log,
     'discovery_status'=>$discoveryIncomplete ? 'incomplete' : 'complete', 'checks'=>$checks];
+if ($continuedFrom !== '') { $data['continued_from']=$continuedFrom; $data['checks_carried']=$checksCarried; }
 $json = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
 try {
     if ($json === false) throw new RuntimeException('JSON encoding failed');
