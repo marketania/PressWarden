@@ -84,6 +84,7 @@ Usage:
   ./presswarden doctor [target]        Dependencies, config, integrations, discovery
   ./presswarden last-run               Show the most recently started suite run state
   ./presswarden run-status [RUN_ID]    Show latest or a specific suite run state
+  ./presswarden history [RUN_ID]       Show NEW/RECURRING/CHANGED/RESOLVED/NOT RECHECKED findings
   ./presswarden continue [RUN_ID]      Safely continue an interrupted suite from its first unfinished check
   ./presswarden lock [target]          Lock WordPress file modifications across discovered sites
   ./presswarden unlock [target]        Unlock WordPress file modifications for updates/maintenance
@@ -292,6 +293,17 @@ case "$cmd" in
       state="${PRESSWARDEN_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/presswarden}"
     fi
     exec php "$PRESSWARDEN_DIR/lib/run-state.php" show "$state/runs" "$run_id"
+    ;;
+  history)
+    [ "$#" -le 1 ] || { printf 'Usage: ./presswarden history [RUN_ID]\n' >&2; exit 2; }
+    run_id="${1:-}"
+    command -v php >/dev/null 2>&1 || { printf 'Finding-history inspection requires PHP CLI.\n' >&2; exit 2; }
+    if [ "$PRESSWARDEN_PORTABLE" = 1 ]; then
+      state="${PRESSWARDEN_STATE_DIR:-$PRESSWARDEN_DIR/var}"
+    else
+      state="${PRESSWARDEN_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/presswarden}"
+    fi
+    exec php "$PRESSWARDEN_DIR/lib/finding-history.php" show "$state/runs" "$run_id"
     ;;
   sites)
     [ "$#" -le 1 ] || { printf 'Usage: ./presswarden sites [directory]\n' >&2; exit 2; }

@@ -1,0 +1,28 @@
+name: Finding History Quality
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  history:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Structured history, resolution safety and privacy
+        run: |
+          set -euo pipefail
+          bash -n presswarden lib/_runner.sh lib/finding-history.sh tests/finding-history.sh
+          php -l lib/finding-history.php >/dev/null
+          PWFH_REPO="$PWD" bash tests/finding-history.sh
+          bash tests/run-state.sh
+          bash tests/run-continuation.sh
+          bash tests/runtime-reliability.sh
+          bash tests/suite-progress.sh
+      - name: PHP 7.4 compatibility
+        run: |
+          set -euo pipefail
+          docker run --rm -v "$PWD:/work" -w /work php:7.4-cli php -l lib/finding-history.php >/dev/null
+          docker run --rm -e PWFH_REPO=/work -v "$PWD:/work" -w /work php:7.4-cli bash tests/finding-history.sh

@@ -142,6 +142,7 @@ report() {
     rm -f "$f"; return 0
   fi
 
+  pw_history_capture "$f" "$sev" "${CURRENT_SECTION:-$NAME}" "$NAME" || true
   if ! _save_details "$f" "$sev"; then pw_report_failure; fi
   shown=0
   while IFS= read -r line; do

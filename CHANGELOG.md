@@ -2,6 +2,18 @@
 
 All notable changes to PressWarden are documented here.
 
+## 1.1.19 — 2026-09-12
+
+Structured finding history with fail-closed resolution semantics.
+
+- Add per-suite structured observation history with NEW, RECURRING, CHANGED, RESOLVED and NOT RECHECKED states. These are scan-observation states, not compromise/remediation timestamps or attacker attribution.
+- Capture issue/review findings centrally before remediation using stable check/rule/site/relative-path identities where possible, bounded fingerprints, controlled database row locators, and digests for generic evidence. Raw generic evidence, database values, credentials, salts and payload bodies are not stored in history reports.
+- Permit RESOLVED only after trustworthy comparable coverage: same suite/scope stream, complete discovery, internally complete finding capture, successful owning-check recheck, non-overlapping runs, and comparable PressWarden version. Skipped/failed/missing checks, capture mismatch, version transition, overlap or incomplete discovery produce NOT RECHECKED instead.
+- Keep prior NOT RECHECKED findings active so a partial run cannot make evidence disappear. History capture-count mismatches fail closed and do not advance the comparison pointer.
+- Integrate safe continuation by copying structured observations for carried completed checks into the new child run. Interrupted/running runs never publish resolution history or advance finalized comparison state.
+- Add read-only `history [RUN_ID]`, private no-replace per-run history JSON, an atomic per-suite/scope pointer serialized with PHP flock, resource bounds, symlink/non-regular refusal and PHP 7.4 regressions.
+- Preserve malware thresholds, verified quarantine, complete-or-refuse baselines, safe continuation, transactional wp-config mutations, updater recovery and shared-host portability.
+
 ## 1.1.18 — 2026-09-11
 
 Transactional wp-config mutation hardening.
