@@ -3,6 +3,7 @@
 action="${1:-status}"
 case "$action" in status|on|off) ;; *) printf 'Usage: presswarden file-mods status|on|off [path]\n' >&2; exit 2 ;; esac
 command -v wp >/dev/null 2>&1 || die "WP-CLI is required for file-mods"
+failed=0
 for s in "${SCAN_ROOTS[@]}"; do
   label=$(site_label_from_root "$s")
   cur=$(wpq "$s" config get DISALLOW_FILE_MODS --type=constant 2>/dev/null || printf '')
@@ -19,12 +20,15 @@ for s in "${SCAN_ROOTS[@]}"; do
     printf '  %s%s%s%s DISALLOW_FILE_MODS=%s? [y/N]: ' "$B" "$Y" "$label" "$X" "$want"
     read -r ans || ans=''; case "$ans" in y|Y|yes|YES) ;; *) continue ;; esac
   fi
-  backup="$QUARANTINE/file-mods-$(date +%Y%m%d-%H%M%S)/$label/wp-config.php"
-  mkdir -p "$(dirname "$backup")" && cp -p "$s/wp-config.php" "$backup" || { flag "$label" "could not back up wp-config.php"; continue; }
-  if wpq "$s" config set DISALLOW_FILE_MODS "$want" --raw >/dev/null 2>&1; then
-    if [ "$want" = true ]; then ok "$label" "file changes locked"; else ok "$label" "file changes unlocked"; fi
+  if pw_config_transaction_set "$s" "$label" DISALLOW_FILE_MODS bool "$want"; then
+    if [ "$want" = true ]; then
+      if [ "$PW_CONFIG_TX_RESULT" = NOOP ]; then ok "$label" "file changes already locked"; else ok "$label" "file changes locked"; fi
+    else
+      if [ "$PW_CONFIG_TX_RESULT" = NOOP ]; then ok "$label" "file changes already unlocked"; else ok "$label" "file changes unlocked"; fi
+    fi
   else
-    cp -p "$backup" "$s/wp-config.php" 2>/dev/null || true
-    issue "$label" "WP-CLI update failed; original wp-config.php restored"
+    printf '    %s%s✖ INCOMPLETE%s  %s%s%s  wp-config.php transaction failed; verified backup retained when one was created\n' "$B" "$R" "$X" "$B" "$label" "$X" >&2
+    failed=1
   fi
 done
+[ "$failed" -eq 0 ] || exit 2

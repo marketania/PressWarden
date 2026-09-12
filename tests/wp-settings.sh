@@ -22,9 +22,10 @@ printf 'staging\n' > "$p/.environment"; printf 'enabled\n' > "$p/.debug"; printf
 cat > "$T/bin/wp" <<'WP'
 #!/usr/bin/env bash
 set -eu
-p=''; args=()
-for a in "$@"; do case "$a" in --path=*) p=${a#--path=} ;; --skip-*|--no-color) ;; *) args+=("$a") ;; esac; done
+p=''; cfg=''; args=()
+for a in "$@"; do case "$a" in --path=*) p=${a#--path=} ;; --config-file=*) cfg=${a#--config-file=} ;; --skip-*|--no-color|--type=constant|--format=json|--raw) ;; *) args+=("$a") ;; esac; done
 set -- "${args[@]}"; [ -n "$p" ] || exit 90
+[ -n "$cfg" ] || cfg="$p/wp-config.php"
 case "$1" in
  eval-file)
    [ -f "$p/.bad-json" ] && { echo 'not-json'; exit 0; }
@@ -41,32 +42,21 @@ case "$1" in
  config)
    case "$2" in
     set)
-      key=$3; value=$4
+      key=$3; value=$4; tmp="$cfg.tmp.$$"
+      grep -v "define(\"$key\"" "$cfg" > "$tmp" || true
       case "$key" in
-       DISALLOW_FILE_EDIT) [ "$value" = true ] && echo disabled > "$p/.editor" || echo enabled > "$p/.editor" ;;
-       DISABLE_WP_CRON) [ "$value" = true ] && echo disabled > "$p/.cron" || echo enabled > "$p/.cron" ;;
-       WP_DISABLE_FATAL_ERROR_HANDLER) [ "$value" = true ] && echo disabled > "$p/.recovery" || echo enabled > "$p/.recovery" ;;
-       WP_ENVIRONMENT_TYPE) echo "$value" > "$p/.environment" ;;
-       WP_DEVELOPMENT_MODE) [ -n "$value" ] && echo "$value" > "$p/.development" || echo disabled > "$p/.development" ;;
-       WP_DEBUG) [ "$value" = true ] && echo enabled > "$p/.debug" || echo disabled > "$p/.debug" ;;
-       FORCE_SSL_ADMIN) [ "$value" = true ] && echo enabled > "$p/.ssl" || echo disabled > "$p/.ssl" ;;
-       ALTERNATE_WP_CRON) [ "$value" = true ] && echo enabled > "$p/.alternate" || echo disabled > "$p/.alternate" ;;
-       *) exit 91 ;;
+       WP_ENVIRONMENT_TYPE|WP_DEVELOPMENT_MODE) printf 'define("%s", "%s");\n' "$key" "$value" >> "$tmp" ;;
+       DISALLOW_FILE_EDIT|DISABLE_WP_CRON|WP_DISABLE_FATAL_ERROR_HANDLER|WP_DEBUG|FORCE_SSL_ADMIN|ALTERNATE_WP_CRON) printf 'define("%s", %s);\n' "$key" "$value" >> "$tmp" ;;
+       *) rm -f "$tmp"; exit 91 ;;
       esac
-      printf '<?php define("%s", %q);\n' "$key" "$value" > "$p/wp-config.php"
+      mv "$tmp" "$cfg"
       ;;
     get)
       key=$3
+      grep -q "define(\"$key\"" "$cfg" || exit 92
       case "$key" in
-       DISALLOW_FILE_EDIT) [ "$(cat "$p/.editor")" = disabled ] && echo true || echo false ;;
-       DISABLE_WP_CRON) [ "$(cat "$p/.cron")" = disabled ] && echo true || echo false ;;
-       WP_DISABLE_FATAL_ERROR_HANDLER) [ "$(cat "$p/.recovery")" = disabled ] && echo true || echo false ;;
-       WP_ENVIRONMENT_TYPE) printf '"%s"\n' "$(cat "$p/.environment")" ;;
-       WP_DEVELOPMENT_MODE) v=$(cat "$p/.development"); [ "$v" = disabled ] && v=''; printf '"%s"\n' "$v" ;;
-       WP_DEBUG) [ "$(cat "$p/.debug")" = enabled ] && echo true || echo false ;;
-       FORCE_SSL_ADMIN) [ "$(cat "$p/.ssl")" = enabled ] && echo true || echo false ;;
-       ALTERNATE_WP_CRON) [ "$(cat "$p/.alternate")" = enabled ] && echo true || echo false ;;
-       *) exit 92 ;;
+       WP_ENVIRONMENT_TYPE|WP_DEVELOPMENT_MODE) sed -n -E "s/.*define\(\"$key\", \"([^\"]*)\"\).*/\"\1\"/p" "$cfg" | tail -1 ;;
+       *) grep "define(\"$key\"" "$cfg" | tail -1 | grep -q ', true)' && echo true || echo false ;;
       esac
       ;;
     is-true) [ "$3" = DISALLOW_FILE_MODS ] && [ "$(cat "$p/.filemods")" = locked ] ;;
@@ -88,16 +78,16 @@ run wp-settings all > "$T/fleet"
 grep -q 'BASELINE.*Security' "$T/fleet"; grep -q 'DIFF other.com' "$T/fleet"
 ! grep -q 'DIFF a.com' "$T/fleet"; grep -q 'Environment=STAGING' "$T/fleet"
 
-run wp-settings set editor enabled a.com > "$T/set"; grep -q 'effective editor remains disabled' "$T/set"; [ "$(cat "$T/sites/a.com/public_html/.editor")" = enabled ]
-run wp-settings set cron disabled a.com > "$T/set"; grep -q 'external/server cron' "$T/set"; [ "$(cat "$T/sites/a.com/public_html/.cron")" = disabled ]
-run wp-settings set recovery disabled a.com > "$T/set"; [ "$(cat "$T/sites/a.com/public_html/.recovery")" = disabled ]
-run wp-settings set environment staging a.com > "$T/set"; [ "$(cat "$T/sites/a.com/public_html/.environment")" = staging ]
-run wp-settings set development theme a.com > "$T/set"; [ "$(cat "$T/sites/a.com/public_html/.development")" = theme ]
-run wp-settings set development disabled a.com > "$T/set"; [ "$(cat "$T/sites/a.com/public_html/.development")" = disabled ]
-run wp-settings set debug enabled a.com > "$T/set"; [ "$(cat "$T/sites/a.com/public_html/.debug")" = enabled ]
-run wp-settings set force-ssl-admin disabled a.com > "$T/set"; [ "$(cat "$T/sites/a.com/public_html/.ssl")" = disabled ]
-run wp-settings set alternate-cron enabled a.com > "$T/set"; grep -q 'compatibility workaround' "$T/set"; [ "$(cat "$T/sites/a.com/public_html/.alternate")" = enabled ]
-find "$T/state/quarantine" -name wp-config.php | grep -q .
+run wp-settings set editor enabled a.com > "$T/set"; grep -q 'effective editor remains disabled' "$T/set"; grep -q 'define("DISALLOW_FILE_EDIT", false)' "$T/sites/a.com/public_html/wp-config.php"
+run wp-settings set cron disabled a.com > "$T/set"; grep -q 'external/server cron' "$T/set"; grep -q 'define("DISABLE_WP_CRON", true)' "$T/sites/a.com/public_html/wp-config.php"
+run wp-settings set recovery disabled a.com > "$T/set"; grep -q 'define("WP_DISABLE_FATAL_ERROR_HANDLER", true)' "$T/sites/a.com/public_html/wp-config.php"
+run wp-settings set environment staging a.com > "$T/set"; grep -q 'define("WP_ENVIRONMENT_TYPE", "staging")' "$T/sites/a.com/public_html/wp-config.php"
+run wp-settings set development theme a.com > "$T/set"; grep -q 'define("WP_DEVELOPMENT_MODE", "theme")' "$T/sites/a.com/public_html/wp-config.php"
+run wp-settings set development disabled a.com > "$T/set"; grep -q 'define("WP_DEVELOPMENT_MODE", "")' "$T/sites/a.com/public_html/wp-config.php"
+run wp-settings set debug enabled a.com > "$T/set"; grep -q 'define("WP_DEBUG", true)' "$T/sites/a.com/public_html/wp-config.php"
+run wp-settings set force-ssl-admin disabled a.com > "$T/set"; grep -q 'define("FORCE_SSL_ADMIN", false)' "$T/sites/a.com/public_html/wp-config.php"
+run wp-settings set alternate-cron enabled a.com > "$T/set"; grep -q 'compatibility workaround' "$T/set"; grep -q 'define("ALTERNATE_WP_CRON", true)' "$T/sites/a.com/public_html/wp-config.php"
+find "$T/state/config-transactions" -name wp-config.php | grep -q .
 
 [ "$(cat "$T/sites/b.com/public_html/.environment")" = production ]
 grep -q 'wp-settings' "$REPO/suites/fast.sh"; grep -q 'wp-settings' "$REPO/suites/full.sh"

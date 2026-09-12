@@ -15,15 +15,28 @@ touch "$T/sites/other.com/public_html/.DISALLOW_FILE_MODS"
 cat > "$T/bin/wp" <<'WP'
 #!/usr/bin/env bash
 set -eu
-p=''; args=(); for a in "$@"; do case "$a" in --path=*) p=${a#--path=} ;; --skip-*|--no-color) ;; *) args+=("$a") ;; esac; done
+p=''; cfg=''; args=(); for a in "$@"; do case "$a" in --path=*) p=${a#--path=} ;; --config-file=*) cfg=${a#--config-file=} ;; --skip-*|--no-color|--type=constant|--format=json|--raw) ;; *) args+=("$a") ;; esac; done
 set -- "${args[@]}"; [ -n "$p" ] || exit 90
+[ -n "$cfg" ] || cfg="$p/wp-config.php"
 case "$1" in
  config)
    case "$2" in
-    has) case "$3" in WP_AUTO_UPDATE_CORE) exit 0 ;; AUTOMATIC_UPDATER_DISABLED|DISALLOW_FILE_MODS) [ -f "$p/.${3}" ] ;; *) exit 1 ;; esac ;;
-    get) case "$3" in WP_AUTO_UPDATE_CORE) case "$(cat "$p/.core")" in minor) echo '"minor"';; major) echo true;; disabled) echo false;; esac ;; *) exit 1;; esac ;;
+    has) case "$3" in WP_AUTO_UPDATE_CORE) grep -q 'define("WP_AUTO_UPDATE_CORE"' "$cfg" ;; AUTOMATIC_UPDATER_DISABLED|DISALLOW_FILE_MODS) [ -f "$p/.${3}" ] ;; *) exit 1 ;; esac ;;
+    get)
+      case "$3" in
+       WP_AUTO_UPDATE_CORE)
+        grep -q 'define("WP_AUTO_UPDATE_CORE"' "$cfg" || exit 1
+        grep -q 'WP_AUTO_UPDATE_CORE", true' "$cfg" && echo true || { grep -q 'WP_AUTO_UPDATE_CORE", false' "$cfg" && echo false || echo '"minor"'; }
+        ;;
+       *) exit 1 ;;
+      esac ;;
     is-true) [ -f "$p/.${3}" ] ;;
-    set) case "$3" in WP_AUTO_UPDATE_CORE) case "$4" in minor) echo minor > "$p/.core"; printf '<?php define("WP_AUTO_UPDATE_CORE", "minor");\n' > "$p/wp-config.php" ;; true) echo major > "$p/.core"; printf '<?php define("WP_AUTO_UPDATE_CORE", true);\n' > "$p/wp-config.php" ;; false) echo disabled > "$p/.core"; printf '<?php define("WP_AUTO_UPDATE_CORE", false);\n' > "$p/wp-config.php" ;; esac ;; esac ;;
+    set)
+      [ "$3" = WP_AUTO_UPDATE_CORE ] || exit 94
+      value=$4; tmp="$cfg.tmp.$$"; grep -v 'define("WP_AUTO_UPDATE_CORE"' "$cfg" > "$tmp" || true
+      if [ "$value" = true ] || [ "$value" = false ]; then printf 'define("WP_AUTO_UPDATE_CORE", %s);\n' "$value" >> "$tmp"; else printf 'define("WP_AUTO_UPDATE_CORE", "%s");\n' "$value" >> "$tmp"; fi
+      mv "$tmp" "$cfg"
+      ;;
    esac ;;
  option) case "$3" in auto_update_core_major) echo '"unset"';; auto_update_core_minor) echo '"enabled"';; *) exit 1;; esac ;;
  plugin|theme)
@@ -81,7 +94,7 @@ grep -q 'Plugins auto-updates DISABLED' "$T/out"
 run auto-updates plugins disable other.com > "$T/out"
 grep -q 'already DISABLED' "$T/out"
 
-run auto-updates core major example.com > "$T/out"; [ "$(cat "$T/sites/example.com/public_html/.core")" = major ]; [ "$(cat "$T/sites/other.com/public_html/.core")" = minor ]
+run auto-updates core major example.com > "$T/out"; grep -q 'WP_AUTO_UPDATE_CORE", true' "$T/sites/example.com/public_html/wp-config.php"; grep -q 'WP_AUTO_UPDATE_CORE", "minor"' "$T/sites/other.com/public_html/wp-config.php"
 
 # Mixed plugin state on example.com must also enable cleanly by selecting only
 # disabled items. A repeated enable is a successful no-op, not a batch failure.
@@ -94,7 +107,7 @@ run auto-updates themes enable all > "$T/out"; [ "$(cat "$T/sites/example.com/pu
 run auto-updates themes disable other.com > "$T/out"; [ "$(cat "$T/sites/other.com/public_html/.themes-enabled")" = 0 ]
 run auto-updates themes disable other.com > "$T/out"; grep -q 'already DISABLED' "$T/out"
 
-run auto-updates core disabled other.com > "$T/out"; [ "$(cat "$T/sites/other.com/public_html/.core")" = disabled ]
+run auto-updates core disabled other.com > "$T/out"; grep -q 'WP_AUTO_UPDATE_CORE", false' "$T/sites/other.com/public_html/wp-config.php"
 run auto-updates status all > "$T/fleet"; grep -q 'Core .*MAJOR' "$T/fleet"; grep -q 'Core .*DISABLED' "$T/fleet"
 
 # One unreadable site must not hide the readable site's status. The command
@@ -111,5 +124,6 @@ rm -f "$T/sites/other.com/public_html/.status-fail-plugin"
 # Standalone mutation/status commands remain; Fast/Full use the unified policy dashboard.
 grep -q 'wp-settings' "$REPO/suites/fast.sh"; grep -q 'wp-settings' "$REPO/suites/full.sh"
 ! grep -q 'wp-auto-updates' "$REPO/suites/fast.sh"; ! grep -q 'wp-auto-updates' "$REPO/suites/full.sh"
+find "$T/state/config-transactions" -name wp-config.php | grep -q .
 find "$T/state/quarantine" -type f | grep -q .
-printf 'WordPress automatic-update policy: idempotent mixed-state changes, partial status, targeting and backups PASS\n'
+printf 'WordPress automatic-update policy: idempotent mixed-state changes, partial status, targeting and transactional core backups PASS\n'

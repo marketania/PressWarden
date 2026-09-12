@@ -12,7 +12,7 @@
 
 **Fleet-scale WordPress security auditing from the shell.**
 
-![Version](https://img.shields.io/badge/version-1.1.17-2ea44f)
+![Version](https://img.shields.io/badge/version-1.1.18-2ea44f)
 ![Bash](https://img.shields.io/badge/bash-4%2B-4EAA25?logo=gnubash&logoColor=white)
 ![WordPress](https://img.shields.io/badge/WordPress-security-21759B?logo=wordpress&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Linux-FCC624?logo=linux&logoColor=black)
@@ -171,7 +171,7 @@ Supported settings can be changed with the same website-name or `all` targeting,
 ./presswarden wp-settings set editor disabled all
 ```
 
-Core/plugin/theme automatic-update controls remain under `auto-updates`. See [WordPress policy details](docs/WP-SETTINGS.md).
+Core/plugin/theme automatic-update controls remain under `auto-updates`. `lock`/`unlock`, supported `wp-settings set` operations, and core auto-update policy now share a verified staged-copy transaction layer: PressWarden backs up the exact config, mutates and verifies a private copy with WP-CLI, revalidates the live source, then atomically publishes only verified bytes. See [WordPress policy details](docs/WP-SETTINGS.md) and [transaction safety](docs/CONFIG-TRANSACTIONS.md).
 
 ## Recheck one area
 

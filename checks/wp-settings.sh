@@ -88,32 +88,8 @@ _policy_status() {
   finish
 }
 
-_cfg_backup() {
-  local site="$1" label="$2" root="$3" dest="$root/$label/wp-config.php"
-  [ -f "$site/wp-config.php" ] || return 1
-  mkdir -p "$(dirname "$dest")" 2>/dev/null || return 1
-  cp -p -- "$site/wp-config.php" "$dest" 2>/dev/null || return 1
-  chmod 600 "$dest" 2>/dev/null || true
-  printf '%s' "$dest"
-}
-
-_cfg_get_json() {
-  local site="$1" key="$2"
-  wp config get "$key" --type=constant --format=json --path="$site" --no-color 2>/dev/null
-}
-
-_cfg_set_bool() {
-  local site="$1" key="$2" value="$3"
-  wp config set "$key" "$value" --raw --type=constant --path="$site" --no-color >/dev/null 2>&1
-}
-
-_cfg_set_string() {
-  local site="$1" key="$2" value="$3"
-  wp config set "$key" "$value" --type=constant --path="$site" --no-color >/dev/null 2>&1
-}
-
 _policy_set() {
-  local key raw string expected human site label backup root got failed=0 blocker=''
+  local key raw string expected human site label failed=0 blocker='' kind txvalue
   [ "${PRESSWARDEN_POLICY_APPLY:-0}" = 1 ] || { printf 'Refusing wp-settings mutation without the PressWarden CLI confirmation path.\n' >&2; return 2; }
   case "$SETTING:$VALUE" in
     editor:enabled) key=DISALLOW_FILE_EDIT; raw=false; expected=false; human='Dashboard editor ENABLED' ;;
@@ -134,24 +110,20 @@ _policy_set() {
     *) printf 'Unsupported wp-settings value.\n' >&2; return 2 ;;
   esac
   require_wp; discover_sites
-  root="$QUARANTINE/wp-settings-$(date -u +%Y%m%dT%H%M%SZ)-$$-$RANDOM"
-  mkdir -p "$root" 2>/dev/null || return 2; chmod 700 "$root" 2>/dev/null || true
   for site in "${WP_SITES[@]}"; do
     label=$(site_label_from_root "$site")
-    backup=$(_cfg_backup "$site" "$label" "$root") || { printf '✖ %s: wp-config.php backup failed; unchanged\n' "$label"; failed=1; continue; }
-    if [ -n "${raw:-}" ]; then
-      _cfg_set_bool "$site" "$key" "$raw" || { cp -p -- "$backup" "$site/wp-config.php" 2>/dev/null || true; printf '✖ %s: setting failed; backup restored\n' "$label"; failed=1; continue; }
-    else
-      _cfg_set_string "$site" "$key" "$string" || { cp -p -- "$backup" "$site/wp-config.php" 2>/dev/null || true; printf '✖ %s: setting failed; backup restored\n' "$label"; failed=1; continue; }
-    fi
-    got=$(_cfg_get_json "$site" "$key" || true)
-    if [ "$got" != "$expected" ]; then
-      cp -p -- "$backup" "$site/wp-config.php" 2>/dev/null || true
-      printf '✖ %s: verification failed; backup restored\n' "$label"; failed=1; continue
+    if [ -n "${raw:-}" ]; then kind=bool; txvalue="$raw"; else kind=string; txvalue="$string"; fi
+    if ! pw_config_transaction_set "$site" "$label" "$key" "$kind" "$txvalue"; then
+      printf '✖ %s: wp-config.php transaction failed; verified backup retained when one was created\n' "$label"
+      failed=1; continue
     fi
     blocker=''
     if [ "$SETTING" = editor ] && wp config is-true DISALLOW_FILE_MODS --type=constant --path="$site" --no-color >/dev/null 2>&1; then blocker='; effective editor remains disabled while file modifications are locked'; fi
-    printf '✓ %s: %s%s\n' "$label" "$human" "$blocker"
+    if [ "$PW_CONFIG_TX_RESULT" = NOOP ]; then
+      printf '✓ %s: %s (already configured)%s\n' "$label" "$human" "$blocker"
+    else
+      printf '✓ %s: %s%s\n' "$label" "$human" "$blocker"
+    fi
   done
   [ "$SETTING:$VALUE" != cron:disabled ] || printf 'ℹ WP-Cron is disabled. Confirm an external/server cron invokes wp-cron.php on the intended schedule.\n'
   [ "$SETTING:$VALUE" != alternate-cron:enabled ] || printf 'ℹ Alternate WP-Cron is a compatibility workaround, not a general hardening setting.\n'
