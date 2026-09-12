@@ -14,4 +14,6 @@ _PRESSWARDEN_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$_PRESSWARDEN_LIB_DIR/remediation.sh"
 # shellcheck source=lib/wp.sh
 . "$_PRESSWARDEN_LIB_DIR/wp.sh"
+# shellcheck source=lib/config-transaction.sh
+. "$_PRESSWARDEN_LIB_DIR/config-transaction.sh"
 unset _PRESSWARDEN_LIB_DIR
