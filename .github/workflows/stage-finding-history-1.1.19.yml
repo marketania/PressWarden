@@ -64,6 +64,6 @@ jobs:
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add lib/finding-history.php lib/finding-history.sh lib/_lib.sh lib/_runner.sh lib/remediation.sh presswarden tests/finding-history.sh tests/runtime-reliability.sh docs/FINDING-HISTORY.md .github/workflows/finding-history-quality.yml VERSION CHANGELOG.md README.md
+          git add lib/finding-history.php lib/finding-history.sh lib/_lib.sh lib/_runner.sh lib/remediation.sh presswarden tests/finding-history.sh tests/runtime-reliability.sh docs/FINDING-HISTORY.md VERSION CHANGELOG.md README.md
           git commit -m 'feat: structured finding history with fail-closed resolution'
           git push origin HEAD:feature/finding-history-1.1.19
