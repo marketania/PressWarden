@@ -38,7 +38,7 @@ function pwc_scope_from_tsv($path){
     $root='';$depth='';$sites=[];$ex=[];
     foreach(preg_split('/\n/',$raw) as $line){if($line==='')continue;$p=explode("\t",$line,2);if(count($p)!==2)pwc_fail('malformed scope snapshot');[$k,$v]=$p;$v=pwc_text($v,false,8192);
         if($k==='ROOT'){if($root!=='')pwc_fail('duplicate scope root');$root=$v;}
-        elseif($k==='DEPTH'){if($depth!==''||!preg_match('/^[0-9]{1,3}$/D',$v))pwc_fail('invalid scope depth');$depth=$v;}
+        elseif($k==='DEPTH'){if($depth!==''||!preg_match('/^[0-9]{1,10}$/D',$v)||(int)$v<1||(int)$v>2147483647)pwc_fail('invalid scope depth');$depth=$v;}
         elseif($k==='SITE'){$sites[]=$v;}
         elseif($k==='EXCLUDE'){$ex[]=$v;}
         else pwc_fail('unknown scope record');
@@ -48,7 +48,23 @@ function pwc_scope_from_tsv($path){
     $base=['root'=>$root,'discovery_depth'=>(int)$depth,'scan_roots'=>$sites,'target_exclusions'=>$ex];
     $canon=json_encode($base,JSON_UNESCAPED_SLASHES);if($canon===false)pwc_fail('scope encoding failed');$base['fingerprint']=hash('sha256',$canon);return $base;
 }
-function pwc_scope_read($runDir){$path=$runDir.'/scope.json';if(!file_exists($path)&&!is_link($path))pwc_fail('run predates safe continuation scope metadata; rerun the suite before using continue');$j=pwc_read_json($path);if(($j['format']??null)!==1||($j['tool']??null)!=='PressWarden'||!isset($j['fingerprint'],$j['scan_roots'],$j['root'],$j['discovery_depth'],$j['target_exclusions']))pwc_fail('run predates safe continuation scope metadata; rerun the suite before using continue');return $j;}
+function pwc_scope_read($runDir){
+    $path=$runDir.'/scope.json';
+    if(!file_exists($path)&&!is_link($path))pwc_fail('run predates safe continuation scope metadata; rerun the suite before using continue');
+    $j=pwc_read_json($path);
+    if(($j['format']??null)!==1||($j['tool']??null)!=='PressWarden'||!isset($j['fingerprint'],$j['scan_roots'],$j['root'],$j['discovery_depth'],$j['target_exclusions']))pwc_fail('run predates safe continuation scope metadata; rerun the suite before using continue');
+    $root=pwc_text($j['root'],false,8192); $depth=$j['discovery_depth'];
+    if(!is_int($depth)||$depth<1||$depth>2147483647||!is_array($j['scan_roots'])||!is_array($j['target_exclusions']))pwc_fail('invalid stored continuation scope');
+    if(count($j['scan_roots'])<1||count($j['scan_roots'])>PWC_MAX_SITES||count($j['target_exclusions'])>PWC_MAX_SITES)pwc_fail('invalid stored continuation scope');
+    $sites=[]; foreach($j['scan_roots'] as $v)$sites[]=pwc_text($v,false,8192);
+    $ex=[]; foreach($j['target_exclusions'] as $v)$ex[]=pwc_text($v,false,8192);
+    $sites=array_values(array_unique($sites)); $ex=array_values(array_unique($ex)); sort($sites,SORT_STRING); sort($ex,SORT_STRING);
+    if(count($sites)!==count($j['scan_roots'])||count($ex)!==count($j['target_exclusions']))pwc_fail('duplicate stored continuation scope');
+    $base=['root'=>$root,'discovery_depth'=>$depth,'scan_roots'=>$sites,'target_exclusions'=>$ex];
+    $canon=json_encode($base,JSON_UNESCAPED_SLASHES); if($canon===false)pwc_fail('scope encoding failed');
+    $fingerprint=pwc_text($j['fingerprint'],false,64); if(!preg_match('/^[a-f0-9]{64}$/D',$fingerprint)||!hash_equals(hash('sha256',$canon),$fingerprint))pwc_fail('continuation scope fingerprint mismatch');
+    $base['fingerprint']=$fingerprint; return $base;
+}
 function pwc_resolve_run($runs,$id){
     $runs=pwc_plain_dir($runs);if($id===''||$id==='latest'){$latest=$runs.'/latest';pwc_regular($latest,4096);$id=trim((string)@file_get_contents($latest,false,null,0,4097));}
     $id=pwc_id($id);$dir=pwc_plain_dir($runs.'/'.$id);$state=pwc_read_json($dir.'/state.json');if(($state['tool']??null)!=='PressWarden')pwc_fail('invalid PressWarden run state');return [$id,$dir,$state,pwc_scope_read($dir)];

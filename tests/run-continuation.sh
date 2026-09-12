@@ -30,6 +30,21 @@ grep -q $'^START\ttwo$' "$TMP/verify"
 grep -q $'^CARRY\t1$' "$TMP/verify"
 grep -q $'^one\t2\tfindings\t4$' "$CARRY"
 
+# Stored scope is internally authenticated against its own canonical fields so
+# accidental corruption cannot silently redirect a continuation.
+cp "$RUNS/$ID/scope.json" "$TMP/scope-good.json"
+php -r '$p=$argv[1]; $j=json_decode(file_get_contents($p),true); $j["root"].="/corrupt"; file_put_contents($p,json_encode($j,JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES)."\n");' "$RUNS/$ID/scope.json"
+set +e; php "$CONT" plan "$RUNS" "$ID" 1.1.17 > "$TMP/corrupt.out" 2>&1; rc=$?; set -e
+[ "$rc" -eq 2 ]; grep -q 'scope fingerprint mismatch' "$TMP/corrupt.out"
+cp "$TMP/scope-good.json" "$RUNS/$ID/scope.json"; chmod 600 "$RUNS/$ID/scope.json"
+
+# Scope recording follows the same invalid/zero discovery-depth fallback used by discovery.
+DEPTH_OUT="$TMP/depth.tsv"
+PW_DEPTH_REPO="$REPO" PW_DEPTH_ROOT="$TMP/root" PW_DEPTH_OUT="$DEPTH_OUT" bash -c 'ROOT="$PW_DEPTH_ROOT"; PRESSWARDEN_DISCOVERY_DEPTH=bogus; SCAN_ROOTS=("$ROOT/site-a"); _PW_TARGET_EXCLUSIONS=""; . "$PW_DEPTH_REPO/lib/run-continuation.sh"; _pw_continue_scope_file "$PW_DEPTH_OUT"'
+grep -q $'^DEPTH\t8$' "$DEPTH_OUT"
+PW_DEPTH_REPO="$REPO" PW_DEPTH_ROOT="$TMP/root" PW_DEPTH_OUT="$DEPTH_OUT" bash -c 'ROOT="$PW_DEPTH_ROOT"; PRESSWARDEN_DISCOVERY_DEPTH=0; SCAN_ROOTS=("$ROOT/site-a"); _PW_TARGET_EXCLUSIONS=""; . "$PW_DEPTH_REPO/lib/run-continuation.sh"; _pw_continue_scope_file "$PW_DEPTH_OUT"'
+grep -q $'^DEPTH\t8$' "$DEPTH_OUT"
+
 # Scope/version/check-plan changes must refuse continuation rather than mixing audits.
 printf 'ROOT\t%s\nDEPTH\t8\nSITE\t%s\n' "$TMP/root" "$TMP/root/site-a/changed" > "$TMP/scope-bad.tsv"
 for mode in scope version plan; do

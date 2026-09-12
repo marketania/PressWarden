@@ -5,6 +5,8 @@ PW_CONTINUE_START=''
 
 _pw_continue_scope_file() {
   local out="$1" p depth="${PRESSWARDEN_DISCOVERY_DEPTH:-8}"
+  case "$depth" in ''|*[!0-9]*) depth=8 ;; esac
+  [ "$depth" -ge 1 ] 2>/dev/null || depth=8
   : > "$out" || return 2
   case "$ROOT" in *[[:cntrl:]]*) return 2 ;; esac
   printf 'ROOT\t%s\nDEPTH\t%s\n' "$ROOT" "$depth" >> "$out" || return 2
