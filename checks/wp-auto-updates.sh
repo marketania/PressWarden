@@ -142,31 +142,28 @@ _status() {
   finish
 }
 
-_backup_config() {
-  local site="$1" label="$2" root="$3" dest
-  dest="$root/$label/wp-config.php"
-  mkdir -p "$(dirname "$dest")" 2>/dev/null || return 1
-  cp -p "$site/wp-config.php" "$dest" 2>/dev/null || return 1
-  chmod 600 "$dest" 2>/dev/null || true
-  printf '%s' "$dest"
-}
-
 _set_core() {
-  local site label backup_root backup desired now block rc fail=0
+  local site label desired kind txvalue block fail=0
   require_wp; discover_sites
-  backup_root="$QUARANTINE/auto-updates-core-$(date -u +%Y%m%dT%H%M%SZ)-$$-$RANDOM"; mkdir -p "$backup_root" || return 2; chmod 700 "$backup_root" 2>/dev/null || true
   for site in "${WP_SITES[@]}"; do
-    label=$(site_label_from_root "$site"); backup=$(_backup_config "$site" "$label" "$backup_root") || { printf '✖ %s: could not back up wp-config.php\n' "$label"; fail=1; continue; }
+    label=$(site_label_from_root "$site")
     case "$VALUE" in
-      minor) _wpcmd "$site" config set WP_AUTO_UPDATE_CORE minor --type=constant >/dev/null 2>&1; rc=$?; desired=MINOR ;;
-      major) _wpcmd "$site" config set WP_AUTO_UPDATE_CORE true --raw --type=constant >/dev/null 2>&1; rc=$?; desired=MAJOR ;;
-      disabled) _wpcmd "$site" config set WP_AUTO_UPDATE_CORE false --raw --type=constant >/dev/null 2>&1; rc=$?; desired=DISABLED ;;
+      minor) kind=string; txvalue=minor; desired=MINOR ;;
+      major) kind=bool; txvalue=true; desired=MAJOR ;;
+      disabled) kind=bool; txvalue=false; desired=DISABLED ;;
     esac
-    if [ "${rc:-2}" -ne 0 ]; then cp -p "$backup" "$site/wp-config.php" 2>/dev/null || true; printf '✖ %s: core policy update failed; wp-config.php restored\n' "$label"; fail=1; continue; fi
-    now=$(_core_policy "$site" 2>/dev/null || true)
-    if [ "$now" != "$desired" ]; then cp -p "$backup" "$site/wp-config.php" 2>/dev/null || true; printf '✖ %s: verification failed; wp-config.php restored\n' "$label"; fail=1; continue; fi
+    if ! pw_config_transaction_set "$site" "$label" WP_AUTO_UPDATE_CORE "$kind" "$txvalue"; then
+      printf '✖ %s: core policy wp-config.php transaction failed; verified backup retained when one was created\n' "$label"
+      fail=1; continue
+    fi
     block=$(_blocker "$site")
-    printf '✓ %s: core auto-updates %s' "$label" "$desired"; [ -z "$block" ] || printf ' (configured, but blocked by %s)' "$block"; printf '\n'
+    if [ "$PW_CONFIG_TX_RESULT" = NOOP ]; then
+      printf '✓ %s: core auto-updates already %s' "$label" "$desired"
+    else
+      printf '✓ %s: core auto-updates %s' "$label" "$desired"
+    fi
+    [ -z "$block" ] || printf ' (configured, but blocked by %s)' "$block"
+    printf '\n'
   done
   [ "$fail" -eq 0 ] || return 2
 }
