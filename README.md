@@ -12,7 +12,7 @@
 
 **Fleet-scale WordPress security auditing from the shell.**
 
-![Version](https://img.shields.io/badge/version-1.1.18-2ea44f)
+![Version](https://img.shields.io/badge/version-1.1.19-2ea44f)
 ![Bash](https://img.shields.io/badge/bash-4%2B-4EAA25?logo=gnubash&logoColor=white)
 ![WordPress](https://img.shields.io/badge/WordPress-security-21759B?logo=wordpress&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Linux-FCC624?logo=linux&logoColor=black)
@@ -63,6 +63,7 @@ PressWarden focuses on **high-signal findings**. A PHP function such as `base64_
 - 🧭 **WordPress policy dashboard** with one-site detail and fleet baseline differences
 - 📊 **Human-readable and JSON reports**
 - 🧾 **Persistent suite run state** so interrupted SSH scans are not mistaken for completed audits
+- 🧭 **Structured finding history** with NEW, RECURRING, CHANGED, RESOLVED, and fail-closed NOT RECHECKED states
 
 ---
 
@@ -117,6 +118,7 @@ That is the recommended starting point for most users.
 | `./presswarden wp-settings example.com` | WordPress policy, updates, cron, recovery, environment, debug, and config posture |
 | `./presswarden last-run` | See whether the latest suite completed, was incomplete, or was interrupted and where it stopped |
 | `./presswarden continue` | Safely continue an interrupted/failed suite from its first unfinished check after scope/version verification |
+| `./presswarden history` | Compare the latest finalized suite findings with the previous trustworthy same-scope history snapshot |
 
 For routine use, start with:
 
@@ -197,6 +199,17 @@ Suite runs now maintain a small private atomic state record while they execute. 
 ```
 
 A catchable interruption retains partial validated reports but never becomes a completed audit. `SIGKILL` cannot be trapped; when process liveness is available, `run-status` identifies a stale `RUNNING` record as an interrupted/abandoned run rather than inventing completion. Safe continuation is available with `./presswarden continue [RUN_ID]`. It carries only a completed prefix from the same PressWarden version and exact rediscovered scope, reruns the interrupted check from the beginning, and starts a new linked audit summary. Runs created before 1.1.17 do not contain the required scope snapshot. Automatic database maintenance is never replayed if it was the interrupted check. See [safe continuation](docs/CONTINUATION.md) and [suite run-state details](docs/RUN-STATE.md).
+
+## Finding history
+
+Finalized suite runs now correlate structured security findings with the previous trustworthy same-suite/same-scope snapshot:
+
+```bash
+./presswarden history
+./presswarden history RUN_ID
+```
+
+History labels observations as **NEW**, **RECURRING**, **CHANGED**, **RESOLVED**, or **NOT RECHECKED**. These describe PressWarden observations, not compromise or remediation timestamps. A missing prior finding becomes RESOLVED only after complete discovery, internally complete history capture, a successful recheck of its owning check, non-overlapping runs, and a comparable scanner version. Otherwise it remains NOT RECHECKED. Interrupted runs never publish resolution history; continuation carries already-completed observation records into the new linked run. See [finding-history semantics](docs/FINDING-HISTORY.md).
 
 ---
 

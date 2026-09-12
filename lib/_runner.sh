@@ -75,6 +75,7 @@ _run_checks() {
       IFS=$'\t' read -r carry_check carry_n carry_st carry_tm <<< "$carried"
       printf '\n%s%s▶ CARRY%s %s[%s/%s]%s  %s%s%s  %s(completed in parent run • suite %s%% complete)%s\n' "$B" "$C" "$X" "$B" "$current_check" "$total_checks" "$X" "$B" "$c" "$X" "$D" "$suite_percent" "$X"
       printf '%s|%s|%s|%s\n' "$c" "$carry_n" "$carry_st" "$carry_tm" >> "$RES" || return 2
+      pw_history_carry_check "${PRESSWARDEN_CONTINUE_FROM:-}" "$c" || true
       pw_run_state_result "$c" "$carry_st" "$carry_n" "$carry_tm" || true
       continue
     fi
@@ -166,6 +167,7 @@ run_all() {
   : > "$PW_RUN_STATE_ERROR_FILE" || { rm -f "$PW_RUN_STATE_ERROR_FILE"; pw_report_remove_empty; return 2; }
   pw_run_state_init "$NAME" "$total_checks" "$CHECKS" || true
   if ! pw_continue_capture_scope; then _pw_run_state_warn; fi
+  pw_history_init || true
   RES=$(tmpf) || { rm -f "$PW_RUN_STATE_ERROR_FILE"; pw_continue_cleanup; pw_report_remove_empty; return 2; }
   _run_checks 2>&1 | tee "$LOG"; pipeline_status=("${PIPESTATUS[@]}"); rc=${pipeline_status[0]}
   if [ "${pipeline_status[1]:-0}" -ne 0 ]; then
@@ -187,6 +189,7 @@ run_all() {
   [ "$rc" -eq 2 ] && state_status=INCOMPLETE
   [ "$rc" -le 2 ] || state_status=FAILED
   if ! pw_run_state_finish "$state_status" "$rc"; then rc=2; fi
+  pw_history_finalize || true
   printf '%ssummary log:%s %s\n' "$D" "$X" "$LOG"
   [ "$json_written" -eq 1 ] && printf '%sJSON summary:%s %s\n' "$D" "$X" "$json"
   [ "${PW_RUN_STATE_ACTIVE:-0}" -eq 1 ] && printf '%srun state:%s %s\n' "$D" "$X" "$PW_RUN_STATE_FILE"

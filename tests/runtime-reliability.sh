@@ -22,6 +22,9 @@ human_time() { printf '%ss' "$1"; }
 tmpf() { mktemp; }
 die() { echo "$1" >&2; exit 2; }
 . "$PW_TEST_REPO/lib/reports.sh"
+pw_history_init() { :; }
+pw_history_carry_check() { :; }
+pw_history_finalize() { :; }
 EOF
 printf 'echo "findings: 0"; exit 0\n' > "$TMP/repo/checks/good.sh"
 printf 'echo "findings: 3"; exit 1\n' > "$TMP/repo/checks/finding.sh"
