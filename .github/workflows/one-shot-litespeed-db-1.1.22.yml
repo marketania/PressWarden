@@ -27,6 +27,23 @@ jobs:
           set -euo pipefail
           gzip -dc tools/apply-litespeed-db-1.1.22.py.gz > tools/apply-litespeed-db-1.1.22.py
           printf '%s  %s\n' '192db7a45595a875833efeabf54389721fb3468e6be3feda0709f7c464f3d04b' 'tools/apply-litespeed-db-1.1.22.py' | sha256sum -c -
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('tools/apply-litespeed-db-1.1.22.py')
+          source = path.read_text(encoding='utf-8')
+          needle = 'from textwrap import dedent\n'
+          replacement = r'''from textwrap import dedent as _dedent
+
+          def dedent(value):
+              if value.startswith(chr(92) + "\n"):
+                  value = value[2:]
+              return _dedent(value)
+          '''
+          if source.count(needle) != 1:
+              raise SystemExit('unexpected dedent import count')
+          path.write_text(source.replace(needle, replacement, 1), encoding='utf-8')
+          PY
           python3 tools/apply-litespeed-db-1.1.22.py
           rm -f tools/apply-litespeed-db-1.1.22.py
 
