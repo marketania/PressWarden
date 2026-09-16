@@ -16,7 +16,7 @@ Run LiteSpeed Cache's full database cleanup/optimization:
 presswarden litespeed-db optimize [target]
 ```
 
-`target` follows the normal PressWarden targeting rules: a website name, nested website name, directory, `all`, or omit the target for the configured fleet.
+`target` follows the normal PressWarden targeting rules: a website name, nested website name, directory, `all`, or omit the target for the configured fleet. Use a website name when you want to validate or optimize only that site before enabling fleet-wide maintenance.
 
 ## What PressWarden runs
 
