@@ -72,6 +72,8 @@ Usage:
   ./presswarden full [target]          Comprehensive audit + deep integrity/DB maintenance
   ./presswarden incident [target]      Evidence-first compromise / reinfection investigation
   ./presswarden db [target]            Database security/malware audit + maintenance
+  ./presswarden litespeed-db status [target]    Show LiteSpeed database cleanup availability
+  ./presswarden litespeed-db optimize [target]  Run LiteSpeed Cache optimize_all cleanup
   ./presswarden scan [target]          Alias for fast
   ./presswarden inspect KIND [target]  Focused read-only PHP/JS/DB recheck (php|js|db|runtime)
   ./presswarden update               Update PressWarden code + threat intelligence
@@ -357,6 +359,16 @@ case "$cmd" in
     select_target "$@" || exit 2
     suite="$cmd"; [ "$suite" = scan ] && suite=fast
     exec bash "$PRESSWARDEN_DIR/suites/$suite.sh"
+    ;;
+  litespeed-db)
+    action="${1:-status}"; [ "$#" -gt 0 ] && shift || true
+    case "$action" in
+      status|optimize) : ;;
+      *) printf 'Use litespeed-db status or litespeed-db optimize.\n' >&2; exit 2 ;;
+    esac
+    [ "$#" -le 1 ] || { printf 'Usage: ./presswarden litespeed-db status|optimize [website|directory|all]\n' >&2; exit 2; }
+    select_target "$@" || exit 2
+    exec bash "$PRESSWARDEN_DIR/checks/litespeed-db.sh" "$action"
     ;;
   intel)
     action="${1:-status}"; [ "$#" -gt 0 ] && shift || true
