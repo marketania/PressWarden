@@ -1,23 +1,38 @@
 #!/usr/bin/env bash
-# litespeed-db — explicit LiteSpeed Cache database cleanup/optimization action.
-# LiteSpeed's litespeed-database command does not accept WP-CLI global parameters,
-# so the actual optimize command is intentionally run from each site's cwd.
+# litespeed-db — LiteSpeed Cache database cleanup/optimization.
+#
+# LiteSpeed's litespeed-database command family does not accept normal
+# WP-CLI global parameters. Every real cleanup invocation therefore runs
+# from the WordPress directory with no --path/--skip-*/--no-color flags.
 set -uo pipefail
 NAME=litespeed-db
 DESC="LiteSpeed Cache database cleanup and optimization"
-SCAN_DOES="Checks whether LiteSpeed Cache database optimization is available and, when explicitly requested, runs LiteSpeed Cache's optimize_all cleanup for eligible WordPress sites."
-SCAN_WHY="LiteSpeed Cache can remove revisions, drafts, trash, transients and other database clutter beyond PressWarden's native SQL table optimization. Keeping this as an explicit maintenance action avoids surprising cleanup during security scans."
+SCAN_DOES="Checks LiteSpeed Cache database-command availability and runs optimize_all for eligible WordPress installations."
+SCAN_WHY="LiteSpeed can remove revisions, drafts, trash, comments, trackbacks, transients and other database clutter before PressWarden performs native SQL table maintenance."
 . "$(cd "$(dirname "$0")/.." && pwd)/lib/_lib.sh"
 
+SUITE_MODE="${PW_LITESPEED_DB_SUITE:-0}"
 ACTION="${1:-status}"
+if [ "$#" -eq 0 ] && [ "$SUITE_MODE" = 1 ]; then ACTION=optimize; fi
 case "$ACTION" in
   status|optimize) : ;;
   *) printf 'Use litespeed-db status or litespeed-db optimize.\n' >&2; exit 2 ;;
 esac
 
-# Built-in WP-CLI commands may safely use normal global parameters because they
-# do not require LiteSpeed to load. The LiteSpeed command itself must not use
-# this helper.
+_suite_cleanup_enabled() {
+  case "${PRESSWARDEN_LITESPEED_DB_MAINTENANCE:-1}" in
+    0|false|FALSE|no|NO|off|OFF) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+if [ "$SUITE_MODE" = 1 ] && ! _suite_cleanup_enabled; then
+  printf 'LiteSpeed database cleanup — SKIP (PRESSWARDEN_LITESPEED_DB_MAINTENANCE=0)\n'
+  exit 0
+fi
+
+# Built-in WP-CLI commands may use normal global parameters because they do
+# not invoke the exceptional LiteSpeed database command family.
 _wp_builtin() {
   local site="$1"; shift
   wp "$@" --path="$site" --skip-plugins --skip-themes --skip-packages --no-color
@@ -31,9 +46,29 @@ _lscwp_command_available() {
 }
 _is_multisite() { _wp_builtin "$1" core is-installed --network >/dev/null 2>&1; }
 
-# `wp db size --size_format=b` returns a bare byte count. It is intentionally
-# separate from the LiteSpeed command because LiteSpeed's database CLI rejects
-# normal WP-CLI global parameters. Failure to measure size never blocks cleanup.
+# Print one validated positive blog ID per line. The full list is validated
+# before any multisite cleanup begins, so malformed/partial inventory cannot
+# lead to a false network-wide success claim.
+_multisite_blog_ids() {
+  local site="$1" raw id clean seen='' count=0
+  raw=$(_wp_builtin "$site" site list --field=blog_id 2>/dev/null) || return 1
+  while IFS= read -r id; do
+    clean="$id"
+    clean="${clean#"${clean%%[![:space:]]*}"}"
+    clean="${clean%"${clean##*[![:space:]]}"}"
+    [ -n "$clean" ] || continue
+    case "$clean" in *[!0-9]*) return 1 ;; esac
+    [ "$clean" -gt 0 ] 2>/dev/null || return 1
+    case " $seen " in *" $clean "*) continue ;; esac
+    printf '%s\n' "$clean"
+    seen="$seen $clean"
+    count=$((count+1))
+  done <<< "$raw"
+  [ "$count" -gt 0 ]
+}
+
+# `wp db size --size_format=b` is best-effort telemetry. Failure to measure
+# allocation never blocks cleanup or changes the maintenance verdict.
 _db_size_bytes() {
   local site="$1" n
   n=$(_wp_builtin "$site" db size --size_format=b 2>/dev/null | tr -d '[:space:]') || return 1
@@ -53,8 +88,8 @@ _format_bytes() {
 }
 
 _preflight_site() {
-  # Prints: STATE<TAB>DETAIL where STATE is READY, SKIP, or ERROR.
-  local site="$1"
+  # Prints STATE<TAB>DETAIL where STATE is READY, SKIP, or ERROR.
+  local site="$1" ids count
   if ! _wp_bootstrap_ok "$site"; then
     printf 'ERROR\tWordPress/WP-CLI bootstrap failed\n'
     return 0
@@ -72,7 +107,12 @@ _preflight_site() {
     return 0
   fi
   if _is_multisite "$site"; then
-    printf 'READY\tmultisite detected; LiteSpeed optimize_all without blog <id> targets its default blog\n'
+    ids=$(_multisite_blog_ids "$site") || {
+      printf 'ERROR\tmultisite blog-ID inventory failed; no cleanup will be attempted\n'
+      return 0
+    }
+    count=$(printf '%s\n' "$ids" | awk 'NF { n++ } END { print n+0 }')
+    printf 'READY\tmultisite detected; %s validated blog(s) will be cleaned\n' "$count"
   else
     printf 'READY\tLiteSpeed optimize_all available\n'
   fi
@@ -81,13 +121,12 @@ _preflight_site() {
 _show_command_output() {
   local file="$1"
   [ -s "$file" ] || return 0
-  # Keep terminal output bounded. The full command output is intentionally not
-  # treated as a security finding or persisted as scan evidence.
-  tr -d '\r' < "$file" | head -8 | sed 's/^/        /'
+  tr -d '\r' < "$file" | head -12 | sed 's/^/        /'
 }
 
 _confirm_optimize() {
   local count="$1" ans=''
+  [ "$SUITE_MODE" = 1 ] && return 0
   [ "${PRESSWARDEN_INTERACTIVE:-1}" = 0 ] && return 0
   if [ -r /dev/tty ] && [ -w /dev/tty ]; then
     printf '\n  Run LiteSpeed optimize_all for %s eligible WordPress installation(s) under %s? [y/N]: ' "$count" "$ROOT" > /dev/tty
@@ -98,13 +137,62 @@ _confirm_optimize() {
   return 1
 }
 
+# Result globals for one installation.
+LSDB_RUN_BLOG_TOTAL=1
+LSDB_RUN_BLOG_DONE=0
+LSDB_RUN_FAILED_BLOG=''
+LSDB_RUN_ENUM_FAILED=0
+
+_run_site_optimization() {
+  local site="$1" multisite="$2" out="$3" ids blog rc
+  local -a blogs=()
+  LSDB_RUN_BLOG_TOTAL=1
+  LSDB_RUN_BLOG_DONE=0
+  LSDB_RUN_FAILED_BLOG=''
+  LSDB_RUN_ENUM_FAILED=0
+
+  if [ "$multisite" = 1 ]; then
+    ids=$(_multisite_blog_ids "$site") || {
+      printf 'Multisite blog-ID inventory failed before cleanup; no blog was changed.\n' > "$out"
+      LSDB_RUN_ENUM_FAILED=1
+      return 96
+    }
+    while IFS= read -r blog; do [ -n "$blog" ] && blogs+=("$blog"); done <<< "$ids"
+    [ "${#blogs[@]}" -gt 0 ] || {
+      printf 'Multisite blog-ID inventory was empty; no blog was changed.\n' > "$out"
+      LSDB_RUN_ENUM_FAILED=1
+      return 96
+    }
+    LSDB_RUN_BLOG_TOTAL=${#blogs[@]}
+    : > "$out" || return 97
+    for blog in "${blogs[@]}"; do
+      printf 'Blog %s:\n' "$blog" >> "$out"
+      # Do not add WP-CLI global parameters here.
+      (cd "$site" && wp litespeed-database optimize_all blog "$blog") >> "$out" 2>&1
+      rc=$?
+      if [ "$rc" -ne 0 ]; then
+        LSDB_RUN_FAILED_BLOG="$blog"
+        return "$rc"
+      fi
+      LSDB_RUN_BLOG_DONE=$((LSDB_RUN_BLOG_DONE+1))
+    done
+    return 0
+  fi
+
+  # Do not add WP-CLI global parameters here.
+  (cd "$site" && wp litespeed-database optimize_all) > "$out" 2>&1
+  rc=$?
+  [ "$rc" -ne 0 ] || LSDB_RUN_BLOG_DONE=1
+  return "$rc"
+}
+
 LSDB_PHASE=''
 _lsdb_interrupt() {
   trap - INT TERM
   if [ "$LSDB_PHASE" = preflight ]; then
     printf '\nInterrupted during LiteSpeed database preflight; no databases were changed.\n' >&2
   elif [ "$LSDB_PHASE" = optimize ]; then
-    printf '\nInterrupted during LiteSpeed database optimization; sites already completed remain optimized.\n' >&2
+    printf '\nInterrupted during LiteSpeed database optimization; installations and multisite blogs already completed remain optimized.\n' >&2
   else
     printf '\nLiteSpeed database operation interrupted.\n' >&2
   fi
@@ -138,17 +226,16 @@ _status() {
     esac
   done
   printf '\nSummary: ready %s • skipped %s • errors %s' "$ready" "$skipped" "$failed"
-  [ "$multisite" -eq 0 ] || printf ' • multisite warnings %s' "$multisite"
+  [ "$multisite" -eq 0 ] || printf ' • multisite installations %s' "$multisite"
   printf '\n'
-  [ "$multisite" -eq 0 ] || printf 'Note: PressWarden does not claim full multisite-network cleanup when LiteSpeed defaults to a single blog.\n'
   [ "$failed" -eq 0 ] || return 2
 }
 
 _optimize() {
-  local site label row state detail out rc before after delta elapsed started ended
+  local site label row state detail out rc before after delta elapsed started ended is_multi scope_desc
   local ready=0 skipped=0 preflight_failed=0 optimized=0 failed=0 multisite=0
   local idx=0 total exec_idx=0 exec_total measured=0 reduced_sites=0 unchanged_sites=0 increased_sites=0
-  local total_before=0 total_after=0 total_delta=0
+  local total_before=0 total_after=0 total_delta=0 completed_blog_scopes=0
   local -a eligible=() eligible_multisite=()
   require_wp; discover_sites
   total=${#WP_SITES[@]}
@@ -156,8 +243,13 @@ _optimize() {
   trap _lsdb_interrupt INT TERM
   LSDB_PHASE=preflight
   printf 'LiteSpeed database optimization preflight — %s discovered WordPress installation(s)\n' "$total"
-  printf 'Action: wp litespeed-database optimize_all\n'
-  printf 'This is LiteSpeed Cache full database cleanup/optimization, not only SQL table optimization.\n\n'
+  printf 'Action: wp litespeed-database optimize_all [blog <id>]\n'
+  if [ "$SUITE_MODE" = 1 ]; then
+    printf 'Mode: DB maintenance suite (runs before native SQL table maintenance).\n'
+  else
+    printf 'This is LiteSpeed Cache full database cleanup/optimization, not only SQL table optimization.\n'
+  fi
+  printf '\n'
 
   for site in "${WP_SITES[@]}"; do
     idx=$((idx+1))
@@ -194,7 +286,6 @@ _optimize() {
     return 0
   fi
 
-  [ "$multisite" -eq 0 ] || printf 'Warning: %s multisite installation(s) use LiteSpeed\x27s default blog when no blog <id> is supplied; PressWarden will not claim network-wide cleanup or database-size savings for them.\n' "$multisite"
   _confirm_optimize "${#eligible[@]}" || { trap - INT TERM; LSDB_PHASE=''; return 1; }
 
   LSDB_PHASE=optimize
@@ -203,44 +294,44 @@ _optimize() {
   for site in "${eligible[@]}"; do
     exec_idx=$((exec_idx+1))
     label=$(site_label_from_root "$site")
-    before=''; after=''
-    if [ "${eligible_multisite[$((exec_idx-1))]}" = 0 ]; then
-      before=$(_db_size_bytes "$site" 2>/dev/null || true)
-    fi
+    is_multi=${eligible_multisite[$((exec_idx-1))]}
+    before=$(_db_size_bytes "$site" 2>/dev/null || true)
     out=$(tmpf)
     started=$(date +%s)
-    # IMPORTANT: do not add --path, --skip-plugins, --skip-themes, --no-color,
-    # or other WP-CLI global parameters to litespeed-database. LiteSpeed's CLI
-    # documents this command family as not accepting default WP-CLI parameters.
-    (cd "$site" && wp litespeed-database optimize_all) > "$out" 2>&1
+    _run_site_optimization "$site" "$is_multi" "$out"
     rc=$?
     ended=$(date +%s); elapsed=$((ended-started))
+    completed_blog_scopes=$((completed_blog_scopes+LSDB_RUN_BLOG_DONE))
+
     if [ "$rc" -eq 0 ]; then
       optimized=$((optimized+1))
-      if [ "${eligible_multisite[$((exec_idx-1))]}" = 0 ]; then
-        after=$(_db_size_bytes "$site" 2>/dev/null || true)
-      fi
+      after=$(_db_size_bytes "$site" 2>/dev/null || true)
+      if [ "$is_multi" = 1 ]; then scope_desc="${LSDB_RUN_BLOG_TOTAL} blogs"; else scope_desc='single site'; fi
       if [ -n "$before" ] && [ -n "$after" ]; then
         measured=$((measured+1)); total_before=$((total_before+before)); total_after=$((total_after+after)); delta=$((before-after))
         if [ "$delta" -gt 0 ]; then
           reduced_sites=$((reduced_sites+1))
-          printf '  [%3d/%3d] ✓ %-34s OPTIMIZED  %s → %s  reported reduction %s  (%ss)\n' "$exec_idx" "$exec_total" "$label" "$(_format_bytes "$before")" "$(_format_bytes "$after")" "$(_format_bytes "$delta")" "$elapsed"
+          printf '  [%3d/%3d] ✓ %-34s OPTIMIZED  %s • %s → %s • reported reduction %s  (%ss)\n' "$exec_idx" "$exec_total" "$label" "$scope_desc" "$(_format_bytes "$before")" "$(_format_bytes "$after")" "$(_format_bytes "$delta")" "$elapsed"
         elif [ "$delta" -eq 0 ]; then
           unchanged_sites=$((unchanged_sites+1))
-          printf '  [%3d/%3d] ✓ %-34s OPTIMIZED  %s → %s  no reported size change  (%ss)\n' "$exec_idx" "$exec_total" "$label" "$(_format_bytes "$before")" "$(_format_bytes "$after")" "$elapsed"
+          printf '  [%3d/%3d] ✓ %-34s OPTIMIZED  %s • %s → %s • no reported size change  (%ss)\n' "$exec_idx" "$exec_total" "$label" "$scope_desc" "$(_format_bytes "$before")" "$(_format_bytes "$after")" "$elapsed"
         else
           increased_sites=$((increased_sites+1)); delta=$((-delta))
-          printf '  [%3d/%3d] ✓ %-34s OPTIMIZED  %s → %s  reported increase %s  (%ss)\n' "$exec_idx" "$exec_total" "$label" "$(_format_bytes "$before")" "$(_format_bytes "$after")" "$(_format_bytes "$delta")" "$elapsed"
+          printf '  [%3d/%3d] ✓ %-34s OPTIMIZED  %s • %s → %s • reported increase %s  (%ss)\n' "$exec_idx" "$exec_total" "$label" "$scope_desc" "$(_format_bytes "$before")" "$(_format_bytes "$after")" "$(_format_bytes "$delta")" "$elapsed"
         fi
-      elif [ "${eligible_multisite[$((exec_idx-1))]}" = 1 ]; then
-        printf '  [%3d/%3d] ✓ %-34s OPTIMIZED  size statistics skipped for multisite  (%ss)\n' "$exec_idx" "$exec_total" "$label" "$elapsed"
       else
-        printf '  [%3d/%3d] ✓ %-34s OPTIMIZED  database size unavailable  (%ss)\n' "$exec_idx" "$exec_total" "$label" "$elapsed"
+        printf '  [%3d/%3d] ✓ %-34s OPTIMIZED  %s • database size unavailable  (%ss)\n' "$exec_idx" "$exec_total" "$label" "$scope_desc" "$elapsed"
       fi
       _show_command_output "$out"
     else
       failed=$((failed+1))
-      printf '  [%3d/%3d] ✖ %-34s FAILED  exit %s  (%ss)\n' "$exec_idx" "$exec_total" "$label" "$rc" "$elapsed"
+      if [ "$is_multi" = 1 ] && [ "$LSDB_RUN_ENUM_FAILED" -eq 1 ]; then
+        printf '  [%3d/%3d] ✖ %-34s FAILED  multisite inventory; no blog changed  (%ss)\n' "$exec_idx" "$exec_total" "$label" "$elapsed"
+      elif [ "$is_multi" = 1 ]; then
+        printf '  [%3d/%3d] ✖ %-34s FAILED  blog %s; %s/%s blog(s) completed • exit %s  (%ss)\n' "$exec_idx" "$exec_total" "$label" "${LSDB_RUN_FAILED_BLOG:-unknown}" "$LSDB_RUN_BLOG_DONE" "$LSDB_RUN_BLOG_TOTAL" "$rc" "$elapsed"
+      else
+        printf '  [%3d/%3d] ✖ %-34s FAILED  exit %s  (%ss)\n' "$exec_idx" "$exec_total" "$label" "$rc" "$elapsed"
+      fi
       _show_command_output "$out"
     fi
     rm -f "$out"
@@ -249,10 +340,10 @@ _optimize() {
   trap - INT TERM
   LSDB_PHASE=''
   printf '\nLiteSpeed database optimization complete.\n'
-  printf 'Summary: optimized %s • skipped %s • preflight errors %s • execution failures %s\n' "$optimized" "$skipped" "$preflight_failed" "$failed"
+  printf 'Summary: optimized installations %s • completed blog scopes %s • skipped %s • preflight errors %s • execution failures %s\n' "$optimized" "$completed_blog_scopes" "$skipped" "$preflight_failed" "$failed"
   if [ "$measured" -gt 0 ]; then
     total_delta=$((total_before-total_after))
-    printf 'Measured database size (%s site(s)): %s → %s' "$measured" "$(_format_bytes "$total_before")" "$(_format_bytes "$total_after")"
+    printf 'Measured database size (%s installation(s)): %s → %s' "$measured" "$(_format_bytes "$total_before")" "$(_format_bytes "$total_after")"
     if [ "$total_delta" -gt 0 ]; then
       printf ' • reported reduction %s' "$(_format_bytes "$total_delta")"
     elif [ "$total_delta" -eq 0 ]; then
@@ -262,7 +353,7 @@ _optimize() {
     fi
     printf '\n'
     printf 'Size results: reduced %s • unchanged %s • increased %s\n' "$reduced_sites" "$unchanged_sites" "$increased_sites"
-    printf 'Note: reported database allocation can stay unchanged or grow even after rows are cleaned; these figures are size measurements, not counts of deleted records.\n'
+    printf 'Note: database allocation can stay unchanged or grow after rows are cleaned; these are size measurements, not deleted-record counts.\n'
   fi
   [ "$preflight_failed" -eq 0 ] && [ "$failed" -eq 0 ] || return 2
 }

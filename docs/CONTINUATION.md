@@ -38,14 +38,14 @@ PressWarden refuses continuation when:
 - a RUNNING parent still appears active;
 - process liveness cannot be proven for a stale RUNNING record;
 - completed results are not a clean contiguous prefix;
-- the interrupted step is `wp-db-maintenance`;
+- the interrupted step is `litespeed-db` or `wp-db-maintenance`;
 - the run predates 1.1.17 and therefore lacks the required scope snapshot.
 
 These refusals prevent two different audits from being silently combined.
 
 ## Why database maintenance is special
 
-`wp-db-maintenance` can automatically repair genuinely unhealthy tables and runs `OPTIMIZE TABLE`. If the shell disappears during that write-capable step, PressWarden cannot prove exactly which database operation completed before interruption. It therefore refuses to replay that step through `continue`.
+`litespeed-db` can delete eligible WordPress database clutter and optimize tables, while `wp-db-maintenance` can repair genuinely unhealthy tables and runs `OPTIMIZE TABLE`. If the shell disappears during either write-capable step, PressWarden cannot prove exactly which blog/table operation completed before interruption. It therefore refuses to replay either step through `continue`.
 
 Run a fresh `db` or `full` suite explicitly after reviewing the database state.
 

@@ -1,6 +1,6 @@
 # Targeted database evidence
 
-PressWarden 1.1.5 inspects candidate `options`, `posts`, and current-blog administrator role metadata through the existing WordPress database handle. SQL issued by this check is SELECT-only: no repair, deletion, normalization or option updates. The broader `db` and `full` suites still contain their separate maintenance checks; this does not change those workflows.
+PressWarden inspects candidate `options`, `posts`, and current-blog administrator role metadata through the existing WordPress database handle. SQL issued by this threat-inspection check is SELECT-only: no repair, deletion, normalization or option updates. The write-capable `db` and `full` suites separately run LiteSpeed Cache cleanup where eligible, followed by native table check/conditional repair/optimization; those maintenance steps do not weaken the read-only guarantees of this inspection layer.
 
 ## How evidence is classified
 

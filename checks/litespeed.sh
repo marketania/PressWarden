@@ -82,12 +82,18 @@ _family_available() {
 }
 
 _preflight() {
-  local site="$1"
+  local site="$1" probe_sub="$LS_SUB"
+  # `database status` is a PressWarden inventory action, not a LiteSpeed
+  # subcommand. Probe a real, representative command so status never calls
+  # the nonexistent `wp help litespeed-database status`.
+  if [ "$LS_FAMILY" = database ] && [ "$probe_sub" = status ]; then
+    probe_sub=optimize_all
+  fi
   if ! _wp_bootstrap_ok "$site"; then printf 'ERROR\tWordPress/WP-CLI bootstrap failed\n'; return; fi
   if ! _lscwp_installed "$site"; then printf 'SKIP\tLiteSpeed Cache is not installed\n'; return; fi
   if ! _lscwp_active "$site"; then printf 'SKIP\tLiteSpeed Cache is installed but inactive\n'; return; fi
-  if [ -n "$LS_FAMILY" ] && ! _family_available "$site" "$LS_FAMILY" "$LS_SUB"; then
-    printf 'ERROR\tLiteSpeed command unavailable: litespeed-%s %s\n' "$LS_FAMILY" "$LS_SUB"; return
+  if [ -n "$LS_FAMILY" ] && ! _family_available "$site" "$LS_FAMILY" "$probe_sub"; then
+    printf 'ERROR\tLiteSpeed command unavailable: litespeed-%s %s\n' "$LS_FAMILY" "$probe_sub"; return
   fi
   printf 'READY\tLiteSpeed Cache %s\n' "$(_lscwp_version "$site" || printf unknown)"
 }
@@ -356,6 +362,7 @@ _status() {
 _database_status() {
   local site label row state detail ready=0 skipped=0 failed=0
   require_wp; discover_sites
+  printf 'LiteSpeed database command status — %s discovered WordPress installation(s)\n\n' "${#WP_SITES[@]}"
   for site in "${WP_SITES[@]}"; do
     label=$(site_label_from_root "$site"); row=$(_preflight "$site"); IFS=$'\t' read -r state detail <<< "$row"
     case "$state" in READY) ready=$((ready+1)); printf '  ✓ %-34s READY  %s' "$label" "$detail"; _is_multisite "$site" && printf ' • multisite'; printf '\n' ;; SKIP) skipped=$((skipped+1)); printf '  - %-34s SKIP   %s\n' "$label" "$detail" ;; *) failed=$((failed+1)); printf '  ✖ %-34s ERROR  %s\n' "$label" "$detail" ;; esac

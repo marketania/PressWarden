@@ -87,6 +87,18 @@ php "$STATE" interrupt "$RUNS/$DBID/state.json" HUP 129 wp-db-maintenance
 set +e; php "$CONT" plan "$RUNS" "$DBID" 1.1.17 > "$TMP/db.out" 2>&1; rc=$?; set -e
 [ "$rc" -eq 2 ]; grep -q 'automatic database writes' "$TMP/db.out"
 
+# LiteSpeed optimize_all is also write-capable and must never be replayed after
+# an interruption at that step.
+LSDBID='db-20260916-120000.LSDB01'
+php "$STATE" init "$RUNS" "$LSDBID" db 1.1.22 "$TMP/root" 1 1 3 complete 12345 'wp-db litespeed-db wp-db-maintenance' "$TMP/lsdb.log" 1789574400
+php "$CONT" capture "$RUNS/$LSDBID" "$SCOPE"
+php "$STATE" step "$RUNS/$LSDBID/state.json" 1 3 wp-db
+php "$STATE" result "$RUNS/$LSDBID/state.json" wp-db clean 0 2
+php "$STATE" step "$RUNS/$LSDBID/state.json" 2 3 litespeed-db
+php "$STATE" interrupt "$RUNS/$LSDBID/state.json" HUP 129 litespeed-db
+set +e; php "$CONT" plan "$RUNS" "$LSDBID" 1.1.22 > "$TMP/lsdb.out" 2>&1; rc=$?; set -e
+[ "$rc" -eq 2 ]; grep -q 'automatic database writes' "$TMP/lsdb.out"
+
 # Scope metadata remains allowlisted/private; unrelated environment secrets are never captured.
 DB_PASSWORD='continue-secret' API_KEY='also-secret' php "$CONT" plan "$RUNS" "$ID" 1.1.17 >/dev/null
 ! grep -R -q 'continue-secret\|also-secret' "$RUNS"
