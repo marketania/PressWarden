@@ -33,12 +33,14 @@ jobs:
           path = Path('tools/apply-litespeed-db-1.1.22.py')
           source = path.read_text(encoding='utf-8')
           needle = 'from textwrap import dedent\n'
-          replacement = r'''from textwrap import dedent as _dedent
-
-          def dedent(value):
+          replacement = r'''def dedent(value):
               if value.startswith(chr(92) + "\n"):
                   value = value[2:]
-              return _dedent(value)
+              # Patch literals are indented four spaces in the generator. Strip
+              # only that source indentation so intentional shell indentation is
+              # preserved for exact-match replacements.
+              lines = value.splitlines(keepends=True)
+              return "".join(line[4:] if line.startswith("    ") else line for line in lines)
           '''
           if source.count(needle) != 1:
               raise SystemExit('unexpected dedent import count')
