@@ -66,6 +66,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # GitHub's automation token cannot update workflow definitions. Keep
+          # the validated workflow edits out of this push; they are applied
+          # separately through the authorized GitHub connection.
+          git restore --source=HEAD -- \
+            .github/workflows/litespeed-db-quality.yml \
+            .github/workflows/litespeed-full-quality.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
