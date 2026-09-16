@@ -6,7 +6,9 @@ PressWarden exposes the complete LiteSpeed Cache for WordPress WP-CLI surface th
 presswarden litespeed <area> <action> [arguments] --target <site|all>
 ```
 
-Omit `--target` to use the configured fleet. Use `--target example.com` for one website.
+Use `presswarden litespeed help` to see the supported areas and actions directly in the terminal.
+
+Omit `--target` to use the configured fleet. Use `--target example.com` for one website. `--site` is accepted as an alias for `--target`.
 
 The existing `presswarden litespeed-db status|optimize [target]` command remains available for compatibility.
 
