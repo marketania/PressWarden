@@ -1,0 +1,54 @@
+name: Apply LiteSpeed DB 1.1.22
+
+on:
+  push:
+    branches:
+      - fix/litespeed-db-maintenance-1.1.22
+    paths:
+      - .github/workflows/one-shot-litespeed-db-1.1.22.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout working branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/litespeed-db-maintenance-1.1.22
+          fetch-depth: 0
+
+      - name: Apply reviewed source changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          gzip -dc tools/apply-litespeed-db-1.1.22.py.gz > /tmp/apply-litespeed-db-1.1.22.py
+          printf '%s  %s\n' '192db7a45595a875833efeabf54389721fb3468e6be3feda0709f7c464f3d04b' '/tmp/apply-litespeed-db-1.1.22.py' | sha256sum -c -
+          python3 /tmp/apply-litespeed-db-1.1.22.py
+
+      - name: Validate focused behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          bash -n presswarden checks/litespeed.sh checks/litespeed-db.sh suites/db.sh suites/full.sh \
+            tests/litespeed-full-cli.sh tests/litespeed-db.sh tests/run-continuation.sh
+          php -l lib/run-continuation.php >/dev/null
+          bash tests/litespeed-full-cli.sh
+          bash tests/litespeed-db.sh
+          bash tests/run-continuation.sh
+          bash tests/smoke.sh
+
+      - name: Commit implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && { echo "No implementation changes were produced." >&2; exit 1; }
+          git commit -m "Fix LiteSpeed DB maintenance integration"
+          git push origin HEAD:fix/litespeed-db-maintenance-1.1.22
