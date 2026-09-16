@@ -2,6 +2,17 @@
 
 All notable changes to PressWarden are documented here.
 
+## 1.1.21 — 2026-09-15
+
+Complete LiteSpeed Cache WP-CLI management.
+
+- Add `litespeed` as a guarded umbrella interface covering every LiteSpeed Cache command family documented by LiteSpeed: options, purge, presets, image optimization, QUIC.cloud online services, debug/support reports, crawler control and database optimization.
+- Preserve normal PressWarden website/fleet targeting through explicit `--target` / `--site`, with sequential per-site execution, active-plugin/bootstrap preflight, missing-command errors and the existing `litespeed-db` compatibility command.
+- Add settings get/all/set/export/import/remote-import/reset with private per-site exports, pre-change backups for configuration mutations and default redaction of secret-like option/output fields.
+- Add all cache purge scopes, preset apply/backup-list/restore, all image optimization actions, QUIC.cloud status/services/nodes/ping/init/link/CDN activation, debug environment-report upload, all crawler actions and all six LiteSpeed database maintenance actions including multisite blog IDs.
+- Keep QUIC.cloud API/Cloudflare tokens out of ordinary shell-history arguments by supporting environment-variable references. Guard irreversible original-image backup removal and non-interactive support-report upload with additional explicit opt-ins.
+- Preserve LiteSpeed's special database CLI rule by invoking `litespeed-database` from the WordPress directory without normal WP-CLI global parameters. Add comprehensive regression coverage and operator documentation.
+
 ## 1.1.20 — 2026-09-15
 
 Explicit LiteSpeed Cache database cleanup maintenance.
