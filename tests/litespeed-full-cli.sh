@@ -45,7 +45,16 @@ case "${1:-}" in
     esac
     ;;
   help)
-    case "${2:-}" in litespeed-option|litespeed-purge|litespeed-presets|litespeed-image|litespeed-online|litespeed-debug|litespeed-crawler|litespeed-database) exit 0 ;; *) exit 93 ;; esac
+    case "${2:-}" in
+      litespeed-database)
+        case "${3:-}" in
+          ''|clear_posts|clear_comments|clear_trackbacks|clear_transients|optimize_tables|optimize_all) exit 0 ;;
+          *) exit 93 ;;
+        esac
+        ;;
+      litespeed-option|litespeed-purge|litespeed-presets|litespeed-image|litespeed-online|litespeed-debug|litespeed-crawler) exit 0 ;;
+      *) exit 93 ;;
+    esac
     ;;
   litespeed-option)
     sub=${2:-}; shift 2 || true
@@ -156,7 +165,9 @@ run_check crawler run > /dev/null
 run_check crawler reset > /dev/null
 
 # Database family: every documented cleanup mode and optional multisite blog ID.
-run_check database status > /dev/null
+run_check database status > "$T/database-status"
+grep -q 'example.com.*READY' "$T/database-status"
+! grep -q 'litespeed-database status' "$T/database-status"
 for action in clear-posts clear-comments clear-trackbacks clear-transients optimize-tables optimize-all; do
   run_check database "$action" --blog=2 > /dev/null
 done

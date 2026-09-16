@@ -71,7 +71,7 @@ Usage:
   ./presswarden fast [target]          High-signal routine audit
   ./presswarden full [target]          Comprehensive audit + deep integrity/DB maintenance
   ./presswarden incident [target]      Evidence-first compromise / reinfection investigation
-  ./presswarden db [target]            Database security/malware audit + maintenance
+  ./presswarden db [target]            Database security/malware audit + LiteSpeed/native maintenance
   ./presswarden litespeed-db status [target]    Show LiteSpeed database cleanup availability
   ./presswarden litespeed-db optimize [target]  Run LiteSpeed Cache optimize_all cleanup
   ./presswarden litespeed AREA ACTION ... --target SITE  Full LiteSpeed Cache CLI management

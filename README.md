@@ -12,7 +12,7 @@
 
 **Fleet-scale WordPress security auditing from the shell.**
 
-![Version](https://img.shields.io/badge/version-1.1.19-2ea44f)
+![Version](https://img.shields.io/badge/version-1.1.22-2ea44f)
 ![Bash](https://img.shields.io/badge/bash-4%2B-4EAA25?logo=gnubash&logoColor=white)
 ![WordPress](https://img.shields.io/badge/WordPress-security-21759B?logo=wordpress&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Linux-FCC624?logo=linux&logoColor=black)
@@ -49,7 +49,7 @@ PressWarden focuses on **high-signal findings**. A PHP function such as `base64_
 - 🔎 **Automatic WordPress discovery** across one site or a hosting fleet
 - 🦠 **PHP malware detection** including webshell behavior, remote loaders, credential theft, and obfuscated payloads
 - 🌐 **JavaScript malware detection** including injected scripts and suspicious redirects
-- 🗄️ **Database malware scanning** for stored scripts, PHP payloads, persistence, and suspicious administrator accounts
+- 🗄️ **Database malware scanning and maintenance** with stored-threat inspection, LiteSpeed cleanup, and native table verification
 - 🧬 **WordPress integrity checks** for core and plugins
 - 🧭 **Baseline + change detection** for security-relevant files, plugins, themes, administrators, and cron state
 - 🚑 **Incident response mode** for evidence-first compromise and reinfection investigations
@@ -111,7 +111,7 @@ That is the recommended starting point for most users.
 | `./presswarden incident` | Investigating a suspected compromise or reinfection |
 | `./presswarden inspect js` | Rechecking JavaScript intelligence without other checks |
 | `./presswarden intel scan` | Focused malware + threat-intelligence investigation |
-| `./presswarden db` | Database security, stored malware, and DB maintenance |
+| `./presswarden db` | Database security, stored malware, LiteSpeed cleanup, and native DB maintenance |
 | `./presswarden update` | Updating PressWarden code and refreshing threat intelligence |
 | `./presswarden doctor` | Checking setup, dependencies, discovery, and integrations |
 | `./presswarden cleanup` | Conservative log / disposable-file cleanup |
@@ -198,7 +198,7 @@ Suite runs now maintain a small private atomic state record while they execute. 
 ./presswarden run-status RUN_ID
 ```
 
-A catchable interruption retains partial validated reports but never becomes a completed audit. `SIGKILL` cannot be trapped; when process liveness is available, `run-status` identifies a stale `RUNNING` record as an interrupted/abandoned run rather than inventing completion. Safe continuation is available with `./presswarden continue [RUN_ID]`. It carries only a completed prefix from the same PressWarden version and exact rediscovered scope, reruns the interrupted check from the beginning, and starts a new linked audit summary. Runs created before 1.1.17 do not contain the required scope snapshot. Automatic database maintenance is never replayed if it was the interrupted check. See [safe continuation](docs/CONTINUATION.md) and [suite run-state details](docs/RUN-STATE.md).
+A catchable interruption retains partial validated reports but never becomes a completed audit. `SIGKILL` cannot be trapped; when process liveness is available, `run-status` identifies a stale `RUNNING` record as an interrupted/abandoned run rather than inventing completion. Safe continuation is available with `./presswarden continue [RUN_ID]`. It carries only a completed prefix from the same PressWarden version and exact rediscovered scope, reruns the interrupted check from the beginning, and starts a new linked audit summary. Runs created before 1.1.17 do not contain the required scope snapshot. Automatic LiteSpeed or native database maintenance is never replayed if it was the interrupted check. See [safe continuation](docs/CONTINUATION.md) and [suite run-state details](docs/RUN-STATE.md).
 
 ## Finding history
 

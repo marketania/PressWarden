@@ -154,6 +154,10 @@ presswarden litespeed database optimize-all --blog=2 --target example.com
 
 LiteSpeed documents `litespeed-database` as the exception to its normal WP-CLI behavior: these commands do not accept standard WP-CLI global parameters. PressWarden therefore changes into each WordPress installation and executes the database command without `--path`, `--skip-plugins`, `--skip-themes`, or other global parameters.
 
+`database status` is PressWarden inventory syntax, not a LiteSpeed subcommand. It checks availability using the documented `optimize_all` command and never probes `litespeed-database status`.
+
+The `db` and `full` suites automatically run the dedicated `litespeed-db` cleanup before native SQL table maintenance. On multisite they validate all blog IDs first and run `optimize_all blog ID` for each. Set `PRESSWARDEN_LITESPEED_DB_MAINTENANCE=0` to disable only this automatic suite step.
+
 ## Safety model
 
 Read-only inventory commands do not require confirmation. Mutating commands require confirmation in interactive mode. `PRESSWARDEN_INTERACTIVE=0` is treated as an explicit automation choice, except irreversible image backup removal and support-report upload, which require the additional opt-ins documented above.

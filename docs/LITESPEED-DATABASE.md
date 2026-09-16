@@ -1,8 +1,8 @@
 # LiteSpeed Database Maintenance
 
-PressWarden provides an explicit maintenance action for WordPress sites using the LiteSpeed Cache plugin.
+PressWarden supports both focused LiteSpeed database cleanup and automatic integration with its write-capable database-maintenance suites.
 
-## Commands
+## Focused commands
 
 Check which discovered sites can use LiteSpeed database optimization:
 
@@ -16,58 +16,74 @@ Run LiteSpeed Cache's full database cleanup/optimization:
 presswarden litespeed-db optimize [target]
 ```
 
-`target` follows the normal PressWarden targeting rules: a website name, nested website name, directory, `all`, or omit the target for the configured fleet. Use a website name when you want to validate or optimize only that site before enabling fleet-wide maintenance.
+`target` follows normal PressWarden targeting: a website name, nested website name, directory, `all`, or the configured fleet when omitted.
 
-## What PressWarden runs
+## DB and FULL suite integration
 
-For each eligible site, PressWarden changes into that WordPress installation's directory and runs exactly:
+`presswarden db` and `presswarden full` now run the same `litespeed-db` maintenance implementation immediately before PressWarden's native SQL table check/repair/optimization step.
+
+The automatic step:
+
+- runs only where LiteSpeed Cache is installed, active, and exposes `litespeed-database optimize_all`;
+- skips sites without an active LiteSpeed Cache plugin;
+- runs installations sequentially to limit load;
+- reports active-plugin/command/bootstrap failures as incomplete maintenance rather than false success;
+- continues to native table maintenance even when one independent LiteSpeed site fails.
+
+Disable only the automatic suite step with:
+
+```bash
+PRESSWARDEN_LITESPEED_DB_MAINTENANCE=0 presswarden db
+```
+
+The explicit `litespeed-db optimize` command remains available even when that suite setting is disabled.
+
+## Exact command behavior
+
+For a normal single-site installation, PressWarden changes into the WordPress directory and runs exactly:
 
 ```bash
 wp litespeed-database optimize_all
 ```
 
-LiteSpeed documents the `litespeed-database` command family as not accepting normal WP-CLI default/global parameters. For that reason PressWarden intentionally does **not** append `--path`, `--skip-plugins`, `--skip-themes`, `--skip-packages`, or `--no-color` to the LiteSpeed command itself.
+LiteSpeed's database command family is the exception to its usual WP-CLI behavior and does not accept ordinary global parameters. PressWarden never appends `--path`, `--skip-plugins`, `--skip-themes`, `--skip-packages`, or `--no-color` to the real cleanup command.
 
-PressWarden may use ordinary WP-CLI commands with normal global parameters during preflight to verify that WordPress is readable and LiteSpeed Cache is installed and active.
+`presswarden litespeed database status` is a PressWarden-only inventory action. It validates the real `optimize_all` subcommand and never tries to execute or request help for a nonexistent `litespeed-database status` command.
+
+## Multisite
+
+Before changing a multisite installation, PressWarden obtains all blog IDs with the built-in WP-CLI site inventory, validates the complete list, and then runs:
+
+```bash
+wp litespeed-database optimize_all blog ID
+```
+
+once for each validated ID. If the inventory is empty, malformed, or cannot be read, no blog cleanup starts and the installation is reported as an error. If one blog fails during execution, already-completed blog cleanups remain complete and the partial result is reported explicitly.
+
+The lower-level umbrella command still permits a deliberately selected blog:
+
+```bash
+presswarden litespeed database optimize-all --blog=2 --target example.com
+```
+
+## Reporting
+
+Preflight and execution display `[current/total]` progress. Successful runs show the number of completed blog scopes, elapsed time, bounded LiteSpeed output, and best-effort database allocation before and after cleanup.
+
+Allocation figures are not deleted-row counts. MySQL may retain allocated space after rows are removed, and normal activity can make the measured database grow during maintenance. A successful cleanup may therefore report no size reduction.
 
 ## Safety behavior
 
-Before changing a database, PressWarden performs a per-site preflight and reports one of these states:
+Focused interactive optimization requires confirmation. `PRESSWARDEN_INTERACTIVE=0` is treated as intentional automation. The `db` and `full` commands are already explicit write-capable maintenance suites, so their internal LiteSpeed step does not prompt a second time.
 
-- `READY` — WordPress is readable, LiteSpeed Cache is active, and `litespeed-database optimize_all` is available.
-- `SKIP` — LiteSpeed Cache is not installed or is installed but inactive.
-- `ERROR` — WordPress/WP-CLI could not bootstrap or LiteSpeed Cache is active but the expected CLI command is unavailable.
-
-Interactive runs require one confirmation before any eligible database is changed. Fleet automation must be intentional by setting `PRESSWARDEN_INTERACTIVE=0`.
-
-Optimization runs sequentially rather than in parallel to keep database load conservative on shared hosting and multi-site fleets.
-
-This command is separate from PressWarden security scans. `fast`, `full`, and `incident` do not silently run LiteSpeed database cleanup.
-
-It is also separate from PressWarden's native database maintenance. The native DB maintenance checks/repairs/optimizes SQL tables; LiteSpeed `optimize_all` additionally performs LiteSpeed Cache's configured cleanup operations such as WordPress revisions, drafts/trash, transients, and related database cleanup.
+An interrupted `litespeed-db` suite step is non-replayable through `presswarden continue`, just like `wp-db-maintenance`. Run a fresh `db` or `full` suite after reviewing the database state.
 
 ## Scheduled cleanup
 
-For most maintained WordPress sites, weekly cleanup is a reasonable starting cadence. Do not run database cleanup every few minutes or unnecessarily every day.
-
-Example weekly cron entry for Sunday at 3:00 AM:
+Weekly maintenance is a reasonable starting point for many managed sites. A focused Sunday 3:00 AM example is:
 
 ```cron
 0 3 * * 0 PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin" PRESSWARDEN_INTERACTIVE=0 /path/to/presswarden litespeed-db optimize all >> "$HOME/.local/state/presswarden/litespeed-db-cron.log" 2>&1
 ```
 
-Adjust the PressWarden path and `PATH` for the hosting account. WP-CLI must be available to the cron environment.
-
-Before scheduling fleet-wide execution, run:
-
-```bash
-presswarden litespeed-db status all
-```
-
-and then perform one manual optimization run to confirm the hosting environment behaves as expected.
-
-## WordPress multisite
-
-LiteSpeed's database command supports an optional `blog <id>` argument. Without it, LiteSpeed uses its default blog behavior. PressWarden currently warns when multisite is detected and does not claim that one `optimize_all` invocation cleaned the entire network.
-
-This conservative behavior avoids reporting network-wide maintenance that was not actually verified.
+To schedule the complete database security and maintenance workflow instead, substitute `presswarden db all`. Confirm WP-CLI and the desired PHP binary are available in the cron environment before enabling fleet execution.
