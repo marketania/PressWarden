@@ -6,14 +6,22 @@ on:
     paths:
       - presswarden
       - checks/litespeed-db.sh
+      - suites/db.sh
+      - suites/full.sh
+      - lib/run-continuation.php
       - tests/litespeed-db.sh
+      - tests/run-continuation.sh
       - .github/workflows/litespeed-db-quality.yml
   pull_request:
     branches: [main]
     paths:
       - presswarden
       - checks/litespeed-db.sh
+      - suites/db.sh
+      - suites/full.sh
+      - lib/run-continuation.php
       - tests/litespeed-db.sh
+      - tests/run-continuation.sh
       - .github/workflows/litespeed-db-quality.yml
 
 permissions:
@@ -28,7 +36,7 @@ jobs:
 
       - name: Bash syntax
         shell: bash
-        run: bash -n presswarden checks/litespeed-db.sh tests/litespeed-db.sh
+        run: bash -n presswarden checks/litespeed-db.sh suites/db.sh suites/full.sh tests/litespeed-db.sh tests/run-continuation.sh
 
       - name: LiteSpeed DB command behavior
         shell: bash
