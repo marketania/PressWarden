@@ -1,0 +1,35 @@
+name: LiteSpeed DB quality
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - presswarden
+      - checks/litespeed-db.sh
+      - tests/litespeed-db.sh
+      - .github/workflows/litespeed-db-quality.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - presswarden
+      - checks/litespeed-db.sh
+      - tests/litespeed-db.sh
+      - .github/workflows/litespeed-db-quality.yml
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Bash syntax
+        shell: bash
+        run: bash -n presswarden checks/litespeed-db.sh tests/litespeed-db.sh
+
+      - name: LiteSpeed DB command behavior
+        shell: bash
+        run: bash tests/litespeed-db.sh
