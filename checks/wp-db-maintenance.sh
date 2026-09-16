@@ -27,6 +27,10 @@ _db_skip_count() { printf '%s\n' "$1" | grep -cE '^SKIP[[:space:]]' || true; }
 
 _cleanup_policy() {
   local policy="${PRESSWARDEN_DB_LITESPEED:-ask}" ans=''
+  # The 1.1.22 opt-out remains authoritative for integrated maintenance.
+  case "${PRESSWARDEN_LITESPEED_DB_MAINTENANCE:-}" in
+    0|false|FALSE|no|NO|off|OFF) policy=off ;;
+  esac
   PW_DB_LS_ENABLED=0
   case "$policy" in
     on|1|true) PW_DB_LS_ENABLED=1 ;;
@@ -87,22 +91,20 @@ main() {
     if [ "$runtime_failed" -eq 0 ] && [ "$health_bad" -eq 0 ]; then
       if [ "$PW_DB_LS_ENABLED" = 1 ]; then
         row=$(pw_lsdb_preflight "$s"); IFS=$'\t' read -r state detail <<< "$row"
-        if [ "$state" = READY ] && [[ "$detail" != multisite* ]]; then
+        if [ "$state" = READY ]; then
           printf '      LITESPEED   optimize_all running...\n'
           lsout=$(tmpf) || { PW_CHECK_INCOMPLETE=1; finish; return 2; }
           started=$SECONDS
-          pw_lsdb_run "$s" optimize_all > "$lsout" 2>&1; rc=$?; elapsed=$((SECONDS-started))
+          pw_lsdb_run_all "$s" "$lsout"; rc=$?; elapsed=$((SECONDS-started))
           if [ "$rc" -eq 0 ]; then
             ls_done=1; optimized=1; cleanup_n=$((cleanup_n+1))
-            printf '      ✓ LITESPEED DB OPTIMIZED • %ss • native OPTIMIZE not repeated\n' "$elapsed"
+            printf '      ✓ LITESPEED DB OPTIMIZED • %ss • %s/%s blog scopes • native OPTIMIZE not repeated\n' "$elapsed" "$LSDB_RUN_BLOG_DONE" "$LSDB_RUN_BLOG_TOTAL"
           else
             ls_failed=1; printf '      ✖ LITESPEED FAILED (exit %s); partial cleanup possible • %ss\n' "$rc" "$elapsed"
           fi
           pw_lsdb_show_output "$lsout"; rm -f "$lsout"
         elif [ "$state" = SKIP ]; then
           printf '      - LITESPEED SKIP • %s; native optimization retained\n' "$detail"
-        elif [ "$state" = READY ]; then
-          printf '      - LITESPEED SKIP • multisite needs an explicit --blog=ID; native network-table maintenance retained\n'
         else
           ls_failed=1; printf '      ✖ LITESPEED UNAVAILABLE • %s; native optimization retained\n' "$detail"
         fi

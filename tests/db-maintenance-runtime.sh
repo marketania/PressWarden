@@ -24,7 +24,9 @@ case "$1" in
     case "$2" in is-installed) [ "$mode" != absent ] ;; is-active) [ "$mode" != inactive ] ;; *) exit 90 ;; esac ;;
   help)
     [ "$2" = litespeed-database ] && [ "${3:-}" = optimize_all ] && [ "$mode" != missingcli ] ;;
+  site) printf '1\n2\n' ;;
   eval-file)
+    if [[ "${args[1]}" == */db-blog.php ]]; then printf 'PWDBBLOG1\t%s\n' "${args[2]}"; exit 0; fi
     case "${2##*/}" in
       db-size.php) printf 'PWDBSIZE1\t1000000\n' ;;
       db-maintenance.php)
@@ -80,10 +82,16 @@ run_case clean on 0
 ! grep -q '^optimize$' "$site/.trace"
 [ "$(grep -c '^check$' "$site/.trace")" = 2 ]
 grep -q 'LITESPEED DB OPTIMIZED' "$T/out"
-for mode in absent inactive multisite; do
+for mode in absent inactive; do
   run_case "$mode" on 0; ! grep -q litespeed "$site/.trace"; grep -q optimize "$site/.trace"
   grep -q 'LITESPEED SKIP' "$T/out"
 done
+run_case multisite on 0
+[ "$(grep -c '^litespeed$' "$site/.trace")" = 2 ]
+! grep -q '^optimize$' "$site/.trace"
+grep -q '2/2 blog scopes' "$T/out"
+PRESSWARDEN_LITESPEED_DB_MAINTENANCE=0 run_case clean on 0
+! grep -q '^litespeed$' "$site/.trace"; grep -q '^optimize$' "$site/.trace"
 run_case missingcli on 2
 grep -q '^optimize$' "$site/.trace"; ! grep -q '^litespeed$' "$site/.trace"
 run_case lsfail on 2

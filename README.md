@@ -12,7 +12,7 @@
 
 **Fleet-scale WordPress security auditing from the shell.**
 
-![Version](https://img.shields.io/badge/version-1.1.22-2ea44f)
+![Version](https://img.shields.io/badge/version-1.1.23-2ea44f)
 ![Bash](https://img.shields.io/badge/bash-4%2B-4EAA25?logo=gnubash&logoColor=white)
 ![WordPress](https://img.shields.io/badge/WordPress-security-21759B?logo=wordpress&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Linux-FCC624?logo=linux&logoColor=black)
@@ -198,7 +198,7 @@ Suite runs now maintain a small private atomic state record while they execute. 
 ./presswarden run-status RUN_ID
 ```
 
-A catchable interruption retains partial validated reports but never becomes a completed audit. `SIGKILL` cannot be trapped; when process liveness is available, `run-status` identifies a stale `RUNNING` record as an interrupted/abandoned run rather than inventing completion. Safe continuation is available with `./presswarden continue [RUN_ID]`. It carries only a completed prefix from the same PressWarden version and exact rediscovered scope, reruns the interrupted check from the beginning, and starts a new linked audit summary. Runs created before 1.1.17 do not contain the required scope snapshot. Automatic database maintenance is never replayed if it was the interrupted check. See [safe continuation](docs/CONTINUATION.md) and [suite run-state details](docs/RUN-STATE.md).
+A catchable interruption retains partial validated reports but never becomes a completed audit. `SIGKILL` cannot be trapped; when process liveness is available, `run-status` identifies a stale `RUNNING` record as an interrupted/abandoned run rather than inventing completion. Safe continuation is available with `./presswarden continue [RUN_ID]`. It carries only a completed prefix from the same PressWarden version and exact rediscovered scope, reruns the interrupted check from the beginning, and starts a new linked audit summary. Runs created before 1.1.17 do not contain the required scope snapshot. Automatic LiteSpeed or native database maintenance is never replayed if it was the interrupted check. See [safe continuation](docs/CONTINUATION.md) and [suite run-state details](docs/RUN-STATE.md).
 
 ## Finding history
 
@@ -589,7 +589,7 @@ The default `PRESSWARDEN_DB_LITESPEED=ask` prompts once in an interactive termin
 
 Both `litespeed database status` and `litespeed-db status` use the same read-only capability check; neither calls a nonexistent upstream `litespeed-database status`. Both optimization aliases share progress and prefix-scoped allocated-size measurements through WordPress's database connection, without an external MySQL client. A size change is not an exact count of deleted records or reclaimed disk bytes.
 
-Sites without active LiteSpeed keep native optimization. Active LiteSpeed with unavailable commands or an execution failure remains INCOMPLETE rather than silently becoming success. Integrated cleanup skips multisite; explicit blog actions validate a real active blog before dispatch. See [LiteSpeed database maintenance](docs/LITESPEED-DATABASE.md) for consent, scope, failures and scheduling.
+Sites without active LiteSpeed keep native optimization. Active LiteSpeed with unavailable commands or an execution failure remains INCOMPLETE rather than silently becoming success. Integrated and standalone cleanup validate the complete active multisite blog list before cleanup, then revalidate each blog before dispatch. Explicit single-blog actions remain available. See [LiteSpeed database maintenance](docs/LITESPEED-DATABASE.md) for consent, scope, failures and scheduling.
 
 ### Unsupported table operations
 

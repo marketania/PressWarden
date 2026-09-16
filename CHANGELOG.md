@@ -2,7 +2,7 @@
 
 All notable changes to PressWarden are documented here.
 
-## 1.1.22 — 2026-09-16
+## 1.1.23 — 2026-09-16
 
 LiteSpeed database integration and maintenance reliability fixes.
 
@@ -14,6 +14,19 @@ LiteSpeed database integration and maintenance reliability fixes.
 - Refactor native SQL maintenance into a tested PHP helper. Restrict operations to WordPress-prefixed tables, require explicit successful SQL status and a completion marker, keep unknown health distinct from proven table errors, and withhold optimization when repair has not established health.
 - Add progress before slow work, accurate incomplete/interruption reporting, controlled native-helper errors, strict LiteSpeed command mocks, and regression coverage for consent, fallback, prefix scoping, shared-host execution and failure propagation.
 - Correct the README version badge and document both command aliases and integrated maintenance. Existing config-transaction, update-policy, baseline, continuation and malware detection rules are not changed.
+
+## 1.1.22 — 2026-09-16
+
+LiteSpeed database command correctness and suite integration.
+
+- Fix `presswarden litespeed database status` so the PressWarden-only inventory action validates the documented `litespeed-database optimize_all` subcommand instead of probing the nonexistent `litespeed-database status` command.
+- Tighten LiteSpeed command-matrix regression mocks so undocumented database subcommands fail, preventing pseudo-actions from being mistaken for plugin commands.
+- Add the dedicated LiteSpeed cleanup implementation to both `db` and `full` immediately before native SQL table maintenance. Sites without active LiteSpeed Cache are skipped; active-plugin/bootstrap/command failures remain visible and make maintenance incomplete.
+- Add `PRESSWARDEN_LITESPEED_DB_MAINTENANCE=0` as an opt-out for automatic suite cleanup while keeping explicit `litespeed-db optimize` available.
+- Validate and enumerate every WordPress multisite blog ID before cleanup, then execute `optimize_all blog <id>` sequentially for each blog without unsupported WP-CLI global arguments. Malformed inventory starts no cleanup; partial per-blog failures are reported honestly.
+- Preserve progress, bounded plugin output, elapsed time and best-effort before/after allocation statistics. Continue to avoid inventing deleted-row counts from database-size changes.
+- Refuse safe continuation when interruption occurs inside either LiteSpeed or native database maintenance, because partially completed write operations cannot be replayed safely.
+- Add focused single-site, multisite, suite-mode, opt-out, invalid-command, interruption and exact-invocation regressions.
 
 ## 1.1.21 — 2026-09-15
 

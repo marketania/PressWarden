@@ -62,17 +62,36 @@ case "${1:-}" in
     [ -f "$p/.litespeed-active" ] || exit 94
     [ ! -f "$p/.no-litespeed-command" ] || exit 95
     ;;
-  eval-file)
-    [ "${2##*/}" = db-size.php ] || exit 89
-    [ ! -f "$p/.size-unavailable" ] || { echo 'secret-size-error'; exit 31; }
-    [ ! -f "$p/.size-malformed" ] || { printf 'PWDBSIZE1\t00100\n'; exit 0; }
-    if [ -f "$p/.optimized" ]; then printf 'PWDBSIZE1\t900000\n'; else printf 'PWDBSIZE1\t1000000\n'; fi
+  site)
+    [ "${2:-}" = list ] || exit 88
+    [ -f "$p/.multisite" ] || exit 89
+    [ "${3:-}" = --field=blog_id ] || exit 87
+    if [ -f "$p/.bad-blog-list" ]; then printf '1\nbad\n'; else printf '1\n2\n'; fi
     ;;
-  db) echo 'external db command must not be used' >&2; exit 89 ;;
+  eval-file)
+    case "${2:-}" in
+      */lib/db-size.php)
+        [ ! -f "$p/.size-fail" ] || exit 31
+        if [ -f "$p/.optimized" ]; then printf 'PWDBSIZE1\t900000\n'; else printf 'PWDBSIZE1\t1000000\n'; fi ;;
+      */lib/db-blog.php) [[ "${3:-}" =~ ^[1-9][0-9]*$ ]] && printf 'PWDBBLOG1\t%s\n' "$3" ;;
+      *) exit 88 ;;
+    esac ;;
+  db)
+    [ "${2:-}" = size ] || exit 89
+    # Simulate measurable allocation reduction after LiteSpeed optimization.
+    if [ -f "$p/.optimized" ]; then echo 900000; else echo 1000000; fi
+    ;;
   litespeed-database)
     [ "${2:-}" = optimize_all ] || exit 97
     [ -f "$p/.litespeed-active" ] || exit 98
     [ ! -f "$p/.optimize-fail" ] || { echo 'simulated LiteSpeed optimization failure' >&2; exit 41; }
+    if [ -f "$p/.multisite" ]; then
+      [ "${3:-}" = blog ] || exit 86
+      case "${4:-}" in ''|*[!0-9]*) exit 85 ;; esac
+      printf '%s\n' "$4" >> "$p/.optimized-blogs"
+    else
+      [ "$#" -eq 2 ] || exit 84
+    fi
     touch "$p/.optimized"
     echo 'Success: LiteSpeed database optimized.'
     ;;
@@ -110,7 +129,7 @@ run litespeed-db optimize example.com > "$T/optimized" 2>&1
 grep -q 'example.com.*OPTIMIZED' "$T/optimized"
 grep -q 'Preflight complete: ready 1' "$T/optimized"
 grep -q 'reported reduction' "$T/optimized"
-grep -q 'Measured database size (1 site(s))' "$T/optimized"
+grep -q 'Measured database size (1 installation(s))' "$T/optimized"
 grep -q 'Success: LiteSpeed database optimized' "$T/optimized"
 
 # An active plugin with a missing LiteSpeed CLI command is a preflight error and
@@ -133,36 +152,46 @@ set -e
 grep -q 'example.com.*FAILED.*exit 41' "$T/failure"
 [ ! -f "$T/sites/example.com/public_html/.optimized" ]
 
-# Both public database-status aliases must use the same read-only preflight.
-# Our mock refuses `help litespeed-database status` instead of accepting any subcommand.
-rm -f "$T/sites/example.com/public_html/.optimize-fail"
-run litespeed database status --target example.com > "$T/umbrella-status" 2>&1
-grep -q 'example.com.*READY' "$T/umbrella-status"
-! grep -q 'unavailable.*status' "$T/umbrella-status"
-[ ! -f "$T/sites/example.com/public_html/.optimized" ]
-run litespeed db status --target example.com > /dev/null
-run litespeed database optimize-all --target example.com > "$T/umbrella-optimize" 2>&1
-grep -q 'Measured database size (1 site(s))' "$T/umbrella-optimize"
-grep -q 'OPTIMIZED' "$T/umbrella-optimize"
-
-# Statistics must degrade to unavailable, not become zero or block cleanup.
-for marker in size-unavailable size-malformed; do
-  touch "$T/sites/example.com/public_html/.$marker"
-  run litespeed-db optimize example.com > "$T/stats" 2>&1
-  grep -q 'OPTIMIZED.*database size unavailable' "$T/stats"
-  ! grep -q 'secret-size-error' "$T/stats"
-  rm "$T/sites/example.com/public_html/.$marker"
-done
-
-# Multisite is permitted but explicitly warned because optimize_all without
-# `blog <id>` does not establish network-wide cleanup coverage. Size savings are
-# also deliberately not claimed for the whole shared multisite database.
-rm -f "$T/sites/example.com/public_html/.optimize-fail"
+# Multisite inventory is validated before cleanup, then every blog ID is passed
+# explicitly to LiteSpeed without ordinary WP-CLI global parameters.
+rm -f "$T/sites/example.com/public_html/.optimize-fail" "$T/sites/example.com/public_html/.optimized" "$T/sites/example.com/public_html/.optimized-blogs"
 touch "$T/sites/example.com/public_html/.multisite"
 run litespeed-db status example.com > "$T/multisite" 2>&1
-grep -q 'multisite detected' "$T/multisite"
-grep -q 'does not claim full multisite-network cleanup' "$T/multisite"
+grep -q 'multisite detected; 2 validated blog(s)' "$T/multisite"
 run litespeed-db optimize example.com > "$T/multisite-optimize" 2>&1
-grep -q 'size statistics skipped for multisite' "$T/multisite-optimize"
+printf '1\n2\n' > "$T/expected-blogs"
+sort -nu "$T/sites/example.com/public_html/.optimized-blogs" > "$T/actual-blogs"
+diff -u "$T/expected-blogs" "$T/actual-blogs"
+grep -q 'OPTIMIZED.*2 blogs' "$T/multisite-optimize"
+! grep -q 'Measured database size' "$T/multisite-optimize"
+grep -q 'database size unavailable' "$T/multisite-optimize"
 
-printf 'LiteSpeed database maintenance: targeting, exact CLI invocation, progress, size statistics, failures and multisite warning PASS\n'
+# Malformed multisite inventory is an error and no blog is changed.
+rm -f "$T/sites/example.com/public_html/.optimized" "$T/sites/example.com/public_html/.optimized-blogs"
+touch "$T/sites/example.com/public_html/.bad-blog-list"
+if run litespeed-db status example.com > "$T/bad-blogs" 2>&1; then
+  echo 'malformed multisite inventory unexpectedly succeeded' >&2; exit 1
+fi
+grep -q 'blog-ID inventory failed' "$T/bad-blogs"
+[ ! -f "$T/sites/example.com/public_html/.optimized" ]
+rm -f "$T/sites/example.com/public_html/.bad-blog-list" "$T/sites/example.com/public_html/.multisite"
+
+# DB/FULL suite mode runs optimize automatically without a second prompt, while
+# the documented configuration switch can disable only the automatic suite step.
+rm -f "$T/sites/example.com/public_html/.optimized"
+PRESSWARDEN_SCAN_ROOT="$T/sites/example.com/public_html" PW_LITESPEED_DB_SUITE=1 \
+  bash "$REPO/checks/litespeed-db.sh" > "$T/suite-mode" 2>&1
+[ -f "$T/sites/example.com/public_html/.optimized" ]
+grep -q 'Mode: DB maintenance suite' "$T/suite-mode"
+rm -f "$T/sites/example.com/public_html/.optimized"
+PRESSWARDEN_SCAN_ROOT="$T/sites/example.com/public_html" PW_LITESPEED_DB_SUITE=1 PRESSWARDEN_LITESPEED_DB_MAINTENANCE=0 \
+  bash "$REPO/checks/litespeed-db.sh" > "$T/suite-disabled" 2>&1
+[ ! -f "$T/sites/example.com/public_html/.optimized" ]
+grep -q 'SKIP.*PRESSWARDEN_LITESPEED_DB_MAINTENANCE=0' "$T/suite-disabled"
+
+grep -q 'CHECKS=.*wp-db-maintenance' "$REPO/suites/db.sh"
+grep -q 'CHECKS=.*wp-db-maintenance' "$REPO/suites/full.sh"
+! grep -q 'CHECKS=.*litespeed-db wp-db-maintenance' "$REPO/suites/db.sh"
+! grep -q 'CHECKS=.*litespeed-db wp-db-maintenance' "$REPO/suites/full.sh"
+
+printf 'LiteSpeed database maintenance: documented command probes, suite integration, multisite coverage, exact invocation, progress, statistics and failures PASS\n'

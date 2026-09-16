@@ -165,3 +165,5 @@ Operations are executed sequentially across a fleet to limit database/server loa
 ### Explicit database blog validation
 
 For database actions with `--blog=ID`, PressWarden requires a positive integer and verifies that it identifies an existing, non-deleted/non-archived/non-spam blog in the targeted multisite installation. Single-site installs and unavailable IDs are refused before cleanup. The target is checked again immediately before dispatch. This guards against LiteSpeed versions that print an invalid-blog error but continue operating on the default blog; unrelated concurrent WordPress changes cannot be made globally transactional.
+
+Since 1.1.23, default database optimization delegates to the shared runner, including validated active-blog enumeration for multisite. The old suite opt-out is preserved.

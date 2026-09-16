@@ -1,6 +1,6 @@
 # LiteSpeed database maintenance
 
-## Integrated DB maintenance (1.1.22+)
+## Integrated DB maintenance (1.1.23+)
 
 ```bash
 ./presswarden db example.com
@@ -82,7 +82,7 @@ Ctrl+C during preflight reports that no LiteSpeed cleanup was started. During ex
 
 ## WordPress multisite
 
-Integrated DB maintenance skips LiteSpeed content cleanup for multisite rather than pretending one default-blog invocation cleans the network. Native network-prefixed table maintenance remains available. The standalone default-blog optimizer retains a prominent multisite warning and omits network-size savings.
+Integrated and standalone optimization enumerate active multisite blogs, validate the entire list before any cleanup, and pass each blog ID explicitly to LiteSpeed. A partial failure is not network-wide success. Native maintenance uses the network base prefix; allocation statistics are omitted for multisite.
 
 For a deliberate blog-specific cleanup:
 
@@ -103,3 +103,9 @@ Example weekly integration after testing one site and arranging current backups:
 This is an example only; PressWarden does not install a cron job. Adjust the executable, cron timezone, PATH and private log destination for the hosting account. Native CHECK/REPAIR/OPTIMIZE and LiteSpeed cleanup can take locks; choose an appropriate maintenance window and do not overlap jobs. Omitting the LiteSpeed opt-in preserves native maintenance only.
 
 Upstream references: [LiteSpeed CLI](https://docs.litespeedtech.com/lscache/lscwp/cli/) and [database operations](https://docs.litespeedtech.com/lscache/lscwp/database/).
+
+## Compatibility with 1.1.22
+
+The `PRESSWARDEN_LITESPEED_DB_MAINTENANCE=0` suite opt-out remains supported. In 1.1.23 the cleanup runs inside native maintenance after table health checks, rather than as a separate preceding suite step. `PRESSWARDEN_DB_LITESPEED=ask|on|off` controls consent; `ask` is the default. An explicit legacy opt-out overrides this policy.
+
+Whole-network cleanup from 1.1.22 is retained: active blog IDs are enumerated and fully validated before the first cleanup, then revalidated before each `optimize_all blog ID`. Partial failures report the completed/failed blog scope; no network-wide success is claimed. Integrated cleanup uses the same path. Allocation statistics remain omitted for multisite.
