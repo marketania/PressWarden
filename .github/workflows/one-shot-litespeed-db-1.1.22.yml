@@ -25,9 +25,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gzip -dc tools/apply-litespeed-db-1.1.22.py.gz > /tmp/apply-litespeed-db-1.1.22.py
-          printf '%s  %s\n' '192db7a45595a875833efeabf54389721fb3468e6be3feda0709f7c464f3d04b' '/tmp/apply-litespeed-db-1.1.22.py' | sha256sum -c -
-          python3 /tmp/apply-litespeed-db-1.1.22.py
+          gzip -dc tools/apply-litespeed-db-1.1.22.py.gz > tools/apply-litespeed-db-1.1.22.py
+          printf '%s  %s\n' '192db7a45595a875833efeabf54389721fb3468e6be3feda0709f7c464f3d04b' 'tools/apply-litespeed-db-1.1.22.py' | sha256sum -c -
+          python3 tools/apply-litespeed-db-1.1.22.py
+          rm -f tools/apply-litespeed-db-1.1.22.py
 
       - name: Validate focused behavior
         shell: bash
