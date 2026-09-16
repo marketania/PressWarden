@@ -15,7 +15,7 @@ jobs:
         run: |
           set -euo pipefail
           git diff --check
-          bash -n lib/config-transaction.sh checks/file-mods.sh checks/wp-settings.sh checks/wp-auto-updates.sh tests/config-transaction.sh tests/site-lock.sh tests/wp-settings.sh tests/wp-auto-updates.sh
+          bash -n lib/config-transaction.sh lib/config-transaction-shell.sh checks/file-mods.sh checks/wp-settings.sh checks/wp-auto-updates.sh tests/config-transaction.sh tests/site-lock.sh tests/wp-settings.sh tests/wp-auto-updates.sh
           php -l lib/config-transaction.php >/dev/null
           bash tests/config-transaction.sh
           bash tests/site-lock.sh
