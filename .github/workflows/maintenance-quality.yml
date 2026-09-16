@@ -1,0 +1,30 @@
+name: Maintenance Integration Quality
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax and whitespace
+        run: |
+          set -euo pipefail
+          git diff --check
+          for f in lib/litespeed-db.sh checks/litespeed.sh checks/litespeed-db.sh checks/wp-db-maintenance.sh tests/litespeed-db.sh tests/litespeed-full-cli.sh tests/db-maintenance-runtime.sh; do bash -n "$f"; done
+          for f in lib/db-maintenance.php lib/db-size.php lib/db-blog.php tests/db-maintenance.php; do php -l "$f"; done
+      - name: SQL status, prefix scope, privacy, restricted PHP and blog validation
+        run: php tests/db-maintenance.php
+      - name: Cleanup consent, targeting, fallback and failure propagation
+        run: bash tests/db-maintenance-runtime.sh
+      - name: LiteSpeed command contracts and statistics
+        run: |
+          bash tests/litespeed-db.sh
+          bash tests/litespeed-full-cli.sh
+      - name: PHP 7.4 native-helper compatibility
+        run: docker run --rm -v "$PWD:/work" -w /work php:7.4-cli php tests/db-maintenance.php
