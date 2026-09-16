@@ -39,20 +39,28 @@ case "$2" in
 esac
 WP
 chmod +x "$T/bin/wp"
-chmod +x "$T/bin/wp"
 export PATH="$T/bin:$PATH" PRESSWARDEN_SCAN_ROOT="$T/sites" PRESSWARDEN_CONFIG_FILE="$T/no-config" PRESSWARDEN_STATE_DIR="$T/state" PRESSWARDEN_CACHE_DIR="$T/cache" PRESSWARDEN_INTERACTIVE=0 PRESSWARDEN_NOCOLOR=1
 run(){ bash "$REPO/presswarden" "$@"; }
 old=$(sha256sum "$T/sites/other.com/public_html/wp-config.php")
+
+# Normal PHP transaction engine remains supported.
 run lock example.com > "$T/out"; grep -q 'file changes locked' "$T/out"
 grep -q true "$T/sites/example.com/public_html/wp-config.php"
 [ "$(sha256sum "$T/sites/other.com/public_html/wp-config.php")" = "$old" ]
 run lock-status example.com > "$T/status"; grep -q 'LOCKED.*example.com' "$T/status"; ! grep -q other.com "$T/status"
-# Mutations now use the shared verified transaction evidence tree.
 find "$T/state/config-transactions" -name wp-config.php | grep -q .
-run unlock example.com > "$T/out"; grep -q false "$T/sites/example.com/public_html/wp-config.php"
+
+# Shared hosts can disable PHP proc_open(). Force the safe shell transaction
+# engine and prove the same named-site lock/unlock path still works.
+PRESSWARDEN_CONFIG_TX_FORCE_SHELL=1 run unlock example.com > "$T/out"
+grep -q false "$T/sites/example.com/public_html/wp-config.php"
 run lock-status example.com > "$T/status"; grep -q 'UNLOCKED.*example.com' "$T/status"
+find "$T/state/config-transactions" -name meta.json -exec grep -l 'shell-fallback' {} \; | grep -q .
+PRESSWARDEN_CONFIG_TX_FORCE_SHELL=1 run lock example.com > "$T/out"
+grep -q true "$T/sites/example.com/public_html/wp-config.php"
+
 PRESSWARDEN_EXCLUDE=other.com run lock all > "$T/out"
 [ "$(sha256sum "$T/sites/other.com/public_html/wp-config.php")" = "$old" ]
 run lock all > "$T/out"; grep -q true "$T/sites/other.com/public_html/wp-config.php"
 run unlock all > "$T/out"; grep -q false "$T/sites/other.com/public_html/wp-config.php"
-printf 'Named/fleet lock actions: selected config, existing backups, exclusions and readable status PASS\n'
+printf 'Named/fleet lock actions: PHP and shared-host fallback transactions, backups, exclusions and readable status PASS\n'
