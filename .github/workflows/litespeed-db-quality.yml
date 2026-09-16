@@ -8,9 +8,13 @@ on:
       - checks/litespeed-db.sh
       - suites/db.sh
       - suites/full.sh
+      - lib/litespeed-db-state.php
       - lib/run-continuation.php
       - tests/litespeed-db.sh
       - tests/run-continuation.sh
+      - docs/LITESPEED-DATABASE.md
+      - VERSION
+      - CHANGELOG.md
       - .github/workflows/litespeed-db-quality.yml
   pull_request:
     branches: [main]
@@ -19,9 +23,13 @@ on:
       - checks/litespeed-db.sh
       - suites/db.sh
       - suites/full.sh
+      - lib/litespeed-db-state.php
       - lib/run-continuation.php
       - tests/litespeed-db.sh
       - tests/run-continuation.sh
+      - docs/LITESPEED-DATABASE.md
+      - VERSION
+      - CHANGELOG.md
       - .github/workflows/litespeed-db-quality.yml
 
 permissions:
@@ -38,9 +46,10 @@ jobs:
         shell: bash
         run: |
           bash -n presswarden checks/litespeed-db.sh suites/db.sh suites/full.sh tests/litespeed-db.sh tests/run-continuation.sh
+          php -l lib/litespeed-db-state.php >/dev/null
           php -l lib/run-continuation.php >/dev/null
 
-      - name: LiteSpeed DB command behavior
+      - name: LiteSpeed DB verified behavior
         shell: bash
         run: bash tests/litespeed-db.sh
 

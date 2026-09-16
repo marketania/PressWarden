@@ -1,16 +1,16 @@
 # LiteSpeed Database Maintenance
 
-PressWarden supports both focused LiteSpeed database cleanup and automatic integration with its write-capable database-maintenance suites.
+PressWarden provides verified LiteSpeed Cache database maintenance for focused runs and for the write-capable `db` and `full` suites.
 
-## Focused commands
+## Commands
 
-Check which discovered sites can use LiteSpeed database optimization:
+Inspect the current LiteSpeed database-optimizer state without changing anything:
 
 ```bash
 presswarden litespeed-db status [target]
 ```
 
-Run LiteSpeed Cache's full database cleanup/optimization:
+Run cleanup and verify the resulting state:
 
 ```bash
 presswarden litespeed-db optimize [target]
@@ -18,17 +18,87 @@ presswarden litespeed-db optimize [target]
 
 `target` follows normal PressWarden targeting: a website name, nested website name, directory, `all`, or the configured fleet when omitted.
 
+## What “verified” means
+
+PressWarden does not consider a zero WP-CLI exit code sufficient proof that a site is optimized.
+
+The state probe loads LiteSpeed Cache and reads `LiteSpeed\DB_Optm::db_count()` for the same categories used by `wp-admin/admin.php?page=litespeed-db_optm`:
+
+- Post Revisions
+- Orphaned Post Meta
+- Auto Drafts
+- Trashed Posts
+- Spam Comments
+- Trashed Comments
+- Trackbacks/Pingbacks
+- Expired Transients
+- All Transients
+- Optimize Tables
+
+This preserves LiteSpeed's own revision-retention settings and counter semantics instead of approximating the dashboard with separate PressWarden SQL.
+
+For every eligible installation, PressWarden prints `BEFORE`, runs maintenance, prints `AFTER`, and classifies the result:
+
+- `ALREADY OPTIMIZED` — every LiteSpeed dashboard counter was already zero, so no cleanup command was run.
+- `VERIFIED` — cleanup commands completed and every LiteSpeed dashboard counter is zero afterward.
+- `UNVERIFIED` — commands completed, but one or more dashboard counters remain non-zero or the resulting state could not be read.
+- `FAILED` — one or more required LiteSpeed commands failed.
+
+Database size is shown before and after when available, but allocation size is telemetry only. MySQL can retain allocated space after rows are deleted, so size reduction is not used as the verification verdict.
+
+## Commands PressWarden executes
+
+For a single-site WordPress installation, PressWarden runs the documented command groups sequentially from the WordPress directory:
+
+```bash
+wp litespeed-database clear_posts
+wp litespeed-database clear_comments
+wp litespeed-database clear_trackbacks
+wp litespeed-database clear_transients
+wp litespeed-database optimize_tables
+```
+
+LiteSpeed's database command family does not accept ordinary WP-CLI global parameters. PressWarden therefore does not append `--path`, `--skip-plugins`, `--skip-themes`, `--skip-packages`, or `--no-color` to the real database-maintenance commands.
+
+The state probe is different: it uses ordinary `wp eval-file` with LiteSpeed Cache loaded so it can read the plugin's own `DB_Optm` counters.
+
+## Residual verification pass
+
+After the first maintenance pass, PressWarden immediately re-reads the LiteSpeed counters. If any category remains non-zero, it performs one targeted residual pass for the command groups that still have work and reads the counters again.
+
+This matters for cases where one cleanup operation exposes another cleanup opportunity. For example, deleting auto drafts or trashed posts can leave metadata that becomes orphaned after the first orphan-meta cleanup has already run.
+
+PressWarden never loops indefinitely. After the residual pass, remaining non-zero counters produce `UNVERIFIED` rather than a false success.
+
+## Multisite
+
+Before changing a multisite installation, PressWarden obtains and validates all blog IDs. It measures every validated blog separately, aggregates the dashboard counters for the installation, and runs each maintenance command with the documented blog argument:
+
+```bash
+wp litespeed-database clear_posts blog ID
+wp litespeed-database clear_comments blog ID
+wp litespeed-database clear_trackbacks blog ID
+wp litespeed-database clear_transients blog ID
+wp litespeed-database optimize_tables blog ID
+```
+
+Malformed or incomplete blog inventory prevents cleanup from starting. A partial command failure is reported as `FAILED`; completed actions are not hidden.
+
 ## DB and FULL suite integration
 
-`presswarden db` and `presswarden full` now run the same `litespeed-db` maintenance implementation immediately before PressWarden's native SQL table check/repair/optimization step.
+`presswarden db` and `presswarden full` run verified LiteSpeed maintenance immediately before PressWarden's native SQL table maintenance:
 
-The automatic step:
+```text
+Database security scan
+→ Database malware scan
+→ LiteSpeed status BEFORE
+→ LiteSpeed cleanup
+→ LiteSpeed status AFTER / verification
+→ Native table check / conditional repair / optimize
+→ Native final verification
+```
 
-- runs only where LiteSpeed Cache is installed, active, and exposes `litespeed-database optimize_all`;
-- skips sites without an active LiteSpeed Cache plugin;
-- runs installations sequentially to limit load;
-- reports active-plugin/command/bootstrap failures as incomplete maintenance rather than false success;
-- continues to native table maintenance even when one independent LiteSpeed site fails.
+Sites without LiteSpeed Cache, or with the plugin inactive, are reported as unavailable/skipped and still continue to native database maintenance. A LiteSpeed failure makes the overall suite incomplete but does not prevent independent native maintenance from running on later steps.
 
 Disable only the automatic suite step with:
 
@@ -36,54 +106,32 @@ Disable only the automatic suite step with:
 PRESSWARDEN_LITESPEED_DB_MAINTENANCE=0 presswarden db
 ```
 
-The explicit `litespeed-db optimize` command remains available even when that suite setting is disabled.
+The explicit `litespeed-db status` and `litespeed-db optimize` commands remain available.
 
-## Exact command behavior
+## Fleet summary
 
-For a normal single-site installation, PressWarden changes into the WordPress directory and runs exactly:
+The final report separates:
 
-```bash
-wp litespeed-database optimize_all
-```
+- optimized + verified installations;
+- already optimized installations;
+- LiteSpeed-unavailable installations;
+- unverified installations;
+- failed installations;
+- measured aggregate database allocation before and after;
+- actual counter reductions for revisions, orphaned metadata, drafts/trash, comments, trackbacks, transients, and tables requiring optimization.
 
-LiteSpeed's database command family is the exception to its usual WP-CLI behavior and does not accept ordinary global parameters. PressWarden never appends `--path`, `--skip-plugins`, `--skip-themes`, `--skip-packages`, or `--no-color` to the real cleanup command.
+`Expired Transients` is a subset of LiteSpeed's `All Transients` row count, so the two removal figures overlap and are not added together.
 
-`presswarden litespeed database status` is a PressWarden-only inventory action. It validates the real `optimize_all` subcommand and never tries to execute or request help for a nonexistent `litespeed-database status` command.
+## Interruption safety
 
-## Multisite
+If maintenance is interrupted while commands are running, actions that already completed remain applied. PressWarden does not replay an interrupted `litespeed-db` step through `presswarden continue`; run a fresh `db`, `full`, or focused `litespeed-db optimize` pass so current database state is re-measured first.
 
-Before changing a multisite installation, PressWarden obtains all blog IDs with the built-in WP-CLI site inventory, validates the complete list, and then runs:
+## Scheduled maintenance
 
-```bash
-wp litespeed-database optimize_all blog ID
-```
-
-once for each validated ID. If the inventory is empty, malformed, or cannot be read, no blog cleanup starts and the installation is reported as an error. If one blog fails during execution, already-completed blog cleanups remain complete and the partial result is reported explicitly.
-
-The lower-level umbrella command still permits a deliberately selected blog:
-
-```bash
-presswarden litespeed database optimize-all --blog=2 --target example.com
-```
-
-## Reporting
-
-Preflight and execution display `[current/total]` progress. Successful runs show the number of completed blog scopes, elapsed time, bounded LiteSpeed output, and best-effort database allocation before and after cleanup.
-
-Allocation figures are not deleted-row counts. MySQL may retain allocated space after rows are removed, and normal activity can make the measured database grow during maintenance. A successful cleanup may therefore report no size reduction.
-
-## Safety behavior
-
-Focused interactive optimization requires confirmation. `PRESSWARDEN_INTERACTIVE=0` is treated as intentional automation. The `db` and `full` commands are already explicit write-capable maintenance suites, so their internal LiteSpeed step does not prompt a second time.
-
-An interrupted `litespeed-db` suite step is non-replayable through `presswarden continue`, just like `wp-db-maintenance`. Run a fresh `db` or `full` suite after reviewing the database state.
-
-## Scheduled cleanup
-
-Weekly maintenance is a reasonable starting point for many managed sites. A focused Sunday 3:00 AM example is:
+A weekly maintenance cadence is a reasonable starting point for many managed sites. Example Sunday 3:00 AM focused cleanup:
 
 ```cron
 0 3 * * 0 PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin" PRESSWARDEN_INTERACTIVE=0 /path/to/presswarden litespeed-db optimize all >> "$HOME/.local/state/presswarden/litespeed-db-cron.log" 2>&1
 ```
 
-To schedule the complete database security and maintenance workflow instead, substitute `presswarden db all`. Confirm WP-CLI and the desired PHP binary are available in the cron environment before enabling fleet execution.
+To schedule the complete database security and maintenance workflow instead, substitute `presswarden db all`. Confirm WP-CLI and the intended PHP binary are available in the cron environment before enabling fleet execution.

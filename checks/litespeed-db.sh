@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# litespeed-db — LiteSpeed Cache database cleanup/optimization.
+# litespeed-db — verified LiteSpeed Cache database cleanup/optimization.
 #
-# LiteSpeed's litespeed-database command family does not accept normal
-# WP-CLI global parameters. Every real cleanup invocation therefore runs
-# from the WordPress directory with no --path/--skip-*/--no-color flags.
+# State is measured with LiteSpeed's own DB_Optm::db_count() counters, which are
+# the same counters shown in LiteSpeed Cache > Database > Manage. Real database
+# actions run from the WordPress directory without ordinary WP-CLI global flags.
 set -uo pipefail
 NAME=litespeed-db
-DESC="LiteSpeed Cache database cleanup and optimization"
-SCAN_DOES="Checks LiteSpeed Cache database-command availability and runs optimize_all for eligible WordPress installations."
-SCAN_WHY="LiteSpeed can remove revisions, drafts, trash, comments, trackbacks, transients and other database clutter before PressWarden performs native SQL table maintenance."
+DESC="verified LiteSpeed Cache database cleanup and optimization"
+SCAN_DOES="Reads the same LiteSpeed database counters shown in wp-admin, runs documented cleanup command groups, then re-reads those counters before reporting a verified result."
+SCAN_WHY="A successful CLI exit code proves only that a command returned successfully. PressWarden verifies the database state itself so cleanup is never labeled successful when LiteSpeed still reports pending optimization work."
 . "$(cd "$(dirname "$0")/.." && pwd)/lib/_lib.sh"
 
 SUITE_MODE="${PW_LITESPEED_DB_SUITE:-0}"
@@ -31,8 +31,10 @@ if [ "$SUITE_MODE" = 1 ] && ! _suite_cleanup_enabled; then
   exit 0
 fi
 
-# Built-in WP-CLI commands may use normal global parameters because they do
-# not invoke the exceptional LiteSpeed database command family.
+_is_uint() { case "${1:-}" in ''|*[!0-9]*) return 1 ;; *) return 0 ;; esac; }
+
+# Built-in WordPress inventory commands can skip plugins. The state probe below
+# deliberately does NOT skip plugins because it calls LiteSpeed's own DB_Optm.
 _wp_builtin() {
   local site="$1"; shift
   wp "$@" --path="$site" --skip-plugins --skip-themes --skip-packages --no-color
@@ -40,15 +42,15 @@ _wp_builtin() {
 _wp_bootstrap_ok() { _wp_builtin "$1" core is-installed >/dev/null 2>&1; }
 _lscwp_installed() { _wp_builtin "$1" plugin is-installed litespeed-cache >/dev/null 2>&1; }
 _lscwp_active() { _wp_builtin "$1" plugin is-active litespeed-cache >/dev/null 2>&1; }
-_lscwp_command_available() {
-  local site="$1"
-  (cd "$site" 2>/dev/null && PAGER=cat WP_CLI_PAGER=cat wp help litespeed-database optimize_all >/dev/null 2>&1)
-}
 _is_multisite() { _wp_builtin "$1" core is-installed --network >/dev/null 2>&1; }
 
-# Print one validated positive blog ID per line. The full list is validated
-# before any multisite cleanup begins, so malformed/partial inventory cannot
-# lead to a false network-wide success claim.
+_lscwp_commands_available() {
+  local site="$1" sub
+  for sub in clear_posts clear_comments clear_trackbacks clear_transients optimize_tables; do
+    (cd "$site" 2>/dev/null && PAGER=cat WP_CLI_PAGER=cat wp help litespeed-database "$sub" >/dev/null 2>&1) || return 1
+  done
+}
+
 _multisite_blog_ids() {
   local site="$1" raw id clean seen='' count=0
   raw=$(_wp_builtin "$site" site list --field=blog_id 2>/dev/null) || return 1
@@ -67,15 +69,6 @@ _multisite_blog_ids() {
   [ "$count" -gt 0 ]
 }
 
-# `wp db size --size_format=b` is best-effort telemetry. Failure to measure
-# allocation never blocks cleanup or changes the maintenance verdict.
-_db_size_bytes() {
-  local site="$1" n
-  n=$(_wp_builtin "$site" db size --size_format=b 2>/dev/null | tr -d '[:space:]') || return 1
-  case "$n" in ''|*[!0-9]*) return 1 ;; esac
-  printf '%s' "$n"
-}
-
 _format_bytes() {
   awk -v n="${1:-0}" 'BEGIN {
     split("B KB MB GB TB", u, " "); i=1;
@@ -87,41 +80,189 @@ _format_bytes() {
   }'
 }
 
-_preflight_site() {
-  # Prints STATE<TAB>DETAIL where STATE is READY, SKIP, or ERROR.
-  local site="$1" ids count
-  if ! _wp_bootstrap_ok "$site"; then
-    printf 'ERROR\tWordPress/WP-CLI bootstrap failed\n'
-    return 0
-  fi
-  if ! _lscwp_installed "$site"; then
-    printf 'SKIP\tLiteSpeed Cache is not installed\n'
-    return 0
-  fi
-  if ! _lscwp_active "$site"; then
-    printf 'SKIP\tLiteSpeed Cache is installed but inactive\n'
-    return 0
-  fi
-  if ! _lscwp_command_available "$site"; then
-    printf 'ERROR\tLiteSpeed Cache is active but litespeed-database optimize_all is unavailable\n'
-    return 0
-  fi
-  if _is_multisite "$site"; then
-    ids=$(_multisite_blog_ids "$site") || {
-      printf 'ERROR\tmultisite blog-ID inventory failed; no cleanup will be attempted\n'
-      return 0
-    }
-    count=$(printf '%s\n' "$ids" | awk 'NF { n++ } END { print n+0 }')
-    printf 'READY\tmultisite detected; %s validated blog(s) will be cleaned\n' "$count"
+# Current measured LiteSpeed state. Counters are summed across validated blogs
+# for multisite; database size is installation-wide and recorded once.
+LS_REV=0; LS_ORPH=0; LS_AUTO=0; LS_TRASH_POST=0; LS_SPAM=0
+LS_TRASH_COMMENT=0; LS_TRACK=0; LS_EXPIRED=0; LS_TRANSIENTS=0
+LS_TABLES=0; LS_SIZE=''; LS_BLOGS=1
+
+_capture_blog_state() {
+  local site="$1" blog="${2:-}" out rc row magic status effective rev orph auto trash spam trashc track exp trans tables size extra
+  out=$(tmpf)
+  PRESSWARDEN_LSDB_BLOG="$blog" wp eval-file "$PRESSWARDEN_DIR/lib/litespeed-db-state.php" \
+    --path="$site" --skip-themes --skip-packages --no-color >"$out" 2>&1
+  rc=$?
+  row=$(awk -F '\t' '$1=="PWLSDB1" && $2=="OK" {line=$0} END{print line}' "$out")
+  rm -f "$out"
+  [ "$rc" -eq 0 ] && [ -n "$row" ] || return 1
+  IFS=$'\t' read -r magic status effective rev orph auto trash spam trashc track exp trans tables size extra <<< "$row"
+  [ "$magic" = PWLSDB1 ] && [ "$status" = OK ] && [ -z "${extra:-}" ] || return 1
+  for n in "$effective" "$rev" "$orph" "$auto" "$trash" "$spam" "$trashc" "$track" "$exp" "$trans" "$tables"; do
+    _is_uint "$n" || return 1
+  done
+  if [ "$size" != '-' ]; then _is_uint "$size" || return 1; fi
+  LS_ONE_REV=$rev; LS_ONE_ORPH=$orph; LS_ONE_AUTO=$auto; LS_ONE_TRASH_POST=$trash
+  LS_ONE_SPAM=$spam; LS_ONE_TRASH_COMMENT=$trashc; LS_ONE_TRACK=$track
+  LS_ONE_EXPIRED=$exp; LS_ONE_TRANSIENTS=$trans; LS_ONE_TABLES=$tables; LS_ONE_SIZE=$size
+}
+
+_capture_install_state() {
+  local site="$1" multisite="$2" ids blog count=0 first_size=''
+  LS_REV=0; LS_ORPH=0; LS_AUTO=0; LS_TRASH_POST=0; LS_SPAM=0
+  LS_TRASH_COMMENT=0; LS_TRACK=0; LS_EXPIRED=0; LS_TRANSIENTS=0
+  LS_TABLES=0; LS_SIZE=''; LS_BLOGS=1
+  if [ "$multisite" = 1 ]; then
+    ids=$(_multisite_blog_ids "$site") || return 1
   else
-    printf 'READY\tLiteSpeed optimize_all available\n'
+    ids=''
+  fi
+  if [ "$multisite" = 1 ]; then
+    while IFS= read -r blog; do
+      [ -n "$blog" ] || continue
+      _capture_blog_state "$site" "$blog" || return 1
+      LS_REV=$((LS_REV+LS_ONE_REV)); LS_ORPH=$((LS_ORPH+LS_ONE_ORPH)); LS_AUTO=$((LS_AUTO+LS_ONE_AUTO)); LS_TRASH_POST=$((LS_TRASH_POST+LS_ONE_TRASH_POST))
+      LS_SPAM=$((LS_SPAM+LS_ONE_SPAM)); LS_TRASH_COMMENT=$((LS_TRASH_COMMENT+LS_ONE_TRASH_COMMENT)); LS_TRACK=$((LS_TRACK+LS_ONE_TRACK))
+      LS_EXPIRED=$((LS_EXPIRED+LS_ONE_EXPIRED)); LS_TRANSIENTS=$((LS_TRANSIENTS+LS_ONE_TRANSIENTS)); LS_TABLES=$((LS_TABLES+LS_ONE_TABLES))
+      [ -n "$first_size" ] || first_size=$LS_ONE_SIZE
+      count=$((count+1))
+    done <<< "$ids"
+    [ "$count" -gt 0 ] || return 1
+    LS_BLOGS=$count
+    LS_SIZE=$first_size
+  else
+    _capture_blog_state "$site" '' || return 1
+    LS_REV=$LS_ONE_REV; LS_ORPH=$LS_ONE_ORPH; LS_AUTO=$LS_ONE_AUTO; LS_TRASH_POST=$LS_ONE_TRASH_POST
+    LS_SPAM=$LS_ONE_SPAM; LS_TRASH_COMMENT=$LS_ONE_TRASH_COMMENT; LS_TRACK=$LS_ONE_TRACK
+    LS_EXPIRED=$LS_ONE_EXPIRED; LS_TRANSIENTS=$LS_ONE_TRANSIENTS; LS_TABLES=$LS_ONE_TABLES
+    LS_SIZE=$LS_ONE_SIZE; LS_BLOGS=1
   fi
 }
 
-_show_command_output() {
-  local file="$1"
-  [ -s "$file" ] || return 0
-  tr -d '\r' < "$file" | head -12 | sed 's/^/        /'
+_state_pending() {
+  [ "$LS_REV" -gt 0 ] || [ "$LS_ORPH" -gt 0 ] || [ "$LS_AUTO" -gt 0 ] || [ "$LS_TRASH_POST" -gt 0 ] ||
+  [ "$LS_SPAM" -gt 0 ] || [ "$LS_TRASH_COMMENT" -gt 0 ] || [ "$LS_TRACK" -gt 0 ] || [ "$LS_EXPIRED" -gt 0 ] ||
+  [ "$LS_TRANSIENTS" -gt 0 ] || [ "$LS_TABLES" -gt 0 ]
+}
+
+_print_state() {
+  local heading="$1"
+  printf '    %s\n' "$heading"
+  printf '      %-24s %10s\n' 'Post revisions:' "$LS_REV"
+  printf '      %-24s %10s\n' 'Orphaned post meta:' "$LS_ORPH"
+  printf '      %-24s %10s\n' 'Auto drafts:' "$LS_AUTO"
+  printf '      %-24s %10s\n' 'Trashed posts:' "$LS_TRASH_POST"
+  printf '      %-24s %10s\n' 'Spam comments:' "$LS_SPAM"
+  printf '      %-24s %10s\n' 'Trashed comments:' "$LS_TRASH_COMMENT"
+  printf '      %-24s %10s\n' 'Trackbacks/Pingbacks:' "$LS_TRACK"
+  printf '      %-24s %10s\n' 'Expired transients:' "$LS_EXPIRED"
+  printf '      %-24s %10s\n' 'All transient rows:' "$LS_TRANSIENTS"
+  printf '      %-24s %10s\n' 'Tables to optimize:' "$LS_TABLES"
+  if _is_uint "$LS_SIZE"; then printf '      %-24s %10s\n' 'Database size:' "$(_format_bytes "$LS_SIZE")"; else printf '      %-24s %10s\n' 'Database size:' 'unavailable'; fi
+  [ "$LS_BLOGS" -le 1 ] || printf '      %-24s %10s\n' 'Multisite blogs:' "$LS_BLOGS"
+}
+
+_save_before() {
+  B_REV=$LS_REV; B_ORPH=$LS_ORPH; B_AUTO=$LS_AUTO; B_TRASH_POST=$LS_TRASH_POST
+  B_SPAM=$LS_SPAM; B_TRASH_COMMENT=$LS_TRASH_COMMENT; B_TRACK=$LS_TRACK
+  B_EXPIRED=$LS_EXPIRED; B_TRANSIENTS=$LS_TRANSIENTS; B_TABLES=$LS_TABLES; B_SIZE=$LS_SIZE
+}
+
+_removed() { local before="$1" after="$2"; if [ "$before" -gt "$after" ]; then printf '%s' $((before-after)); else printf '0'; fi; }
+
+_action_label() {
+  case "$1" in
+    clear_posts) printf 'post data (revisions/meta/drafts/trash)' ;;
+    clear_comments) printf 'spam + trashed comments' ;;
+    clear_trackbacks) printf 'trackbacks + pingbacks' ;;
+    clear_transients) printf 'expired + all transients' ;;
+    optimize_tables) printf 'database tables' ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+
+LS_ACTION_TOTAL=0; LS_ACTION_OK=0; LS_ACTION_FAILURES=0; LS_ACTION_BLOGS_DONE=0
+_run_actions() {
+  local site="$1" multisite="$2" logfile="$3" mode="${4:-all}" ids blog action rc tmp detail blog_failed
+  local -a actions=()
+  if [ "$mode" = all ]; then
+    actions=(clear_posts clear_comments clear_trackbacks clear_transients optimize_tables)
+  else
+    [ "$LS_REV" -eq 0 ] && [ "$LS_ORPH" -eq 0 ] && [ "$LS_AUTO" -eq 0 ] && [ "$LS_TRASH_POST" -eq 0 ] || actions+=(clear_posts)
+    [ "$LS_SPAM" -eq 0 ] && [ "$LS_TRASH_COMMENT" -eq 0 ] || actions+=(clear_comments)
+    [ "$LS_TRACK" -eq 0 ] || actions+=(clear_trackbacks)
+    [ "$LS_EXPIRED" -eq 0 ] && [ "$LS_TRANSIENTS" -eq 0 ] || actions+=(clear_transients)
+    [ "$LS_TABLES" -eq 0 ] || actions+=(optimize_tables)
+  fi
+  [ "${#actions[@]}" -gt 0 ] || return 0
+  if [ "$multisite" = 1 ]; then ids=$(_multisite_blog_ids "$site") || return 96; else ids=''; fi
+  if [ "$multisite" = 1 ]; then
+    while IFS= read -r blog; do
+      [ -n "$blog" ] || continue
+      blog_failed=0
+      for action in "${actions[@]}"; do
+        tmp=$(tmpf); rc=0
+        (cd "$site" && wp litespeed-database "$action" blog "$blog") >"$tmp" 2>&1 || rc=$?
+        LS_ACTION_TOTAL=$((LS_ACTION_TOTAL+1))
+        if [ "$rc" -eq 0 ]; then
+          LS_ACTION_OK=$((LS_ACTION_OK+1)); printf 'PWLSACTION\tOK\t%s\t%s\t0\n' "$blog" "$action" >> "$logfile"
+        else
+          LS_ACTION_FAILURES=$((LS_ACTION_FAILURES+1)); blog_failed=1
+          detail=$(head -n1 "$tmp" | tr '\t\r\n' '   ' | cut -c1-160)
+          printf 'PWLSACTION\tFAIL\t%s\t%s\t%s\t%s\n' "$blog" "$action" "$rc" "$detail" >> "$logfile"
+        fi
+        rm -f "$tmp"
+      done
+      [ "$blog_failed" -ne 0 ] || LS_ACTION_BLOGS_DONE=$((LS_ACTION_BLOGS_DONE+1))
+    done <<< "$ids"
+  else
+    for action in "${actions[@]}"; do
+      tmp=$(tmpf); rc=0
+      (cd "$site" && wp litespeed-database "$action") >"$tmp" 2>&1 || rc=$?
+      LS_ACTION_TOTAL=$((LS_ACTION_TOTAL+1))
+      if [ "$rc" -eq 0 ]; then
+        LS_ACTION_OK=$((LS_ACTION_OK+1)); printf 'PWLSACTION\tOK\tsingle\t%s\t0\n' "$action" >> "$logfile"
+      else
+        LS_ACTION_FAILURES=$((LS_ACTION_FAILURES+1))
+        detail=$(head -n1 "$tmp" | tr '\t\r\n' '   ' | cut -c1-160)
+        printf 'PWLSACTION\tFAIL\tsingle\t%s\t%s\t%s\n' "$action" "$rc" "$detail" >> "$logfile"
+      fi
+      rm -f "$tmp"
+    done
+    [ "$LS_ACTION_FAILURES" -ne 0 ] || LS_ACTION_BLOGS_DONE=1
+  fi
+  [ "$LS_ACTION_FAILURES" -eq 0 ]
+}
+
+_print_action_log() {
+  local logfile="$1" phase="$2" rec state blog action rc detail prefix label
+  printf '    %s\n' "$phase"
+  while IFS=$'\t' read -r rec state blog action rc detail; do
+    [ "$rec" = PWLSACTION ] || continue
+    label=$(_action_label "$action")
+    if [ "$blog" = single ]; then prefix=''; else prefix="Blog $blog • "; fi
+    if [ "$state" = OK ]; then
+      printf '      ✓ %s%s command completed\n' "$prefix" "$label"
+    else
+      printf '      ✖ %s%s failed (exit %s)' "$prefix" "$label" "$rc"
+      [ -z "${detail:-}" ] || printf ' • %s' "$detail"
+      printf '\n'
+    fi
+  done < "$logfile"
+}
+
+_preflight_site() {
+  local site="$1" ids count
+  if ! _wp_bootstrap_ok "$site"; then printf 'ERROR\tWordPress/WP-CLI bootstrap failed\n'; return 0; fi
+  if ! _lscwp_installed "$site"; then printf 'SKIP\tLiteSpeed Cache is not installed\n'; return 0; fi
+  if ! _lscwp_active "$site"; then printf 'SKIP\tLiteSpeed Cache is installed but inactive\n'; return 0; fi
+  if ! _lscwp_commands_available "$site"; then printf 'ERROR\tOne or more required LiteSpeed database commands are unavailable\n'; return 0; fi
+  if _is_multisite "$site"; then
+    ids=$(_multisite_blog_ids "$site") || { printf 'ERROR\tmultisite blog-ID inventory failed; no cleanup will be attempted\n'; return 0; }
+    count=$(printf '%s\n' "$ids" | awk 'NF { n++ } END { print n+0 }')
+    printf 'READY\tmultisite detected; %s validated blog(s)\n' "$count"
+  else
+    printf 'READY\tLiteSpeed database commands available\n'
+  fi
 }
 
 _confirm_optimize() {
@@ -129,70 +270,21 @@ _confirm_optimize() {
   [ "$SUITE_MODE" = 1 ] && return 0
   [ "${PRESSWARDEN_INTERACTIVE:-1}" = 0 ] && return 0
   if [ -r /dev/tty ] && [ -w /dev/tty ]; then
-    printf '\n  Run LiteSpeed optimize_all for %s eligible WordPress installation(s) under %s? [y/N]: ' "$count" "$ROOT" > /dev/tty
+    printf '\n  Run verified LiteSpeed database maintenance for %s eligible WordPress installation(s) under %s? [y/N]: ' "$count" "$ROOT" > /dev/tty
     IFS= read -r ans < /dev/tty || ans=''
     case "$ans" in y|Y|yes|YES) return 0 ;; *) printf 'Cancelled.\n'; return 1 ;; esac
   fi
-  printf 'Refusing LiteSpeed database optimization without an interactive terminal. Set PRESSWARDEN_INTERACTIVE=0 only for intentional automation.\n' >&2
+  printf 'Refusing LiteSpeed database maintenance without an interactive terminal. Set PRESSWARDEN_INTERACTIVE=0 only for intentional automation.\n' >&2
   return 1
-}
-
-# Result globals for one installation.
-LSDB_RUN_BLOG_TOTAL=1
-LSDB_RUN_BLOG_DONE=0
-LSDB_RUN_FAILED_BLOG=''
-LSDB_RUN_ENUM_FAILED=0
-
-_run_site_optimization() {
-  local site="$1" multisite="$2" out="$3" ids blog rc
-  local -a blogs=()
-  LSDB_RUN_BLOG_TOTAL=1
-  LSDB_RUN_BLOG_DONE=0
-  LSDB_RUN_FAILED_BLOG=''
-  LSDB_RUN_ENUM_FAILED=0
-
-  if [ "$multisite" = 1 ]; then
-    ids=$(_multisite_blog_ids "$site") || {
-      printf 'Multisite blog-ID inventory failed before cleanup; no blog was changed.\n' > "$out"
-      LSDB_RUN_ENUM_FAILED=1
-      return 96
-    }
-    while IFS= read -r blog; do [ -n "$blog" ] && blogs+=("$blog"); done <<< "$ids"
-    [ "${#blogs[@]}" -gt 0 ] || {
-      printf 'Multisite blog-ID inventory was empty; no blog was changed.\n' > "$out"
-      LSDB_RUN_ENUM_FAILED=1
-      return 96
-    }
-    LSDB_RUN_BLOG_TOTAL=${#blogs[@]}
-    : > "$out" || return 97
-    for blog in "${blogs[@]}"; do
-      printf 'Blog %s:\n' "$blog" >> "$out"
-      # Do not add WP-CLI global parameters here.
-      (cd "$site" && wp litespeed-database optimize_all blog "$blog") >> "$out" 2>&1
-      rc=$?
-      if [ "$rc" -ne 0 ]; then
-        LSDB_RUN_FAILED_BLOG="$blog"
-        return "$rc"
-      fi
-      LSDB_RUN_BLOG_DONE=$((LSDB_RUN_BLOG_DONE+1))
-    done
-    return 0
-  fi
-
-  # Do not add WP-CLI global parameters here.
-  (cd "$site" && wp litespeed-database optimize_all) > "$out" 2>&1
-  rc=$?
-  [ "$rc" -ne 0 ] || LSDB_RUN_BLOG_DONE=1
-  return "$rc"
 }
 
 LSDB_PHASE=''
 _lsdb_interrupt() {
   trap - INT TERM
-  if [ "$LSDB_PHASE" = preflight ]; then
-    printf '\nInterrupted during LiteSpeed database preflight; no databases were changed.\n' >&2
+  if [ "$LSDB_PHASE" = preflight ] || [ "$LSDB_PHASE" = status ]; then
+    printf '\nInterrupted during LiteSpeed database inspection; no databases were changed.\n' >&2
   elif [ "$LSDB_PHASE" = optimize ]; then
-    printf '\nInterrupted during LiteSpeed database optimization; installations and multisite blogs already completed remain optimized.\n' >&2
+    printf '\nInterrupted during LiteSpeed database maintenance; actions already completed remain applied. Run a fresh DB maintenance pass to verify current state.\n' >&2
   else
     printf '\nLiteSpeed database operation interrupted.\n' >&2
   fi
@@ -200,162 +292,163 @@ _lsdb_interrupt() {
 }
 
 _status() {
-  local site label row state detail ready=0 skipped=0 failed=0 multisite=0 idx=0 total
-  require_wp; discover_sites
-  total=${#WP_SITES[@]}
-  printf 'LiteSpeed database maintenance status — %s discovered WordPress installation(s)\n\n' "$total"
+  local site label row state detail idx=0 total is_multi pending=0 already=0 skipped=0 failed=0
+  require_wp; discover_sites; total=${#WP_SITES[@]}
+  trap _lsdb_interrupt INT TERM; LSDB_PHASE=status
+  printf 'LiteSpeed database status — %s discovered WordPress installation(s)\n' "$total"
+  printf 'Counters come from LiteSpeed DB_Optm::db_count(), the same source used by wp-admin/admin.php?page=litespeed-db_optm.\n\n'
   for site in "${WP_SITES[@]}"; do
-    idx=$((idx+1))
-    label=$(site_label_from_root "$site")
-    row=$(_preflight_site "$site")
-    IFS=$'\t' read -r state detail <<< "$row"
+    idx=$((idx+1)); label=$(site_label_from_root "$site"); row=$(_preflight_site "$site"); IFS=$'\t' read -r state detail <<< "$row"
     case "$state" in
-      READY)
-        ready=$((ready+1))
-        [[ "$detail" == multisite* ]] && multisite=$((multisite+1))
-        printf '  [%3d/%3d] ✓ %-34s READY  %s\n' "$idx" "$total" "$label" "$detail"
-        ;;
-      SKIP)
-        skipped=$((skipped+1))
-        printf '  [%3d/%3d] - %-34s SKIP   %s\n' "$idx" "$total" "$label" "$detail"
-        ;;
-      *)
-        failed=$((failed+1))
-        printf '  [%3d/%3d] ✖ %-34s ERROR  %s\n' "$idx" "$total" "$label" "$detail"
-        ;;
+      SKIP) skipped=$((skipped+1)); printf '[%3d/%3d] %-34s\n    RESULT  - UNAVAILABLE • %s\n\n' "$idx" "$total" "$label" "$detail"; continue ;;
+      ERROR) failed=$((failed+1)); printf '[%3d/%3d] %-34s\n    RESULT  ✖ ERROR • %s\n\n' "$idx" "$total" "$label" "$detail"; continue ;;
     esac
+    is_multi=0; [[ "$detail" == multisite* ]] && is_multi=1
+    printf '[%3d/%3d] %s\n' "$idx" "$total" "$label"
+    if ! _capture_install_state "$site" "$is_multi"; then
+      failed=$((failed+1)); printf '    RESULT\n      ✖ ERROR  LiteSpeed database state could not be read; no clean verdict.\n\n'; continue
+    fi
+    _print_state 'CURRENT'
+    if _state_pending; then pending=$((pending+1)); printf '    RESULT\n      ⚠ CLEANUP AVAILABLE  One or more LiteSpeed dashboard counters are non-zero.\n\n'
+    else already=$((already+1)); printf '    RESULT\n      ✓ ALREADY OPTIMIZED  All LiteSpeed dashboard counters are zero.\n\n'; fi
   done
-  printf '\nSummary: ready %s • skipped %s • errors %s' "$ready" "$skipped" "$failed"
-  [ "$multisite" -eq 0 ] || printf ' • multisite installations %s' "$multisite"
-  printf '\n'
+  trap - INT TERM; LSDB_PHASE=''
+  printf 'LiteSpeed Database Status Summary\n'
+  printf '  Websites checked:       %s\n' "$total"
+  printf '  Already optimized:      %s\n' "$already"
+  printf '  Cleanup available:      %s\n' "$pending"
+  printf '  LiteSpeed unavailable:  %s\n' "$skipped"
+  printf '  Errors:                 %s\n' "$failed"
   [ "$failed" -eq 0 ] || return 2
 }
 
 _optimize() {
-  local site label row state detail out rc before after delta elapsed started ended is_multi scope_desc
-  local ready=0 skipped=0 preflight_failed=0 optimized=0 failed=0 multisite=0
-  local idx=0 total exec_idx=0 exec_total measured=0 reduced_sites=0 unchanged_sites=0 increased_sites=0
-  local total_before=0 total_after=0 total_delta=0 completed_blog_scopes=0
-  local -a eligible=() eligible_multisite=()
-  require_wp; discover_sites
-  total=${#WP_SITES[@]}
-
-  trap _lsdb_interrupt INT TERM
-  LSDB_PHASE=preflight
-  printf 'LiteSpeed database optimization preflight — %s discovered WordPress installation(s)\n' "$total"
-  printf 'Action: wp litespeed-database optimize_all [blog <id>]\n'
-  if [ "$SUITE_MODE" = 1 ]; then
-    printf 'Mode: DB maintenance suite (runs before native SQL table maintenance).\n'
-  else
-    printf 'This is LiteSpeed Cache full database cleanup/optimization, not only SQL table optimization.\n'
-  fi
+  local site label row state detail is_multi idx=0 total exec_idx=0 exec_total log retrylog
+  local ready=0 unavailable=0 preflight_failed=0 verified=0 already=0 unverified=0 failed=0
+  local pair_n=0 pair_before=0 pair_after=0
+  local tr=0 to=0 ta=0 tt=0 ts=0 tc=0 tk=0 te=0 tx=0 tb=0
+  local dr do_ da dt ds dc dk de dx db
+  local -a eligible=() eligible_multi=()
+  require_wp; discover_sites; total=${#WP_SITES[@]}
+  trap _lsdb_interrupt INT TERM; LSDB_PHASE=preflight
+  printf 'LiteSpeed database maintenance preflight — %s discovered WordPress installation(s)\n' "$total"
+  printf 'Verification: LiteSpeed dashboard counters BEFORE → documented cleanup commands → counters AFTER.\n'
+  if [ "$SUITE_MODE" = 1 ]; then printf 'Mode: DB maintenance suite (before native SQL table maintenance).\n'; fi
   printf '\n'
-
   for site in "${WP_SITES[@]}"; do
-    idx=$((idx+1))
-    label=$(site_label_from_root "$site")
-    row=$(_preflight_site "$site")
-    IFS=$'\t' read -r state detail <<< "$row"
+    idx=$((idx+1)); label=$(site_label_from_root "$site"); row=$(_preflight_site "$site"); IFS=$'\t' read -r state detail <<< "$row"
     case "$state" in
-      READY)
-        ready=$((ready+1)); eligible+=("$site")
-        if [[ "$detail" == multisite* ]]; then
-          multisite=$((multisite+1)); eligible_multisite+=("1")
-        else
-          eligible_multisite+=("0")
-        fi
-        printf '  [%3d/%3d] ✓ %-34s READY  %s\n' "$idx" "$total" "$label" "$detail"
-        ;;
-      SKIP)
-        skipped=$((skipped+1))
-        printf '  [%3d/%3d] - %-34s SKIP   %s\n' "$idx" "$total" "$label" "$detail"
-        ;;
-      *)
-        preflight_failed=$((preflight_failed+1))
-        printf '  [%3d/%3d] ✖ %-34s ERROR  %s\n' "$idx" "$total" "$label" "$detail"
-        ;;
+      READY) ready=$((ready+1)); eligible+=("$site"); if [[ "$detail" == multisite* ]]; then eligible_multi+=(1); else eligible_multi+=(0); fi; printf '  [%3d/%3d] ✓ %-34s READY  %s\n' "$idx" "$total" "$label" "$detail" ;;
+      SKIP) unavailable=$((unavailable+1)); printf '  [%3d/%3d] - %-34s SKIP   %s\n' "$idx" "$total" "$label" "$detail" ;;
+      *) preflight_failed=$((preflight_failed+1)); printf '  [%3d/%3d] ✖ %-34s ERROR  %s\n' "$idx" "$total" "$label" "$detail" ;;
     esac
   done
-
-  printf '\nPreflight complete: ready %s • skipped %s • errors %s\n' "$ready" "$skipped" "$preflight_failed"
+  printf '\nPreflight complete: ready %s • unavailable %s • errors %s\n' "$ready" "$unavailable" "$preflight_failed"
   if [ "${#eligible[@]}" -eq 0 ]; then
-    printf 'No eligible LiteSpeed Cache sites found; nothing changed.\n'
-    trap - INT TERM
-    LSDB_PHASE=''
-    [ "$preflight_failed" -eq 0 ] || return 2
-    return 0
+    printf 'No eligible LiteSpeed Cache installations found; nothing changed.\n'
+    trap - INT TERM; LSDB_PHASE=''; [ "$preflight_failed" -eq 0 ] || return 2; return 0
   fi
-
   _confirm_optimize "${#eligible[@]}" || { trap - INT TERM; LSDB_PHASE=''; return 1; }
 
-  LSDB_PHASE=optimize
-  exec_total=${#eligible[@]}
-  printf '\nRunning LiteSpeed database optimization sequentially...\n'
+  LSDB_PHASE=optimize; exec_total=${#eligible[@]}
+  printf '\nRunning verified LiteSpeed database maintenance sequentially...\n\n'
   for site in "${eligible[@]}"; do
-    exec_idx=$((exec_idx+1))
-    label=$(site_label_from_root "$site")
-    is_multi=${eligible_multisite[$((exec_idx-1))]}
-    before=$(_db_size_bytes "$site" 2>/dev/null || true)
-    out=$(tmpf)
-    started=$(date +%s)
-    _run_site_optimization "$site" "$is_multi" "$out"
-    rc=$?
-    ended=$(date +%s); elapsed=$((ended-started))
-    completed_blog_scopes=$((completed_blog_scopes+LSDB_RUN_BLOG_DONE))
-
-    if [ "$rc" -eq 0 ]; then
-      optimized=$((optimized+1))
-      after=$(_db_size_bytes "$site" 2>/dev/null || true)
-      if [ "$is_multi" = 1 ]; then scope_desc="${LSDB_RUN_BLOG_TOTAL} blogs"; else scope_desc='single site'; fi
-      if [ -n "$before" ] && [ -n "$after" ]; then
-        measured=$((measured+1)); total_before=$((total_before+before)); total_after=$((total_after+after)); delta=$((before-after))
-        if [ "$delta" -gt 0 ]; then
-          reduced_sites=$((reduced_sites+1))
-          printf '  [%3d/%3d] ✓ %-34s OPTIMIZED  %s • %s → %s • reported reduction %s  (%ss)\n' "$exec_idx" "$exec_total" "$label" "$scope_desc" "$(_format_bytes "$before")" "$(_format_bytes "$after")" "$(_format_bytes "$delta")" "$elapsed"
-        elif [ "$delta" -eq 0 ]; then
-          unchanged_sites=$((unchanged_sites+1))
-          printf '  [%3d/%3d] ✓ %-34s OPTIMIZED  %s • %s → %s • no reported size change  (%ss)\n' "$exec_idx" "$exec_total" "$label" "$scope_desc" "$(_format_bytes "$before")" "$(_format_bytes "$after")" "$elapsed"
-        else
-          increased_sites=$((increased_sites+1)); delta=$((-delta))
-          printf '  [%3d/%3d] ✓ %-34s OPTIMIZED  %s • %s → %s • reported increase %s  (%ss)\n' "$exec_idx" "$exec_total" "$label" "$scope_desc" "$(_format_bytes "$before")" "$(_format_bytes "$after")" "$(_format_bytes "$delta")" "$elapsed"
-        fi
-      else
-        printf '  [%3d/%3d] ✓ %-34s OPTIMIZED  %s • database size unavailable  (%ss)\n' "$exec_idx" "$exec_total" "$label" "$scope_desc" "$elapsed"
-      fi
-      _show_command_output "$out"
-    else
-      failed=$((failed+1))
-      if [ "$is_multi" = 1 ] && [ "$LSDB_RUN_ENUM_FAILED" -eq 1 ]; then
-        printf '  [%3d/%3d] ✖ %-34s FAILED  multisite inventory; no blog changed  (%ss)\n' "$exec_idx" "$exec_total" "$label" "$elapsed"
-      elif [ "$is_multi" = 1 ]; then
-        printf '  [%3d/%3d] ✖ %-34s FAILED  blog %s; %s/%s blog(s) completed • exit %s  (%ss)\n' "$exec_idx" "$exec_total" "$label" "${LSDB_RUN_FAILED_BLOG:-unknown}" "$LSDB_RUN_BLOG_DONE" "$LSDB_RUN_BLOG_TOTAL" "$rc" "$elapsed"
-      else
-        printf '  [%3d/%3d] ✖ %-34s FAILED  exit %s  (%ss)\n' "$exec_idx" "$exec_total" "$label" "$rc" "$elapsed"
-      fi
-      _show_command_output "$out"
+    exec_idx=$((exec_idx+1)); label=$(site_label_from_root "$site"); is_multi=${eligible_multi[$((exec_idx-1))]}
+    printf '[%3d/%3d] %s\n' "$exec_idx" "$exec_total" "$label"
+    if ! _capture_install_state "$site" "$is_multi"; then
+      failed=$((failed+1)); printf '    BEFORE\n      ✖ ERROR  Could not read LiteSpeed dashboard counters. Database was not changed.\n\n'; continue
     fi
-    rm -f "$out"
+    _save_before; _print_state 'BEFORE'
+    if ! _state_pending; then
+      already=$((already+1)); printf '    RESULT\n      ✓ ALREADY OPTIMIZED  No LiteSpeed database cleanup was required.\n\n'
+      if _is_uint "$B_SIZE"; then pair_n=$((pair_n+1)); pair_before=$((pair_before+B_SIZE)); pair_after=$((pair_after+B_SIZE)); fi
+      continue
+    fi
+
+    log=$(tmpf); : > "$log"; LS_ACTION_TOTAL=0; LS_ACTION_OK=0; LS_ACTION_FAILURES=0; LS_ACTION_BLOGS_DONE=0
+    _run_actions "$site" "$is_multi" "$log" all || true
+    _print_action_log "$log" 'OPTIMIZING'
+
+    if ! _capture_install_state "$site" "$is_multi"; then
+      if [ "$LS_ACTION_FAILURES" -gt 0 ]; then failed=$((failed+1)); printf '    RESULT\n      ✖ FAILED  One or more LiteSpeed commands failed and post-maintenance state could not be verified.\n\n'
+      else unverified=$((unverified+1)); printf '    RESULT\n      ⚠ UNVERIFIED  Commands completed, but LiteSpeed database state could not be read afterward.\n\n'; fi
+      rm -f "$log"; continue
+    fi
+
+    # A second targeted pass handles residual dashboard counters. This is
+    # especially useful when deleting drafts/trash creates orphaned post meta
+    # after LiteSpeed's first orphan-meta cleanup within the post-data group.
+    if [ "$LS_ACTION_FAILURES" -eq 0 ] && _state_pending; then
+      retrylog=$(tmpf); : > "$retrylog"
+      _run_actions "$site" "$is_multi" "$retrylog" residual || true
+      _print_action_log "$retrylog" 'VERIFYING RESIDUALS'
+      rm -f "$retrylog"
+      _capture_install_state "$site" "$is_multi" || {
+        unverified=$((unverified+1)); printf '    RESULT\n      ⚠ UNVERIFIED  Residual cleanup ran, but final LiteSpeed counters could not be read.\n\n'; rm -f "$log"; continue; }
+    fi
+
+    _print_state 'AFTER'
+    dr=$(_removed "$B_REV" "$LS_REV"); do_=$(_removed "$B_ORPH" "$LS_ORPH"); da=$(_removed "$B_AUTO" "$LS_AUTO"); dt=$(_removed "$B_TRASH_POST" "$LS_TRASH_POST")
+    ds=$(_removed "$B_SPAM" "$LS_SPAM"); dc=$(_removed "$B_TRASH_COMMENT" "$LS_TRASH_COMMENT"); dk=$(_removed "$B_TRACK" "$LS_TRACK")
+    de=$(_removed "$B_EXPIRED" "$LS_EXPIRED"); dx=$(_removed "$B_TRANSIENTS" "$LS_TRANSIENTS"); db=$(_removed "$B_TABLES" "$LS_TABLES")
+    tr=$((tr+dr)); to=$((to+do_)); ta=$((ta+da)); tt=$((tt+dt)); ts=$((ts+ds)); tc=$((tc+dc)); tk=$((tk+dk)); te=$((te+de)); tx=$((tx+dx)); tb=$((tb+db))
+    if _is_uint "$B_SIZE" && _is_uint "$LS_SIZE"; then pair_n=$((pair_n+1)); pair_before=$((pair_before+B_SIZE)); pair_after=$((pair_after+LS_SIZE)); fi
+
+    printf '    CHANGES\n'
+    printf '      %-30s %10s\n' 'Post revisions removed:' "$dr"
+    printf '      %-30s %10s\n' 'Orphaned post meta removed:' "$do_"
+    printf '      %-30s %10s\n' 'Auto drafts removed:' "$da"
+    printf '      %-30s %10s\n' 'Trashed posts removed:' "$dt"
+    printf '      %-30s %10s\n' 'Spam comments removed:' "$ds"
+    printf '      %-30s %10s\n' 'Trashed comments removed:' "$dc"
+    printf '      %-30s %10s\n' 'Trackbacks/Pingbacks removed:' "$dk"
+    printf '      %-30s %10s\n' 'Expired transient timers removed:' "$de"
+    printf '      %-30s %10s\n' 'Transient rows removed:' "$dx"
+    printf '      %-30s %10s\n' 'Tables optimized:' "$db"
+    if _is_uint "$B_SIZE" && _is_uint "$LS_SIZE"; then
+      printf '      %-30s %s → %s' 'Database size:' "$(_format_bytes "$B_SIZE")" "$(_format_bytes "$LS_SIZE")"
+      if [ "$B_SIZE" -gt "$LS_SIZE" ]; then printf ' • reduction %s' "$(_format_bytes $((B_SIZE-LS_SIZE)))"; elif [ "$B_SIZE" -lt "$LS_SIZE" ]; then printf ' • increase %s' "$(_format_bytes $((LS_SIZE-B_SIZE)))"; else printf ' • no allocation change'; fi
+      printf '\n'
+    fi
+
+    if [ "$LS_ACTION_FAILURES" -gt 0 ]; then
+      failed=$((failed+1)); printf '    RESULT\n      ✖ FAILED  %s LiteSpeed command(s) failed; final counters are shown above.\n\n' "$LS_ACTION_FAILURES"
+    elif _state_pending; then
+      unverified=$((unverified+1)); printf '    RESULT\n      ⚠ UNVERIFIED  Commands completed, but one or more LiteSpeed dashboard counters remain non-zero.\n      The site is not reported as optimized because the resulting database state was not fully confirmed.\n\n'
+    else
+      verified=$((verified+1)); printf '    RESULT\n      ✓ VERIFIED  LiteSpeed database maintenance confirmed; all dashboard counters are zero.\n\n'
+    fi
+    rm -f "$log"
   done
 
-  trap - INT TERM
-  LSDB_PHASE=''
-  printf '\nLiteSpeed database optimization complete.\n'
-  printf 'Summary: optimized installations %s • completed blog scopes %s • skipped %s • preflight errors %s • execution failures %s\n' "$optimized" "$completed_blog_scopes" "$skipped" "$preflight_failed" "$failed"
-  if [ "$measured" -gt 0 ]; then
-    total_delta=$((total_before-total_after))
-    printf 'Measured database size (%s installation(s)): %s → %s' "$measured" "$(_format_bytes "$total_before")" "$(_format_bytes "$total_after")"
-    if [ "$total_delta" -gt 0 ]; then
-      printf ' • reported reduction %s' "$(_format_bytes "$total_delta")"
-    elif [ "$total_delta" -eq 0 ]; then
-      printf ' • no reported aggregate size change'
-    else
-      total_delta=$((-total_delta)); printf ' • reported increase %s' "$(_format_bytes "$total_delta")"
-    fi
-    printf '\n'
-    printf 'Size results: reduced %s • unchanged %s • increased %s\n' "$reduced_sites" "$unchanged_sites" "$increased_sites"
-    printf 'Note: database allocation can stay unchanged or grow after rows are cleaned; these are size measurements, not deleted-record counts.\n'
+  trap - INT TERM; LSDB_PHASE=''
+  failed=$((failed+preflight_failed))
+  printf 'LiteSpeed Database Maintenance Summary\n\n'
+  printf '  Websites checked:          %8s\n' "$total"
+  printf '  Optimized + verified:      %8s\n' "$verified"
+  printf '  Already optimized:         %8s\n' "$already"
+  printf '  LiteSpeed unavailable:     %8s\n' "$unavailable"
+  printf '  Unverified:                %8s\n' "$unverified"
+  printf '  Failed:                    %8s\n' "$failed"
+  if [ "$pair_n" -gt 0 ]; then
+    printf '\n  Database before:            %8s\n' "$(_format_bytes "$pair_before")"
+    printf '  Database after:             %8s\n' "$(_format_bytes "$pair_after")"
+    if [ "$pair_before" -gt "$pair_after" ]; then printf '  Reported reduction:         %8s\n' "$(_format_bytes $((pair_before-pair_after)))"; elif [ "$pair_before" -lt "$pair_after" ]; then printf '  Reported increase:          %8s\n' "$(_format_bytes $((pair_after-pair_before)))"; else printf '  Reported allocation change: %8s\n' '0 B'; fi
+    printf '  Size pairs measured:        %8s\n' "$pair_n"
   fi
-  [ "$preflight_failed" -eq 0 ] && [ "$failed" -eq 0 ] || return 2
+  printf '\n  Post revisions removed:     %8s\n' "$tr"
+  printf '  Orphaned post meta removed: %8s\n' "$to"
+  printf '  Auto drafts removed:        %8s\n' "$ta"
+  printf '  Trashed posts removed:      %8s\n' "$tt"
+  printf '  Spam comments removed:      %8s\n' "$ts"
+  printf '  Trashed comments removed:   %8s\n' "$tc"
+  printf '  Trackbacks/Pingbacks:       %8s\n' "$tk"
+  printf '  Expired transient timers:   %8s\n' "$te"
+  printf '  Transient rows removed:     %8s\n' "$tx"
+  printf '  Tables optimized:           %8s\n' "$tb"
+  printf '\nNote: expired-transient timers are a subset of transient rows, so those two removal figures overlap and must not be added together.\n'
+  printf 'Database size is allocation telemetry only; verification is based on LiteSpeed dashboard counters, not size reduction.\n'
+  [ "$failed" -eq 0 ] && [ "$unverified" -eq 0 ] || return 2
 }
 
 case "$ACTION" in
