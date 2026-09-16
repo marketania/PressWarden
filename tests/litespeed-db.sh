@@ -16,8 +16,7 @@ make_site example.com
 make_site other.com
 make_site broken.com
 
-touch "$T/sites/example.com/public_html/.litespeed-installed"
-touch "$T/sites/example.com/public_html/.litespeed-active"
+touch "$T/sites/example.com/public_html/.litespeed-installed" "$T/sites/example.com/public_html/.litespeed-active"
 touch "$T/sites/broken.com/public_html/.bootstrap-fail"
 
 cat > "$T/bin/wp" <<'WP'
@@ -35,13 +34,46 @@ done
 set -- "${args[@]}"
 [ -n "$p" ] || p="$PWD"
 
-# LiteSpeed explicitly rejects ordinary WP-CLI global parameters. Fail the test
-# if PressWarden ever starts appending one to the actual plugin command.
+# Real LiteSpeed database commands must never receive ordinary WP-CLI globals.
 if [ "${1:-}" = litespeed-database ]; then
-  for a in "${orig[@]}"; do
-    case "$a" in --*) echo 'unexpected WP-CLI global parameter' >&2; exit 96 ;; esac
-  done
+  for a in "${orig[@]}"; do case "$a" in --*) echo 'unexpected WP-CLI global parameter' >&2; exit 96 ;; esac; done
 fi
+
+count_action() {
+  local blog="$1" action="$2"
+  [ -f "$p/.actions" ] || { echo 0; return; }
+  grep -c "^$blog $action$" "$p/.actions" 2>/dev/null || true
+}
+
+emit_state() {
+  [ -f "$p/.litespeed-active" ] || exit 98
+  # The state probe must load LiteSpeed; --skip-plugins would make the real
+  # DB_Optm class unavailable.
+  for a in "${orig[@]}"; do [ "$a" != --skip-plugins ] || { echo 'state probe skipped plugins' >&2; exit 83; }; done
+  blog=${PRESSWARDEN_LSDB_BLOG:-single}
+  if [ -f "$p/.already" ]; then
+    printf 'PWLSDB1\tOK\t%s\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t900000\n' "${blog/single/1}"
+    return
+  fi
+  if [ -f "$p/.unverified" ]; then
+    printf 'PWLSDB1\tOK\t%s\t4\t2\t1\t1\t3\t2\t1\t5\t10\t3\t1000000\n' "${blog/single/1}"
+    return
+  fi
+  posts=$(count_action "$blog" clear_posts)
+  comments=$(count_action "$blog" clear_comments)
+  tracks=$(count_action "$blog" clear_trackbacks)
+  trans=$(count_action "$blog" clear_transients)
+  tables=$(count_action "$blog" optimize_tables)
+  if [ "$posts" -eq 0 ]; then rev=4; orph=2; auto=1; trash=1
+  elif [ "$posts" -eq 1 ]; then rev=0; orph=1; auto=0; trash=0
+  else rev=0; orph=0; auto=0; trash=0; fi
+  if [ "$comments" -eq 0 ]; then spam=3; trashc=2; else spam=0; trashc=0; fi
+  if [ "$tracks" -eq 0 ]; then track=1; else track=0; fi
+  if [ "$trans" -eq 0 ]; then exp=5; transient=10; else exp=0; transient=0; fi
+  if [ "$tables" -eq 0 ]; then opt=3; else opt=0; fi
+  if [ "$rev" -eq 0 ] && [ "$orph" -eq 0 ] && [ "$auto" -eq 0 ] && [ "$trash" -eq 0 ] && [ "$spam" -eq 0 ] && [ "$trashc" -eq 0 ] && [ "$track" -eq 0 ] && [ "$exp" -eq 0 ] && [ "$transient" -eq 0 ] && [ "$opt" -eq 0 ]; then size=900000; else size=1000000; fi
+  printf 'PWLSDB1\tOK\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "${blog/single/1}" "$rev" "$orph" "$auto" "$trash" "$spam" "$trashc" "$track" "$exp" "$transient" "$opt" "$size"
+}
 
 case "${1:-}" in
   core)
@@ -58,7 +90,8 @@ case "${1:-}" in
     esac
     ;;
   help)
-    [ "${2:-}" = litespeed-database ] && [ "${3:-}" = optimize_all ] || exit 93
+    [ "${2:-}" = litespeed-database ] || exit 93
+    case "${3:-}" in clear_posts|clear_comments|clear_trackbacks|clear_transients|optimize_tables) : ;; *) exit 93 ;; esac
     [ -f "$p/.litespeed-active" ] || exit 94
     [ ! -f "$p/.no-litespeed-command" ] || exit 95
     ;;
@@ -68,24 +101,24 @@ case "${1:-}" in
     [ "${3:-}" = --field=blog_id ] || exit 87
     if [ -f "$p/.bad-blog-list" ]; then printf '1\nbad\n'; else printf '1\n2\n'; fi
     ;;
-  db)
-    [ "${2:-}" = size ] || exit 89
-    # Simulate measurable allocation reduction after LiteSpeed optimization.
-    if [ -f "$p/.optimized" ]; then echo 900000; else echo 1000000; fi
+  eval-file)
+    emit_state
     ;;
   litespeed-database)
-    [ "${2:-}" = optimize_all ] || exit 97
+    action=${2:-}
+    case "$action" in clear_posts|clear_comments|clear_trackbacks|clear_transients|optimize_tables) : ;; *) exit 97 ;; esac
     [ -f "$p/.litespeed-active" ] || exit 98
-    [ ! -f "$p/.optimize-fail" ] || { echo 'simulated LiteSpeed optimization failure' >&2; exit 41; }
     if [ -f "$p/.multisite" ]; then
       [ "${3:-}" = blog ] || exit 86
       case "${4:-}" in ''|*[!0-9]*) exit 85 ;; esac
-      printf '%s\n' "$4" >> "$p/.optimized-blogs"
+      blog=$4
     else
       [ "$#" -eq 2 ] || exit 84
+      blog=single
     fi
-    touch "$p/.optimized"
-    echo 'Success: LiteSpeed database optimized.'
+    if [ -f "$p/.fail-$action" ]; then echo "simulated $action failure" >&2; exit 41; fi
+    printf '%s %s\n' "$blog" "$action" >> "$p/.actions"
+    echo "Success: $action completed."
     ;;
   *) exit 99 ;;
 esac
@@ -102,82 +135,120 @@ export PRESSWARDEN_NOCOLOR=1
 export PRESSWARDEN_PROGRESS=0
 run(){ bash "$REPO/presswarden" "$@"; }
 
-# Status must distinguish eligible, non-LiteSpeed, and actual WP-CLI/bootstrap
-# errors rather than falsely classifying everything nonzero as "inactive".
-if run litespeed-db status all > "$T/status" 2>&1; then
-  echo 'status unexpectedly succeeded despite a bootstrap-broken site' >&2; exit 1
-fi
-grep -q 'example.com.*READY' "$T/status"
-grep -q 'other.com.*SKIP.*not installed' "$T/status"
-grep -q 'broken.com.*ERROR.*bootstrap failed' "$T/status"
+# The probe implementation is intentionally bound to LiteSpeed's own UI counter
+# implementation rather than PressWarden-maintained approximate SQL.
+grep -q 'LiteSpeed\\DB_Optm::cls' "$REPO/lib/litespeed-db-state.php"
+grep -q 'db_count($type, true)' "$REPO/lib/litespeed-db-state.php"
 
-# Narrowing to one site must run the exact LiteSpeed command from that site's
-# working directory and must never append --path/--skip-* global parameters.
-# It should also report clear progress and before/after database size when the
-# built-in WP-CLI db size command is available.
-run litespeed-db optimize example.com > "$T/optimized" 2>&1
-[ -f "$T/sites/example.com/public_html/.optimized" ]
-[ ! -f "$T/sites/other.com/public_html/.optimized" ]
-grep -q 'example.com.*OPTIMIZED' "$T/optimized"
-grep -q 'Preflight complete: ready 1' "$T/optimized"
-grep -q 'reported reduction' "$T/optimized"
-grep -q 'Measured database size (1 installation(s))' "$T/optimized"
-grep -q 'Success: LiteSpeed database optimized' "$T/optimized"
+# Fleet status now shows the real current counters, while retaining honest skip
+# and bootstrap-error classification.
+set +e
+run litespeed-db status all > "$T/status" 2>&1
+rc=$?
+set -e
+[ "$rc" -eq 2 ]
+grep -q 'example.com' "$T/status"
+grep -q 'Post revisions:.*4' "$T/status"
+grep -q 'CLEANUP AVAILABLE' "$T/status"
+grep -q 'other.com' "$T/status"; grep -q 'UNAVAILABLE.*not installed' "$T/status"
+grep -q 'broken.com' "$T/status"; grep -q 'ERROR.*bootstrap failed' "$T/status"
 
-# An active plugin with a missing LiteSpeed CLI command is a preflight error and
-# must not be reported as a successful skip.
-touch "$T/sites/other.com/public_html/.litespeed-installed" "$T/sites/other.com/public_html/.litespeed-active" "$T/sites/other.com/public_html/.no-litespeed-command"
-if run litespeed-db status other.com > "$T/unavailable" 2>&1; then
-  echo 'missing LiteSpeed CLI command unexpectedly returned success' >&2; exit 1
-fi
-grep -q 'ERROR.*litespeed-database optimize_all is unavailable' "$T/unavailable"
+# One-site maintenance must show BEFORE/ACTION/AFTER, run documented command
+# groups without globals, retry residual post cleanup, and verify all UI counters.
+rm -f "$T/sites/example.com/public_html/.actions"
+run litespeed-db optimize example.com > "$T/verified" 2>&1
+[ "$(grep -c '^single clear_posts$' "$T/sites/example.com/public_html/.actions")" -eq 2 ]
+[ "$(grep -c '^single clear_comments$' "$T/sites/example.com/public_html/.actions")" -eq 1 ]
+[ "$(grep -c '^single clear_trackbacks$' "$T/sites/example.com/public_html/.actions")" -eq 1 ]
+[ "$(grep -c '^single clear_transients$' "$T/sites/example.com/public_html/.actions")" -eq 1 ]
+[ "$(grep -c '^single optimize_tables$' "$T/sites/example.com/public_html/.actions")" -eq 1 ]
+! grep -q 'optimize_all' "$T/sites/example.com/public_html/.actions"
+grep -q '^    BEFORE$' "$T/verified"
+grep -q '^    OPTIMIZING$' "$T/verified"
+grep -q '^    VERIFYING RESIDUALS$' "$T/verified"
+grep -q '^    AFTER$' "$T/verified"
+grep -q 'Post revisions:.*0' "$T/verified"
+grep -q 'Orphaned post meta:.*0' "$T/verified"
+grep -q '✓ VERIFIED.*all dashboard counters are zero' "$T/verified"
+grep -q 'Database before:' "$T/verified"
+grep -q 'Reported reduction:' "$T/verified"
+grep -q 'Post revisions removed:.*4' "$T/verified"
+grep -q 'Tables optimized:.*3' "$T/verified"
 
-# Runtime failure from optimize_all must propagate as exit 2 and leave a clear
-# per-site FAILED result.
-rm -f "$T/sites/example.com/public_html/.optimized"
-touch "$T/sites/example.com/public_html/.optimize-fail"
+# A site already clean must not be mutated merely to manufacture a success line.
+rm -f "$T/sites/example.com/public_html/.actions"; touch "$T/sites/example.com/public_html/.already"
+run litespeed-db optimize example.com > "$T/already" 2>&1
+[ ! -s "$T/sites/example.com/public_html/.actions" ]
+grep -q 'ALREADY OPTIMIZED' "$T/already"
+rm -f "$T/sites/example.com/public_html/.already"
+
+# Exit zero from every LiteSpeed command is insufficient: unchanged/nonzero
+# counters must make the result UNVERIFIED and the command return incomplete.
+rm -f "$T/sites/example.com/public_html/.actions"; touch "$T/sites/example.com/public_html/.unverified"
+set +e
+run litespeed-db optimize example.com > "$T/unverified" 2>&1
+rc=$?
+set -e
+[ "$rc" -eq 2 ]
+grep -q '⚠ UNVERIFIED' "$T/unverified"
+grep -q 'dashboard counters remain non-zero' "$T/unverified"
+grep -q 'Unverified:.*1' "$T/unverified"
+rm -f "$T/sites/example.com/public_html/.unverified"
+
+# A real action failure remains FAILED even when later state can still be read.
+rm -f "$T/sites/example.com/public_html/.actions"; touch "$T/sites/example.com/public_html/.fail-clear_comments"
 set +e
 run litespeed-db optimize example.com > "$T/failure" 2>&1
 rc=$?
 set -e
-[ "$rc" -eq 2 ] || { echo "expected exit 2 for LiteSpeed execution failure, got $rc" >&2; exit 1; }
-grep -q 'example.com.*FAILED.*exit 41' "$T/failure"
-[ ! -f "$T/sites/example.com/public_html/.optimized" ]
+[ "$rc" -eq 2 ]
+grep -q 'spam + trashed comments failed (exit 41)' "$T/failure"
+grep -q '✖ FAILED' "$T/failure"
+rm -f "$T/sites/example.com/public_html/.fail-clear_comments"
 
-# Multisite inventory is validated before cleanup, then every blog ID is passed
-# explicitly to LiteSpeed without ordinary WP-CLI global parameters.
-rm -f "$T/sites/example.com/public_html/.optimize-fail" "$T/sites/example.com/public_html/.optimized" "$T/sites/example.com/public_html/.optimized-blogs"
-touch "$T/sites/example.com/public_html/.multisite"
-run litespeed-db status example.com > "$T/multisite" 2>&1
-grep -q 'multisite detected; 2 validated blog(s)' "$T/multisite"
-run litespeed-db optimize example.com > "$T/multisite-optimize" 2>&1
-printf '1\n2\n' > "$T/expected-blogs"
-sort -nu "$T/sites/example.com/public_html/.optimized-blogs" > "$T/actual-blogs"
-diff -u "$T/expected-blogs" "$T/actual-blogs"
-grep -q 'OPTIMIZED.*2 blogs' "$T/multisite-optimize"
-grep -q 'Measured database size (1 installation(s))' "$T/multisite-optimize"
+# An active plugin missing one required documented command is a preflight error.
+touch "$T/sites/other.com/public_html/.litespeed-installed" "$T/sites/other.com/public_html/.litespeed-active" "$T/sites/other.com/public_html/.no-litespeed-command"
+set +e
+run litespeed-db status other.com > "$T/unavailable" 2>&1
+rc=$?
+set -e
+[ "$rc" -eq 2 ]
+grep -q 'required LiteSpeed database commands are unavailable' "$T/unavailable"
+rm -f "$T/sites/other.com/public_html/.litespeed-installed" "$T/sites/other.com/public_html/.litespeed-active" "$T/sites/other.com/public_html/.no-litespeed-command"
 
-# Malformed multisite inventory is an error and no blog is changed.
-rm -f "$T/sites/example.com/public_html/.optimized" "$T/sites/example.com/public_html/.optimized-blogs"
-touch "$T/sites/example.com/public_html/.bad-blog-list"
-if run litespeed-db status example.com > "$T/bad-blogs" 2>&1; then
-  echo 'malformed multisite inventory unexpectedly succeeded' >&2; exit 1
-fi
+# Multisite must verify every validated blog separately and still present one
+# installation-level BEFORE/AFTER result.
+rm -f "$T/sites/example.com/public_html/.actions"; touch "$T/sites/example.com/public_html/.multisite"
+run litespeed-db optimize example.com > "$T/multisite" 2>&1
+for blog in 1 2; do
+  [ "$(grep -c "^$blog clear_posts$" "$T/sites/example.com/public_html/.actions")" -eq 2 ]
+  grep -q "^$blog optimize_tables$" "$T/sites/example.com/public_html/.actions"
+done
+grep -q 'Multisite blogs:.*2' "$T/multisite"
+grep -q '✓ VERIFIED' "$T/multisite"
+
+# Malformed multisite inventory starts no database action.
+rm -f "$T/sites/example.com/public_html/.actions"; touch "$T/sites/example.com/public_html/.bad-blog-list"
+set +e
+run litespeed-db optimize example.com > "$T/bad-blogs" 2>&1
+rc=$?
+set -e
+[ "$rc" -eq 2 ]
+[ ! -s "$T/sites/example.com/public_html/.actions" ]
 grep -q 'blog-ID inventory failed' "$T/bad-blogs"
-[ ! -f "$T/sites/example.com/public_html/.optimized" ]
 rm -f "$T/sites/example.com/public_html/.bad-blog-list" "$T/sites/example.com/public_html/.multisite"
 
-# DB/FULL suite mode runs optimize automatically without a second prompt, while
-# the documented configuration switch can disable only the automatic suite step.
-rm -f "$T/sites/example.com/public_html/.optimized"
+# DB/FULL suite integration remains automatic, while its explicit opt-out only
+# disables this internal LiteSpeed step.
+rm -f "$T/sites/example.com/public_html/.actions"
 PRESSWARDEN_SCAN_ROOT="$T/sites/example.com/public_html" PW_LITESPEED_DB_SUITE=1 \
   bash "$REPO/checks/litespeed-db.sh" > "$T/suite-mode" 2>&1
-[ -f "$T/sites/example.com/public_html/.optimized" ]
 grep -q 'Mode: DB maintenance suite' "$T/suite-mode"
-rm -f "$T/sites/example.com/public_html/.optimized"
+grep -q '✓ VERIFIED' "$T/suite-mode"
+rm -f "$T/sites/example.com/public_html/.actions"
 PRESSWARDEN_SCAN_ROOT="$T/sites/example.com/public_html" PW_LITESPEED_DB_SUITE=1 PRESSWARDEN_LITESPEED_DB_MAINTENANCE=0 \
   bash "$REPO/checks/litespeed-db.sh" > "$T/suite-disabled" 2>&1
-[ ! -f "$T/sites/example.com/public_html/.optimized" ]
+[ ! -s "$T/sites/example.com/public_html/.actions" ]
 grep -q 'SKIP.*PRESSWARDEN_LITESPEED_DB_MAINTENANCE=0' "$T/suite-disabled"
 
 grep -q 'CHECKS=.*litespeed-db wp-db-maintenance' "$REPO/suites/db.sh"
@@ -185,4 +256,4 @@ grep -q 'CHECKS=.*litespeed-db wp-db-maintenance' "$REPO/suites/full.sh"
 grep -q 'PW_LITESPEED_DB_SUITE=1' "$REPO/suites/db.sh"
 grep -q 'PW_LITESPEED_DB_SUITE=1' "$REPO/suites/full.sh"
 
-printf 'LiteSpeed database maintenance: documented command probes, suite integration, multisite coverage, exact invocation, progress, statistics and failures PASS\n'
+printf 'LiteSpeed DB verified state: UI counters, before/after, residual cleanup, multisite, failures, opt-out and fleet summary PASS\n'
