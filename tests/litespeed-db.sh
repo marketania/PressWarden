@@ -62,6 +62,11 @@ case "${1:-}" in
     [ -f "$p/.litespeed-active" ] || exit 94
     [ ! -f "$p/.no-litespeed-command" ] || exit 95
     ;;
+  db)
+    [ "${2:-}" = size ] || exit 89
+    # Simulate measurable allocation reduction after LiteSpeed optimization.
+    if [ -f "$p/.optimized" ]; then echo 900000; else echo 1000000; fi
+    ;;
   litespeed-database)
     [ "${2:-}" = optimize_all ] || exit 97
     [ -f "$p/.litespeed-active" ] || exit 98
@@ -95,10 +100,16 @@ grep -q 'broken.com.*ERROR.*bootstrap failed' "$T/status"
 
 # Narrowing to one site must run the exact LiteSpeed command from that site's
 # working directory and must never append --path/--skip-* global parameters.
+# It should also report clear progress and before/after database size when the
+# built-in WP-CLI db size command is available.
 run litespeed-db optimize example.com > "$T/optimized" 2>&1
 [ -f "$T/sites/example.com/public_html/.optimized" ]
 [ ! -f "$T/sites/other.com/public_html/.optimized" ]
 grep -q 'example.com.*OPTIMIZED' "$T/optimized"
+grep -q 'Preflight complete: ready 1' "$T/optimized"
+grep -q 'reported reduction' "$T/optimized"
+grep -q 'Measured database size (1 site(s))' "$T/optimized"
+grep -q 'Success: LiteSpeed database optimized' "$T/optimized"
 
 # An active plugin with a missing LiteSpeed CLI command is a preflight error and
 # must not be reported as a successful skip.
@@ -121,11 +132,14 @@ grep -q 'example.com.*FAILED.*exit 41' "$T/failure"
 [ ! -f "$T/sites/example.com/public_html/.optimized" ]
 
 # Multisite is permitted but explicitly warned because optimize_all without
-# `blog <id>` does not establish network-wide cleanup coverage.
+# `blog <id>` does not establish network-wide cleanup coverage. Size savings are
+# also deliberately not claimed for the whole shared multisite database.
 rm -f "$T/sites/example.com/public_html/.optimize-fail"
 touch "$T/sites/example.com/public_html/.multisite"
 run litespeed-db status example.com > "$T/multisite" 2>&1
 grep -q 'multisite detected' "$T/multisite"
 grep -q 'does not claim full multisite-network cleanup' "$T/multisite"
+run litespeed-db optimize example.com > "$T/multisite-optimize" 2>&1
+grep -q 'size statistics skipped for multisite' "$T/multisite-optimize"
 
-printf 'LiteSpeed database maintenance: targeting, exact CLI invocation, failures and multisite warning PASS\n'
+printf 'LiteSpeed database maintenance: targeting, exact CLI invocation, progress, size statistics, failures and multisite warning PASS\n'
