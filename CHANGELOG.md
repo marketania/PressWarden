@@ -2,6 +2,16 @@
 
 All notable changes to PressWarden are documented here.
 
+## 1.1.20 — 2026-09-15
+
+Explicit LiteSpeed Cache database cleanup maintenance.
+
+- Add `litespeed-db status|optimize [target]` with normal PressWarden website, directory and fleet targeting while keeping LiteSpeed cleanup separate from security scans and native SQL database maintenance.
+- Preflight WordPress bootstrap, LiteSpeed Cache installation/activation and command availability so unavailable sites cannot be misreported as successful skips. Interactive mutation requires confirmation; intentional automation uses the existing `PRESSWARDEN_INTERACTIVE=0` convention.
+- Run `wp litespeed-database optimize_all` sequentially from each eligible WordPress installation directory without appending WP-CLI global parameters, matching LiteSpeed's documented exception for the `litespeed-database` command family.
+- Warn instead of claiming network-wide cleanup for WordPress multisite when no explicit `blog <id>` is supplied. Preserve existing core/plugin/theme update policy behavior.
+- Add focused regressions for exact CLI invocation, targeting, bootstrap/command failures, runtime failures and multisite warnings, plus operator documentation and a weekly cron example.
+
 ## 1.1.19 — 2026-09-12
 
 Structured finding history with fail-closed resolution semantics.
