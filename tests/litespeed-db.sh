@@ -5,7 +5,8 @@ T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 mkdir -p "$T/bin"
 
 make_site() {
-  local name="$1" p="$T/sites/$name/public_html"
+  local name="$1" p
+  p="$T/sites/$name/public_html"
   mkdir -p "$p/wp-admin" "$p/wp-content" "$p/wp-includes"
   touch "$p/wp-load.php" "$p/wp-settings.php"
   printf '<?php $wp_version="7.1";\n' > "$p/wp-includes/version.php"
