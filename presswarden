@@ -71,7 +71,7 @@ Usage:
   ./presswarden fast [target]          High-signal routine audit
   ./presswarden full [target]          Comprehensive audit + deep integrity/DB maintenance
   ./presswarden incident [target]      Evidence-first compromise / reinfection investigation
-  ./presswarden db [target]            Database security/malware audit + maintenance
+  ./presswarden db [target]            Database audit + maintenance (offers LiteSpeed cleanup)
   ./presswarden litespeed-db status [target]    Show LiteSpeed database cleanup availability
   ./presswarden litespeed-db optimize [target]  Run LiteSpeed Cache optimize_all cleanup
   ./presswarden litespeed AREA ACTION ... --target SITE  Full LiteSpeed Cache CLI management
@@ -187,6 +187,7 @@ show_config() {
   printf 'Discovery depth:    %s\n' "${PRESSWARDEN_DISCOVERY_DEPTH:-8}"
   printf 'Interactive:        %s\n' "${PRESSWARDEN_INTERACTIVE:-1}"
   printf 'JSON reports:       %s\n' "${PRESSWARDEN_OUTPUT_JSON:-1}"
+  printf 'LiteSpeed in DB:    %s\n' "${PRESSWARDEN_DB_LITESPEED:-ask}"
   printf 'Deep upload scan:   %s\n' "${PRESSWARDEN_UPLOADS_DEEP:-ask in FULL/incident}"
   printf 'WPScan API:         %s\n' "$([ -n "${WPSCAN_API_TOKEN:-}" ] && printf configured || printf 'not configured')"
   printf 'Wordfence Intel:    %s\n' "$([ -n "${PRESSWARDEN_WORDFENCE_TOKEN:-}" ] && printf configured || printf 'not configured')"

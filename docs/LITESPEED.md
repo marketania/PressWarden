@@ -10,7 +10,9 @@ Use `presswarden litespeed help` to see the supported areas and actions directly
 
 Omit `--target` to use the configured fleet. Use `--target example.com` for one website. `--site` is accepted as an alias for `--target`.
 
-The existing `presswarden litespeed-db status|optimize [target]` command remains available for compatibility.
+The existing `presswarden litespeed-db status|optimize [target]` command remains available. Database status and default-blog optimize-all now share the same implementation and reporting across both command styles. `status` is a PressWarden availability check, not an upstream `litespeed-database status` command.
+
+Database maintenance in `db` and `full` also offers the same LiteSpeed cleanup with explicit consent. See [database integration and safety](LITESPEED-DATABASE.md).
 
 ## Fleet status
 
@@ -159,3 +161,7 @@ LiteSpeed documents `litespeed-database` as the exception to its normal WP-CLI b
 Read-only inventory commands do not require confirmation. Mutating commands require confirmation in interactive mode. `PRESSWARDEN_INTERACTIVE=0` is treated as an explicit automation choice, except irreversible image backup removal and support-report upload, which require the additional opt-ins documented above.
 
 Operations are executed sequentially across a fleet to limit database/server load and make per-site failures visible. Sites without active LiteSpeed Cache are skipped. WordPress bootstrap failures or missing LiteSpeed commands are reported as errors rather than successful skips.
+
+### Explicit database blog validation
+
+For database actions with `--blog=ID`, PressWarden requires a positive integer and verifies that it identifies an existing, non-deleted/non-archived/non-spam blog in the targeted multisite installation. Single-site installs and unavailable IDs are refused before cleanup. The target is checked again immediately before dispatch. This guards against LiteSpeed versions that print an invalid-blog error but continue operating on the default blog; unrelated concurrent WordPress changes cannot be made globally transactional.

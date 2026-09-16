@@ -45,6 +45,10 @@ case "${1:-}" in
     esac
     ;;
   help)
+    # Do not paper over invented LiteSpeed subcommands.
+    if [ "${2:-}" = litespeed-database ]; then
+      case "${3:-}" in ''|clear_posts|clear_comments|clear_trackbacks|clear_transients|optimize_tables|optimize_all) exit 0 ;; *) exit 93 ;; esac
+    fi
     case "${2:-}" in litespeed-option|litespeed-purge|litespeed-presets|litespeed-image|litespeed-online|litespeed-debug|litespeed-crawler|litespeed-database) exit 0 ;; *) exit 93 ;; esac
     ;;
   litespeed-option)
@@ -63,6 +67,13 @@ case "${1:-}" in
   litespeed-purge|litespeed-presets|litespeed-image|litespeed-online|litespeed-debug|litespeed-crawler)
     printf '%s\n' "$*" > "$p/.last-command"
     if [ "$1" = litespeed-online ] && [ "${2:-}" = link ]; then printf 'api_key=should-not-print\n'; else echo 'Success'; fi
+    ;;
+  eval-file)
+    case "${2##*/}" in
+      db-size.php) printf 'PWDBSIZE1\t1000000\n' ;;
+      db-blog.php) [ -f "$p/.multisite" ] && [ "${3:-}" = 2 ] || exit 89; printf 'PWDBBLOG1\t2\n' ;;
+      *) exit 89 ;;
+    esac
     ;;
   litespeed-database)
     for a in "${orig[@]}"; do case "$a" in --*) echo 'database received forbidden global arg' >&2; exit 96 ;; esac; done
@@ -157,6 +168,15 @@ run_check crawler reset > /dev/null
 
 # Database family: every documented cleanup mode and optional multisite blog ID.
 run_check database status > /dev/null
+# Invalid IDs and single-site installations must never reach LiteSpeed cleanup.
+previous=$(cat "$T/sites/example.com/public_html/.last-command")
+for id in 0 0002 2 999; do
+  if run_check database optimize-all --blog="$id" > "$T/blog-error" 2>&1; then echo 'invalid blog unexpectedly accepted' >&2; exit 1; fi
+  [ "$(cat "$T/sites/example.com/public_html/.last-command")" = "$previous" ]
+done
+touch "$T/sites/example.com/public_html/.multisite" "$T/sites/other.com/public_html/.multisite"
+if run_check database optimize-all --blog=999 >/dev/null 2>&1; then echo 'nonexistent blog accepted' >&2; exit 1; fi
+[ "$(cat "$T/sites/example.com/public_html/.last-command")" = "$previous" ]
 for action in clear-posts clear-comments clear-trackbacks clear-transients optimize-tables optimize-all; do
   run_check database "$action" --blog=2 > /dev/null
 done

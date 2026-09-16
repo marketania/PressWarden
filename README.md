@@ -12,7 +12,7 @@
 
 **Fleet-scale WordPress security auditing from the shell.**
 
-![Version](https://img.shields.io/badge/version-1.1.19-2ea44f)
+![Version](https://img.shields.io/badge/version-1.1.22-2ea44f)
 ![Bash](https://img.shields.io/badge/bash-4%2B-4EAA25?logo=gnubash&logoColor=white)
 ![WordPress](https://img.shields.io/badge/WordPress-security-21759B?logo=wordpress&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Linux-FCC624?logo=linux&logoColor=black)
@@ -575,7 +575,23 @@ Noninteractive FULL and incident scans skip this check unless it is explicitly e
 
 ---
 
-## Database maintenance note
+## Database maintenance, including LiteSpeed
+
+```bash
+./presswarden litespeed database status --target all
+./presswarden db example.com
+./presswarden db
+```
+
+`db` and `full` now offer LiteSpeed `optimize_all` **inside the database maintenance step**. The workflow is CHECK, conditional REPAIR, authorized LiteSpeed cleanup (or native SQL optimization), then final CHECK. Successful LiteSpeed cleanup already optimizes tables, so native OPTIMIZE is not repeated.
+
+The default `PRESSWARDEN_DB_LITESPEED=ask` prompts once in an interactive terminal; unattended runs skip this optional deletion step. For intentional automation, set `PRESSWARDEN_DB_LITESPEED=on`. Set it to `off` for native SQL maintenance only. **Keep a current database backup: PressWarden does not create a database backup before this cleanup.** Existing `fast` and `incident` behavior is unchanged and does not add LiteSpeed cleanup.
+
+Both `litespeed database status` and `litespeed-db status` use the same read-only capability check; neither calls a nonexistent upstream `litespeed-database status`. Both optimization aliases share progress and prefix-scoped allocated-size measurements through WordPress's database connection, without an external MySQL client. A size change is not an exact count of deleted records or reclaimed disk bytes.
+
+Sites without active LiteSpeed keep native optimization. Active LiteSpeed with unavailable commands or an execution failure remains INCOMPLETE rather than silently becoming success. Integrated cleanup skips multisite; explicit blog actions validate a real active blog before dispatch. See [LiteSpeed database maintenance](docs/LITESPEED-DATABASE.md) for consent, scope, failures and scheduling.
+
+### Unsupported table operations
 
 Some WordPress database tables use storage engines that do not support `CHECK TABLE`.
 

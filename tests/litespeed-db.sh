@@ -62,11 +62,13 @@ case "${1:-}" in
     [ -f "$p/.litespeed-active" ] || exit 94
     [ ! -f "$p/.no-litespeed-command" ] || exit 95
     ;;
-  db)
-    [ "${2:-}" = size ] || exit 89
-    # Simulate measurable allocation reduction after LiteSpeed optimization.
-    if [ -f "$p/.optimized" ]; then echo 900000; else echo 1000000; fi
+  eval-file)
+    [ "${2##*/}" = db-size.php ] || exit 89
+    [ ! -f "$p/.size-unavailable" ] || { echo 'secret-size-error'; exit 31; }
+    [ ! -f "$p/.size-malformed" ] || { printf 'PWDBSIZE1\t00100\n'; exit 0; }
+    if [ -f "$p/.optimized" ]; then printf 'PWDBSIZE1\t900000\n'; else printf 'PWDBSIZE1\t1000000\n'; fi
     ;;
+  db) echo 'external db command must not be used' >&2; exit 89 ;;
   litespeed-database)
     [ "${2:-}" = optimize_all ] || exit 97
     [ -f "$p/.litespeed-active" ] || exit 98
@@ -130,6 +132,27 @@ set -e
 [ "$rc" -eq 2 ] || { echo "expected exit 2 for LiteSpeed execution failure, got $rc" >&2; exit 1; }
 grep -q 'example.com.*FAILED.*exit 41' "$T/failure"
 [ ! -f "$T/sites/example.com/public_html/.optimized" ]
+
+# Both public database-status aliases must use the same read-only preflight.
+# Our mock refuses `help litespeed-database status` instead of accepting any subcommand.
+rm -f "$T/sites/example.com/public_html/.optimize-fail"
+run litespeed database status --target example.com > "$T/umbrella-status" 2>&1
+grep -q 'example.com.*READY' "$T/umbrella-status"
+! grep -q 'unavailable.*status' "$T/umbrella-status"
+[ ! -f "$T/sites/example.com/public_html/.optimized" ]
+run litespeed db status --target example.com > /dev/null
+run litespeed database optimize-all --target example.com > "$T/umbrella-optimize" 2>&1
+grep -q 'Measured database size (1 site(s))' "$T/umbrella-optimize"
+grep -q 'OPTIMIZED' "$T/umbrella-optimize"
+
+# Statistics must degrade to unavailable, not become zero or block cleanup.
+for marker in size-unavailable size-malformed; do
+  touch "$T/sites/example.com/public_html/.$marker"
+  run litespeed-db optimize example.com > "$T/stats" 2>&1
+  grep -q 'OPTIMIZED.*database size unavailable' "$T/stats"
+  ! grep -q 'secret-size-error' "$T/stats"
+  rm "$T/sites/example.com/public_html/.$marker"
+done
 
 # Multisite is permitted but explicitly warned because optimize_all without
 # `blog <id>` does not establish network-wide cleanup coverage. Size savings are

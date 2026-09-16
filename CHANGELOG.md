@@ -2,6 +2,19 @@
 
 All notable changes to PressWarden are documented here.
 
+## 1.1.22 — 2026-09-16
+
+LiteSpeed database integration and maintenance reliability fixes.
+
+- Fix the umbrella database-status path: status is a PressWarden capability check, not an upstream LiteSpeed subcommand. Share database preflight, invocation and output handling across both CLI entry points and maintenance.
+- Integrate opt-in LiteSpeed `optimize_all` into `db` and `full` database maintenance. Default `ask` prompts once interactively and skips unattended cleanup; `on` explicitly authorizes automation and `off` retains native SQL only. No new cleanup is added to `fast` or `incident`; database backups remain the operator's responsibility.
+- Avoid running native OPTIMIZE twice when LiteSpeed succeeds. Retain native maintenance for non-LiteSpeed sites; unavailable active-plugin commands and partial execution failures report INCOMPLETE, not database corruption or success.
+- Replace external `wp db size` measurements with prefix-scoped allocation queries over WordPress's existing connection, usable with PHP process-spawning functions disabled. Do not invent deletion counts, disk-space savings or multisite-network cleanup.
+- Validate explicit multisite blog IDs before preflight/dispatch; reject zero, malformed, missing, deleted, archived or spam blogs rather than allowing cleanup of the default blog by accident.
+- Refactor native SQL maintenance into a tested PHP helper. Restrict operations to WordPress-prefixed tables, require explicit successful SQL status and a completion marker, keep unknown health distinct from proven table errors, and withhold optimization when repair has not established health.
+- Add progress before slow work, accurate incomplete/interruption reporting, controlled native-helper errors, strict LiteSpeed command mocks, and regression coverage for consent, fallback, prefix scoping, shared-host execution and failure propagation.
+- Correct the README version badge and document both command aliases and integrated maintenance. Existing config-transaction, update-policy, baseline, continuation and malware detection rules are not changed.
+
 ## 1.1.21 — 2026-09-15
 
 Complete LiteSpeed Cache WP-CLI management.

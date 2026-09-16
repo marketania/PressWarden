@@ -17,6 +17,7 @@ LS_SENSITIVE_KEY=''
 LS_USER_EXPORT=''
 LS_DB_BLOG=''
 LS_ARGS=()
+. "$PRESSWARDEN_DIR/lib/litespeed-db.sh"
 
 usage() {
   cat <<'EOF'
@@ -62,7 +63,7 @@ _ls_standard() {
 }
 _ls_database() {
   local site="$1"; shift
-  (cd "$site" && wp litespeed-database "$@")
+  pw_lsdb_run "$site" "$@"
 }
 _wp_bootstrap_ok() { _wp_builtin "$1" core is-installed >/dev/null 2>&1; }
 _lscwp_installed() { _wp_builtin "$1" plugin is-installed litespeed-cache >/dev/null 2>&1; }
@@ -73,11 +74,11 @@ _is_multisite() { _wp_builtin "$1" core is-installed --network >/dev/null 2>&1; 
 _family_available() {
   local site="$1" family="$2" sub="${3:-}"
   if [ "$family" = database ]; then
-    if [ -n "$sub" ]; then (cd "$site" && PAGER=cat WP_CLI_PAGER=cat wp help litespeed-database "$sub" >/dev/null 2>&1)
+    if [ -n "$sub" ]; then pw_lsdb_command_available "$site" "$sub"
     else (cd "$site" && PAGER=cat WP_CLI_PAGER=cat wp help litespeed-database >/dev/null 2>&1); fi
   else
-    if [ -n "$sub" ]; then _ls_standard "$site" help "litespeed-$family" "$sub" >/dev/null 2>&1
-    else _ls_standard "$site" help "litespeed-$family" >/dev/null 2>&1; fi
+    if [ -n "$sub" ]; then PAGER=cat WP_CLI_PAGER=cat _ls_standard "$site" help "litespeed-$family" "$sub" >/dev/null 2>&1
+    else PAGER=cat WP_CLI_PAGER=cat _ls_standard "$site" help "litespeed-$family" >/dev/null 2>&1; fi
   fi
 }
 
@@ -88,6 +89,9 @@ _preflight() {
   if ! _lscwp_active "$site"; then printf 'SKIP\tLiteSpeed Cache is installed but inactive\n'; return; fi
   if [ -n "$LS_FAMILY" ] && ! _family_available "$site" "$LS_FAMILY" "$LS_SUB"; then
     printf 'ERROR\tLiteSpeed command unavailable: litespeed-%s %s\n' "$LS_FAMILY" "$LS_SUB"; return
+  fi
+  if [ "$LS_FAMILY" = database ] && [ -n "$LS_DB_BLOG" ] && ! pw_lsdb_validate_blog "$site" "$LS_DB_BLOG"; then
+    printf 'ERROR\tInvalid or unavailable multisite blog ID: %s; no cleanup started\n' "$LS_DB_BLOG"; return
   fi
   printf 'READY\tLiteSpeed Cache %s\n' "$(_lscwp_version "$site" || printf unknown)"
 }
@@ -314,7 +318,7 @@ _parse_database() {
     *) fail_usage 'Unknown database action.' ;;
   esac
   [ "$#" -le 1 ] || fail_usage 'Database action accepts only optional --blog=ID.'
-  if [ "$#" -eq 1 ]; then case "$1" in --blog=*) LS_DB_BLOG=${1#--blog=} ;; *) fail_usage 'Use --blog=ID for multisite database actions.' ;; esac; _is_uint "$LS_DB_BLOG" || fail_usage 'Database blog ID must be numeric.'; LS_ARGS=(blog "$LS_DB_BLOG"); fi
+  if [ "$#" -eq 1 ]; then case "$1" in --blog=*) LS_DB_BLOG=${1#--blog=} ;; *) fail_usage 'Use --blog=ID for multisite database actions.' ;; esac; [[ "$LS_DB_BLOG" =~ ^[1-9][0-9]{0,9}$ ]] || fail_usage 'Database blog ID must be a positive integer.'; LS_ARGS=(blog "$LS_DB_BLOG"); fi
   LS_MUTATES=1; LS_LABEL="database $LS_SUB"
 }
 
@@ -350,17 +354,6 @@ _status() {
     printf '\n'
   done
   printf '\nSummary: active %s • skipped %s • errors %s\n' "$active" "$skipped" "$failed"
-  [ "$failed" -eq 0 ] || return 2
-}
-
-_database_status() {
-  local site label row state detail ready=0 skipped=0 failed=0
-  require_wp; discover_sites
-  for site in "${WP_SITES[@]}"; do
-    label=$(site_label_from_root "$site"); row=$(_preflight "$site"); IFS=$'\t' read -r state detail <<< "$row"
-    case "$state" in READY) ready=$((ready+1)); printf '  ✓ %-34s READY  %s' "$label" "$detail"; _is_multisite "$site" && printf ' • multisite'; printf '\n' ;; SKIP) skipped=$((skipped+1)); printf '  - %-34s SKIP   %s\n' "$label" "$detail" ;; *) failed=$((failed+1)); printf '  ✖ %-34s ERROR  %s\n' "$label" "$detail" ;; esac
-  done
-  printf '\nSummary: ready %s • skipped %s • errors %s\n' "$ready" "$skipped" "$failed"
   [ "$failed" -eq 0 ] || return 2
 }
 
@@ -419,6 +412,11 @@ _execute() {
 }
 
 if [ "$AREA" = status ]; then _status
-elif [ "$AREA" = database ] && [ "$LS_SUB" = status ]; then _database_status
+elif [ "$AREA" = database ] && [ "$LS_SUB" = status ]; then
+  # status is our read-only availability UI, not a LiteSpeed subcommand.
+  exec bash "$PRESSWARDEN_DIR/checks/litespeed-db.sh" status
+elif [ "$AREA" = database ] && [ "$LS_SUB" = optimize_all ] && [ -z "$LS_DB_BLOG" ]; then
+  # Keep the umbrella and legacy command's progress/statistics identical.
+  exec bash "$PRESSWARDEN_DIR/checks/litespeed-db.sh" optimize
 else _execute
 fi

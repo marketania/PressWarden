@@ -104,9 +104,9 @@ grep -q 'Production enrichment' "$ROOTDIR/checks/wp-wordfence-intel.sh"
 grep -q 'Scanner-only record' "$ROOTDIR/checks/wp-wordfence-intel.sh"
 
 stage 'DB unsupported CHECK regression'
-grep -q "doesn't support check" "$ROOTDIR/checks/wp-db-maintenance.sh"
-grep -q 'return \[.unsupported.' "$ROOTDIR/checks/wp-db-maintenance.sh"
-grep -q 'echo "SKIP\\t"' "$ROOTDIR/checks/wp-db-maintenance.sh"
+grep -q "doesn't support check" "$ROOTDIR/lib/db-maintenance.php"
+grep -q "array('unsupported'" "$ROOTDIR/lib/db-maintenance.php"
+grep -q "pwdbm_emit('SKIP'" "$ROOTDIR/lib/db-maintenance.php"
 grep -q 'Unsupported CHECK TABLE operations are informational' "$ROOTDIR/checks/wp-db-maintenance.sh"
 
 stage 'output wording regression'

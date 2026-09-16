@@ -49,6 +49,11 @@ PRESSWARDEN_YARA_RULES=""
 PRESSWARDEN_DB_MAX_ROWS=5000
 PRESSWARDEN_DB_MAX_BYTES=33554432
 
+# Optional LiteSpeed cleanup inside db/full maintenance. Cleanup deletes clutter;
+# maintain a current database backup (this command does not create one).
+# ask = prompt interactively, skip unattended; on = explicit opt-in; off = native SQL only.
+PRESSWARDEN_DB_LITESPEED=ask
+
 # Optional vulnerability/provider integrations. Never commit real tokens.
 WPSCAN_API_TOKEN=""
 PRESSWARDEN_WORDFENCE_TOKEN=""

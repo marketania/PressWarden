@@ -4,8 +4,9 @@ if [ -n "${PWFH_REPO:-}" ]; then
   PHPH="$PWFH_REPO/lib/finding-history.php"
   PWFH_HELPER_SH="$PWFH_REPO/lib/finding-history.sh"
 else
-  PHPH=/tmp/finding-history.php
-  PWFH_HELPER_SH=/tmp/finding-history.sh
+  PWFH_REPO=$(cd "$(dirname "$0")/.." && pwd)
+  PHPH="$PWFH_REPO/lib/finding-history.php"
+  PWFH_HELPER_SH="$PWFH_REPO/lib/finding-history.sh"
 fi
 export PWFH_HELPER_SH
 T=$(mktemp -d)
