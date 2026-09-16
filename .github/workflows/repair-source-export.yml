@@ -1,0 +1,19 @@
+name: Maintenance repair source export
+on:
+  push:
+    branches: [fix/litespeed-maintenance-1.1.22]
+    paths: [.github/workflows/repair-source-export.yml]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Archive tracked source only
+        run: git archive --format=tar HEAD > /tmp/presswarden-source.tar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: presswarden-review-source
+          path: /tmp/presswarden-source.tar
+          retention-days: 1
