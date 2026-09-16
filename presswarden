@@ -74,6 +74,7 @@ Usage:
   ./presswarden db [target]            Database security/malware audit + maintenance
   ./presswarden litespeed-db status [target]    Show LiteSpeed database cleanup availability
   ./presswarden litespeed-db optimize [target]  Run LiteSpeed Cache optimize_all cleanup
+  ./presswarden litespeed AREA ACTION ... --target SITE  Full LiteSpeed Cache CLI management
   ./presswarden scan [target]          Alias for fast
   ./presswarden inspect KIND [target]  Focused read-only PHP/JS/DB recheck (php|js|db|runtime)
   ./presswarden update               Update PressWarden code + threat intelligence
@@ -359,6 +360,22 @@ case "$cmd" in
     select_target "$@" || exit 2
     suite="$cmd"; [ "$suite" = scan ] && suite=fast
     exec bash "$PRESSWARDEN_DIR/suites/$suite.sh"
+    ;;
+  litespeed)
+    ls_target=''
+    ls_args=()
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --target|--site)
+          [ "$#" -ge 2 ] || { printf '%s requires a website, directory, or all.\n' "$1" >&2; exit 2; }
+          ls_target="$2"; shift 2 ;;
+        --target=*|--site=*)
+          ls_target=${1#*=}; [ -n "$ls_target" ] || { printf 'LiteSpeed target cannot be empty.\n' >&2; exit 2; }; shift ;;
+        *) ls_args+=("$1"); shift ;;
+      esac
+    done
+    if [ -n "$ls_target" ]; then select_target "$ls_target" || exit 2; else select_target || exit 2; fi
+    exec bash "$PRESSWARDEN_DIR/checks/litespeed.sh" "${ls_args[@]}"
     ;;
   litespeed-db)
     action="${1:-status}"; [ "$#" -gt 0 ] && shift || true
