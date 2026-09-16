@@ -1,0 +1,61 @@
+name: Apply reconciled maintenance
+on:
+  push:
+    branches: [fix/litespeed-maintenance-1.1.22]
+    paths: [.github/workflows/apply-reconciled-maintenance.yml]
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/litespeed-maintenance-1.1.22
+          fetch-depth: 0
+      - name: Apply reviewed reconciliation and verify every resulting source file
+        run: |
+          set -euo pipefail
+          python3 .reconcile-maintenance.py
+          sha256sum -c <<'HASHES'
+          2d4c2a05ef5443a9239c2a344a9dad43eb286d1b6ab61d8eab01b4a8008535ea  CHANGELOG.md
+          b402cd595b8d48c0377f2f9ea74a5afb141258dfbf93ada2d4d814017c0ddb51  README.md
+          b07bb892d144e091a2e472e8c6b03b9635543840bbc61f8ababda8ee9cee2627  VERSION
+          4c71cf7b46c3489e2594eec5d4287361f82ab0110dbcc86c762e6e14460c7841  checks/litespeed-db.sh
+          205ed8244e45e7e72f85f373eb200c9c19a9c3756da3f951d8cff9ae4b9a3851  checks/litespeed.sh
+          42f28642be21a82964c7501ce0f511e8f6bf896b7846e25d380311a63a1fadf1  checks/wp-db-maintenance.sh
+          50d7646e0e0e6c0d1370742f2d1e4ee6f4e921ea9ab78a4028160dd0191ff83d  config/config.example
+          6ab7ea9ea656a84a6795c77f6db0c0141e63d4e913f9e56fe294d8b88d02994e  docs/CONTINUATION.md
+          3aa93570efe2031c2eb5ba494e9be3e55ba64c347e8f644b2511f56f132bf7df  docs/DATABASE-SCANNING.md
+          770d465e8d18255547efae6e751eff83330bf307f311181023ef574c185f85f3  docs/LITESPEED-DATABASE.md
+          9205b59681ba7c9ac865339e1dccfb4b016dd2906c97759e95d89827560e9034  docs/LITESPEED.md
+          5e872c3b4913925bd7b70eb8ef419a82586f85550d30a4c994fafda862d8afd6  lib/db-blog.php
+          b959ce1ad4dc421c7905a89663a3c87343b6d7e7a701d3dca3335a02f6602b64  lib/db-maintenance.php
+          15ee54cb21c7886eb047a1ff20d7064a16d2947ad2ec2f837def14537245b37f  lib/db-size.php
+          5e13748a433b24734de183ee2af99f212f6f2b86a9388af0458c88502e85736a  lib/litespeed-db.sh
+          99be53eef1d8137b34b9f3529e3b4991eb4e4526fe6c2606fc718268acd297bc  lib/run-continuation.php
+          273e000f9583ac82b1ac51b6f94321a089ccb84d5f7b3d22f9f094ed15355708  presswarden
+          a39b84e0e4da227d8bca2df193b8d06341d6612035d096f3fd7e9d4200ce3f10  suites/db.sh
+          fe0b1db0a222563ebf4255d317487de0673c26c8b5d5236ce2007850f3882fef  suites/full.sh
+          aad38187eb91ae32a92634a2da5d78aa34ad03241fd3d7240d59704493d6bdfa  tests/db-maintenance-runtime.sh
+          54d7258309938db41bad91cdb83e71af45e98c107989423421d99331f69ba2cd  tests/db-maintenance.php
+          00070cdd281873a4dc91b4616463cf3d01448e2d7aa6bc106633ef8c797f85f5  tests/finding-history.sh
+          a86e37bb1a08b10d6c4f8b16c0043a712b24e7e2da4446ea2ffb5a97cc05145a  tests/litespeed-db.sh
+          45b5b70766191ee94a34388b92154a43b8b3d886ac7d0c76c349cad3880a30cb  tests/litespeed-full-cli.sh
+          5ca91492abf078e81ddeb97dd1a117c425372530eb21c3e84396a640b37b1971  tests/run-continuation.sh
+          967697a6da967d09deea31898bf9c948230cb6ee57afd9151ad002db073e9a5b  tests/smoke.sh
+          HASHES
+          git diff --check
+          php tests/db-maintenance.php
+          bash tests/db-maintenance-runtime.sh
+          bash tests/litespeed-db.sh
+          bash tests/litespeed-full-cli.sh
+          bash tests/run-continuation.sh
+          bash tests/smoke.sh
+          git add CHANGELOG.md README.md VERSION checks config docs lib presswarden suites tests
+          git rm .reconcile-maintenance.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix: reconcile multisite cleanup, consent and native maintenance as 1.1.23'
+          git push origin HEAD:fix/litespeed-maintenance-1.1.22
