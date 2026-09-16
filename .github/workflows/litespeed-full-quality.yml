@@ -36,7 +36,7 @@ jobs:
 
       - name: Bash syntax
         shell: bash
-        run: bash -n presswarden checks/litespeed.sh checks/litespeed-db.sh tests/litespeed-full-cli.sh
+        run: bash -n presswarden checks/litespeed.sh checks/litespeed-db.sh suites/db.sh suites/full.sh tests/litespeed-full-cli.sh
 
       - name: Full LiteSpeed CLI behavior
         shell: bash
