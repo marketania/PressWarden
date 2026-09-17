@@ -45,10 +45,11 @@ _lscwp_active() { _wp_builtin "$1" plugin is-active litespeed-cache >/dev/null 2
 _is_multisite() { _wp_builtin "$1" core is-installed --network >/dev/null 2>&1; }
 
 _lscwp_commands_available() {
-  local site="$1" sub
-  for sub in clear_posts clear_comments clear_trackbacks clear_transients optimize_tables; do
-    (cd "$site" 2>/dev/null && PAGER=cat WP_CLI_PAGER=cat wp help litespeed-database "$sub" >/dev/null 2>&1) || return 1
-  done
+  local site="$1"
+  # One family-level probe is enough. The previous implementation requested
+  # help for five subcommands per site, causing hundreds of redundant WordPress
+  # bootstraps before a fleet run could begin changing the first database.
+  (cd "$site" 2>/dev/null && PAGER=cat WP_CLI_PAGER=cat wp help litespeed-database >/dev/null 2>&1)
 }
 
 _multisite_blog_ids() {
@@ -252,10 +253,16 @@ _print_action_log() {
 
 _preflight_site() {
   local site="$1" ids count
-  if ! _wp_bootstrap_ok "$site"; then printf 'ERROR\tWordPress/WP-CLI bootstrap failed\n'; return 0; fi
-  if ! _lscwp_installed "$site"; then printf 'SKIP\tLiteSpeed Cache is not installed\n'; return 0; fi
-  if ! _lscwp_active "$site"; then printf 'SKIP\tLiteSpeed Cache is installed but inactive\n'; return 0; fi
-  if ! _lscwp_commands_available "$site"; then printf 'ERROR\tOne or more required LiteSpeed database commands are unavailable\n'; return 0; fi
+  # Active sites take the fast path: one plugin-active check, one LiteSpeed
+  # database-family probe, and multisite detection. Only failures need the
+  # extra bootstrap/install calls required to distinguish unavailable states.
+  if ! _lscwp_active "$site"; then
+    if ! _wp_bootstrap_ok "$site"; then printf 'ERROR\tWordPress/WP-CLI bootstrap failed\n'; return 0; fi
+    if ! _lscwp_installed "$site"; then printf 'SKIP\tLiteSpeed Cache is not installed\n'; return 0; fi
+    printf 'SKIP\tLiteSpeed Cache is installed but inactive\n'
+    return 0
+  fi
+  if ! _lscwp_commands_available "$site"; then printf 'ERROR\tLiteSpeed database command family is unavailable\n'; return 0; fi
   if _is_multisite "$site"; then
     ids=$(_multisite_blog_ids "$site") || { printf 'ERROR\tmultisite blog-ID inventory failed; no cleanup will be attempted\n'; return 0; }
     count=$(printf '%s\n' "$ids" | awk 'NF { n++ } END { print n+0 }')
@@ -270,7 +277,7 @@ _confirm_optimize() {
   [ "$SUITE_MODE" = 1 ] && return 0
   [ "${PRESSWARDEN_INTERACTIVE:-1}" = 0 ] && return 0
   if [ -r /dev/tty ] && [ -w /dev/tty ]; then
-    printf '\n  Run verified LiteSpeed database maintenance for %s eligible WordPress installation(s) under %s? [y/N]: ' "$count" "$ROOT" > /dev/tty
+    printf '\n  Run verified LiteSpeed database maintenance across up to %s discovered WordPress installation(s) under %s? Ineligible sites will be skipped. [y/N]: ' "$count" "$ROOT" > /dev/tty
     IFS= read -r ans < /dev/tty || ans=''
     case "$ans" in y|Y|yes|YES) return 0 ;; *) printf 'Cancelled.\n'; return 1 ;; esac
   fi
@@ -323,38 +330,57 @@ _status() {
 }
 
 _optimize() {
-  local site label row state detail is_multi idx=0 total exec_idx=0 exec_total log retrylog
+  local site label row state detail is_multi idx=0 total log retrylog
   local ready=0 unavailable=0 preflight_failed=0 verified=0 already=0 unverified=0 failed=0
   local pair_n=0 pair_before=0 pair_after=0
   local tr=0 to=0 ta=0 tt=0 ts=0 tc=0 tk=0 te=0 tx=0 tb=0
   local dr do_ da dt ds dc dk de dx db
-  local -a eligible=() eligible_multi=()
   require_wp; discover_sites; total=${#WP_SITES[@]}
   trap _lsdb_interrupt INT TERM; LSDB_PHASE=preflight
-  printf 'LiteSpeed database maintenance preflight — %s discovered WordPress installation(s)\n' "$total"
+  printf 'LiteSpeed verified database maintenance — %s discovered WordPress installation(s)\n' "$total"
   printf 'Verification: LiteSpeed dashboard counters BEFORE → documented cleanup commands → counters AFTER.\n'
+  printf 'Execution: streaming per installation; each site is preflighted and processed immediately.\n'
   if [ "$SUITE_MODE" = 1 ]; then printf 'Mode: DB maintenance suite (before native SQL table maintenance).\n'; fi
   printf '\n'
-  for site in "${WP_SITES[@]}"; do
-    idx=$((idx+1)); label=$(site_label_from_root "$site"); row=$(_preflight_site "$site"); IFS=$'\t' read -r state detail <<< "$row"
-    case "$state" in
-      READY) ready=$((ready+1)); eligible+=("$site"); if [[ "$detail" == multisite* ]]; then eligible_multi+=(1); else eligible_multi+=(0); fi; printf '  [%3d/%3d] ✓ %-34s READY  %s\n' "$idx" "$total" "$label" "$detail" ;;
-      SKIP) unavailable=$((unavailable+1)); printf '  [%3d/%3d] - %-34s SKIP   %s\n' "$idx" "$total" "$label" "$detail" ;;
-      *) preflight_failed=$((preflight_failed+1)); printf '  [%3d/%3d] ✖ %-34s ERROR  %s\n' "$idx" "$total" "$label" "$detail" ;;
-    esac
-  done
-  printf '\nPreflight complete: ready %s • unavailable %s • errors %s\n' "$ready" "$unavailable" "$preflight_failed"
-  if [ "${#eligible[@]}" -eq 0 ]; then
-    printf 'No eligible LiteSpeed Cache installations found; nothing changed.\n'
-    trap - INT TERM; LSDB_PHASE=''; [ "$preflight_failed" -eq 0 ] || return 2; return 0
-  fi
-  _confirm_optimize "${#eligible[@]}" || { trap - INT TERM; LSDB_PHASE=''; return 1; }
 
-  LSDB_PHASE=optimize; exec_total=${#eligible[@]}
-  printf '\nRunning verified LiteSpeed database maintenance sequentially...\n\n'
-  for site in "${eligible[@]}"; do
-    exec_idx=$((exec_idx+1)); label=$(site_label_from_root "$site"); is_multi=${eligible_multi[$((exec_idx-1))]}
-    printf '[%3d/%3d] %s\n' "$exec_idx" "$exec_total" "$label"
+  _confirm_optimize "$total" || { trap - INT TERM; LSDB_PHASE=''; return 1; }
+
+  # Once fleet processing begins, earlier installations may already have been
+  # changed while a later installation is being preflighted. Treat any
+  # interruption as an interrupted maintenance pass, never as a no-change event.
+  LSDB_PHASE=optimize
+  printf '\nProcessing verified LiteSpeed database maintenance sequentially...\n\n'
+  for site in "${WP_SITES[@]}"; do
+    idx=$((idx+1)); label=$(site_label_from_root "$site")
+    printf '[%3d/%3d] %s\n' "$idx" "$total" "$label"
+
+    row=$(_preflight_site "$site"); IFS=$'\t' read -r state detail <<< "$row"
+    case "$state" in
+      SKIP)
+        unavailable=$((unavailable+1))
+        printf '    PRECHECK\n      - UNAVAILABLE  %s\n' "$detail"
+        printf '    RESULT\n      - SKIPPED  Native PressWarden DB maintenance can still run independently.\n\n'
+        continue
+        ;;
+      ERROR)
+        preflight_failed=$((preflight_failed+1))
+        printf '    PRECHECK\n      ✖ ERROR  %s\n' "$detail"
+        printf '    RESULT\n      ✖ FAILED  LiteSpeed database maintenance did not start for this installation.\n\n'
+        continue
+        ;;
+      READY)
+        ready=$((ready+1))
+        printf '    PRECHECK\n      ✓ %s\n' "$detail"
+        ;;
+      *)
+        preflight_failed=$((preflight_failed+1))
+        printf '    PRECHECK\n      ✖ ERROR  unexpected preflight state\n'
+        printf '    RESULT\n      ✖ FAILED  LiteSpeed database maintenance did not start for this installation.\n\n'
+        continue
+        ;;
+    esac
+
+    is_multi=0; [[ "$detail" == multisite* ]] && is_multi=1
     if ! _capture_install_state "$site" "$is_multi"; then
       failed=$((failed+1)); printf '    BEFORE\n      ✖ ERROR  Could not read LiteSpeed dashboard counters. Database was not changed.\n\n'; continue
     fi
@@ -375,9 +401,8 @@ _optimize() {
       rm -f "$log"; continue
     fi
 
-    # A second targeted pass handles residual dashboard counters. This is
-    # especially useful when deleting drafts/trash creates orphaned post meta
-    # after LiteSpeed's first orphan-meta cleanup within the post-data group.
+    # One bounded targeted pass handles residual counters such as orphaned post
+    # meta created by deleting drafts/trash during the first post-data pass.
     if [ "$LS_ACTION_FAILURES" -eq 0 ] && _state_pending; then
       retrylog=$(tmpf); : > "$retrylog"
       _run_actions "$site" "$is_multi" "$retrylog" residual || true
@@ -425,6 +450,7 @@ _optimize() {
   failed=$((failed+preflight_failed))
   printf 'LiteSpeed Database Maintenance Summary\n\n'
   printf '  Websites checked:          %8s\n' "$total"
+  printf '  Eligible processed:        %8s\n' "$ready"
   printf '  Optimized + verified:      %8s\n' "$verified"
   printf '  Already optimized:         %8s\n' "$already"
   printf '  LiteSpeed unavailable:     %8s\n' "$unavailable"

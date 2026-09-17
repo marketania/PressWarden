@@ -91,7 +91,8 @@ case "${1:-}" in
     ;;
   help)
     [ "${2:-}" = litespeed-database ] || exit 93
-    case "${3:-}" in clear_posts|clear_comments|clear_trackbacks|clear_transients|optimize_tables) : ;; *) exit 93 ;; esac
+    printf '%s\n' "${3:-family}" >> "$p/.help-calls"
+    case "${3:-}" in ''|clear_posts|clear_comments|clear_trackbacks|clear_transients|optimize_tables) : ;; *) exit 93 ;; esac
     [ -f "$p/.litespeed-active" ] || exit 94
     [ ! -f "$p/.no-litespeed-command" ] || exit 95
     ;;
@@ -153,6 +154,40 @@ grep -q 'CLEANUP AVAILABLE' "$T/status"
 grep -q 'other.com' "$T/status"; grep -q 'UNAVAILABLE.*not installed' "$T/status"
 grep -q 'broken.com' "$T/status"; grep -q 'ERROR.*bootstrap failed' "$T/status"
 
+# Fleet optimization must begin maintaining eligible sites immediately instead
+# of running a five-subcommand help preflight across the whole fleet first.
+rm -f "$T/sites/example.com/public_html/.actions" "$T/sites/example.com/public_html/.help-calls"
+set +e
+run litespeed-db optimize all > "$T/fleet-optimize" 2>&1
+rc=$?
+set -e
+[ "$rc" -eq 2 ]  # broken.com remains an honest fleet error
+[ -s "$T/sites/example.com/public_html/.actions" ]
+grep -q 'Execution: streaming per installation' "$T/fleet-optimize"
+grep -q 'example.com' "$T/fleet-optimize"
+grep -q '✓ VERIFIED' "$T/fleet-optimize"
+grep -q 'other.com' "$T/fleet-optimize"; grep -q 'UNAVAILABLE.*not installed' "$T/fleet-optimize"
+grep -q 'broken.com' "$T/fleet-optimize"; grep -q 'ERROR.*bootstrap failed' "$T/fleet-optimize"
+grep -q 'Optimized + verified:.*1' "$T/fleet-optimize"
+grep -q 'LiteSpeed unavailable:.*1' "$T/fleet-optimize"
+grep -q 'Failed:.*1' "$T/fleet-optimize"
+help_calls=$(wc -l < "$T/sites/example.com/public_html/.help-calls" 2>/dev/null || printf '0')
+[ "${help_calls:-0}" -le 1 ] || { echo "fleet preflight used too many LiteSpeed help probes: $help_calls" >&2; exit 1; }
+! grep -q 'Preflight complete:' "$T/fleet-optimize"
+
+# Dedicated command accepts --target, while a mistaken --hostname receives a
+# PressWarden correction instead of falling through to site/WP-CLI errors.
+run litespeed-db status --target example.com > "$T/status-target" 2>&1
+grep -q 'example.com' "$T/status-target"
+set +e
+run litespeed-db optimize --example.com > "$T/bad-target" 2>&1
+rc=$?
+set -e
+[ "$rc" -eq 2 ]
+grep -q 'Invalid PressWarden target syntax: --example.com' "$T/bad-target"
+grep -q './presswarden litespeed-db optimize example.com' "$T/bad-target"
+! grep -q 'Website not found' "$T/bad-target"
+
 # One-site maintenance must show BEFORE/ACTION/AFTER, run documented command
 # groups without globals, retry residual post cleanup, and verify all UI counters.
 rm -f "$T/sites/example.com/public_html/.actions"
@@ -213,7 +248,7 @@ run litespeed-db status other.com > "$T/unavailable" 2>&1
 rc=$?
 set -e
 [ "$rc" -eq 2 ]
-grep -q 'required LiteSpeed database commands are unavailable' "$T/unavailable"
+grep -q 'LiteSpeed database command family is unavailable' "$T/unavailable"
 rm -f "$T/sites/other.com/public_html/.litespeed-installed" "$T/sites/other.com/public_html/.litespeed-active" "$T/sites/other.com/public_html/.no-litespeed-command"
 
 # Multisite must verify every validated blog separately and still present one

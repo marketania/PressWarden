@@ -72,9 +72,9 @@ Usage:
   ./presswarden full [target]          Comprehensive audit + deep integrity/DB maintenance
   ./presswarden incident [target]      Evidence-first compromise / reinfection investigation
   ./presswarden db [target]            Database security/malware audit + LiteSpeed/native maintenance
-  ./presswarden litespeed-db status [target]    Show LiteSpeed database cleanup availability
-  ./presswarden litespeed-db optimize [target]  Run LiteSpeed Cache optimize_all cleanup
-  ./presswarden litespeed AREA ACTION ... --target SITE  Full LiteSpeed Cache CLI management
+  ./presswarden litespeed-db status [target|--target target]    Show verified LiteSpeed database status
+  ./presswarden litespeed-db optimize [target|--target target]  Run verified LiteSpeed database maintenance
+  ./presswarden litespeed AREA ACTION ... [target|--target target]  Full LiteSpeed Cache CLI management
   ./presswarden scan [target]          Alias for fast
   ./presswarden inspect KIND [target]  Focused read-only PHP/JS/DB recheck (php|js|db|runtime)
   ./presswarden update               Update PressWarden code + threat intelligence
@@ -368,12 +368,65 @@ case "$cmd" in
       case "$1" in
         --target|--site)
           [ "$#" -ge 2 ] || { printf '%s requires a website, directory, or all.\n' "$1" >&2; exit 2; }
+          [ -z "$ls_target" ] || { printf 'LiteSpeed target was supplied more than once. Use one positional target or one --target/--site value.\n' >&2; exit 2; }
           ls_target="$2"; shift 2 ;;
         --target=*|--site=*)
+          [ -z "$ls_target" ] || { printf 'LiteSpeed target was supplied more than once. Use one positional target or one --target/--site value.\n' >&2; exit 2; }
           ls_target=${1#*=}; [ -n "$ls_target" ] || { printf 'LiteSpeed target cannot be empty.\n' >&2; exit 2; }; shift ;;
         *) ls_args+=("$1"); shift ;;
       esac
     done
+
+    # LiteSpeed database actions have no ordinary positional operands after the
+    # action name (only optional --blog=ID), so PressWarden can safely accept the
+    # same positional website target used by the rest of the CLI.
+    if [ "${ls_args[0]:-}" = database ] || [ "${ls_args[0]:-}" = db ]; then
+      ls_db_area="${ls_args[0]}"
+      ls_db_action="${ls_args[1]:-status}"
+      ls_db_known=0
+      case "$ls_db_action" in
+        status|clear-posts|clear_posts|clear-comments|clear_comments|clear-trackbacks|clear_trackbacks|clear-transients|clear_transients|optimize-tables|optimize_tables|optimize-all|optimize_all|optimize) ls_db_known=1 ;;
+      esac
+
+      # `presswarden litespeed database example.com` means status for that site.
+      if [ "$ls_db_known" -eq 0 ] && [ -z "$ls_target" ]; then
+        case "$ls_db_action" in
+          all|*.*|*/*|.|..|~/*)
+            ls_target="$ls_db_action"
+            ls_db_action=status
+            ls_args=("$ls_db_area" "$ls_db_action")
+            ls_db_known=1
+            ;;
+        esac
+      fi
+
+      if [ "$ls_db_known" -eq 1 ]; then
+        ls_db_rest=()
+        ls_i=2
+        while [ "$ls_i" -lt "${#ls_args[@]}" ]; do
+          ls_arg="${ls_args[$ls_i]}"
+          case "$ls_arg" in
+            --blog=*) ls_db_rest+=("$ls_arg") ;;
+            --all|--*.*|--*/*)
+              ls_bad_target=${ls_arg#--}
+              printf 'Invalid PressWarden target syntax: %s\n' "$ls_arg" >&2
+              printf 'Use one of these instead:\n' >&2
+              printf '  ./presswarden litespeed database %s %s\n' "$ls_db_action" "$ls_bad_target" >&2
+              printf '  ./presswarden litespeed database %s --target %s\n' "$ls_db_action" "$ls_bad_target" >&2
+              exit 2
+              ;;
+            --*) ls_db_rest+=("$ls_arg") ;;
+            *)
+              [ -z "$ls_target" ] || { printf 'LiteSpeed database target was supplied more than once. Use one website/directory/all target.\n' >&2; exit 2; }
+              ls_target="$ls_arg"
+              ;;
+          esac
+          ls_i=$((ls_i+1))
+        done
+        ls_args=("$ls_db_area" "$ls_db_action" "${ls_db_rest[@]}")
+      fi
+    fi
+
     if [ -n "$ls_target" ]; then select_target "$ls_target" || exit 2; else select_target || exit 2; fi
     exec bash "$PRESSWARDEN_DIR/checks/litespeed.sh" "${ls_args[@]}"
     ;;
@@ -381,10 +434,38 @@ case "$cmd" in
     action="${1:-status}"; [ "$#" -gt 0 ] && shift || true
     case "$action" in
       status|optimize) : ;;
-      *) printf 'Use litespeed-db status or litespeed-db optimize.\n' >&2; exit 2 ;;
+      optimize-all|optimize_all) action=optimize ;;
+      *) printf 'PressWarden LiteSpeed DB action must be status or optimize.\n' >&2; printf 'Examples:\n  ./presswarden litespeed-db status example.com\n  ./presswarden litespeed-db optimize example.com\n' >&2; exit 2 ;;
     esac
-    [ "$#" -le 1 ] || { printf 'Usage: ./presswarden litespeed-db status|optimize [website|directory|all]\n' >&2; exit 2; }
-    select_target "$@" || exit 2
+    lsdb_target=''
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --target|--site)
+          [ "$#" -ge 2 ] || { printf '%s requires a website, directory, or all.\n' "$1" >&2; exit 2; }
+          [ -z "$lsdb_target" ] || { printf 'LiteSpeed DB target was supplied more than once.\n' >&2; exit 2; }
+          lsdb_target="$2"; shift 2 ;;
+        --target=*|--site=*)
+          [ -z "$lsdb_target" ] || { printf 'LiteSpeed DB target was supplied more than once.\n' >&2; exit 2; }
+          lsdb_target=${1#*=}; [ -n "$lsdb_target" ] || { printf 'LiteSpeed DB target cannot be empty.\n' >&2; exit 2; }; shift ;;
+        --all|--*.*|--*/*)
+          lsdb_bad=${1#--}
+          printf 'Invalid PressWarden target syntax: %s\n' "$1" >&2
+          printf 'Use one of these instead:\n' >&2
+          printf '  ./presswarden litespeed-db %s %s\n' "$action" "$lsdb_bad" >&2
+          printf '  ./presswarden litespeed-db %s --target %s\n' "$action" "$lsdb_bad" >&2
+          exit 2
+          ;;
+        --*)
+          printf 'Unknown PressWarden litespeed-db option: %s\n' "$1" >&2
+          printf 'Use a positional target or --target SITE. Example: ./presswarden litespeed-db %s example.com\n' "$action" >&2
+          exit 2
+          ;;
+        *)
+          [ -z "$lsdb_target" ] || { printf 'LiteSpeed DB target was supplied more than once. Use one website, directory, or all.\n' >&2; exit 2; }
+          lsdb_target="$1"; shift ;;
+      esac
+    done
+    select_target "$lsdb_target" || exit 2
     exec bash "$PRESSWARDEN_DIR/checks/litespeed-db.sh" "$action"
     ;;
   intel)
@@ -508,5 +589,42 @@ case "$cmd" in
     select_target "$@" || exit 2
     exec bash "$PRESSWARDEN_DIR/checks/file-mods.sh" "$action"
     ;;
-  *) printf 'Unknown command: %s\n\n' "$cmd" >&2; usage >&2; exit 2 ;;
+  database|litespeed-database)
+    hint_target=''
+    hint_action="${1:-status}"
+    for hint_arg in "$@"; do
+      case "$hint_arg" in
+        --target=*|--site=*) hint_target=${hint_arg#*=} ;;
+        --all|--*.*|--*/*) hint_target=${hint_arg#--} ;;
+        all|*.*|*/*|.|..|~/*) hint_target="$hint_arg" ;;
+      esac
+    done
+    printf 'PressWarden has no top-level "%s" command.\n' "$cmd" >&2
+    printf 'Use PressWarden syntax instead:\n' >&2
+    if [ "$hint_action" = status ]; then
+      if [ -n "$hint_target" ]; then
+        printf '  ./presswarden litespeed-db status %s\n' "$hint_target" >&2
+        printf '  ./presswarden litespeed database status --target %s\n' "$hint_target" >&2
+      else
+        printf '  ./presswarden litespeed-db status [website|directory|all]\n' >&2
+        printf '  ./presswarden litespeed database status --target SITE\n' >&2
+      fi
+    else
+      if [ -n "$hint_target" ]; then
+        printf '  ./presswarden litespeed-db optimize %s\n' "$hint_target" >&2
+        printf '  ./presswarden litespeed database optimize-all --target %s\n' "$hint_target" >&2
+        printf '  ./presswarden db %s    # full PressWarden DB security + maintenance suite\n' "$hint_target" >&2
+      else
+        printf '  ./presswarden litespeed-db optimize [website|directory|all]\n' >&2
+        printf '  ./presswarden litespeed database optimize-all --target SITE\n' >&2
+        printf '  ./presswarden db [website|directory|all]\n' >&2
+      fi
+    fi
+    exit 2
+    ;;
+  *)
+    printf 'Unknown PressWarden command: %s\n' "$cmd" >&2
+    printf 'Run ./presswarden help to see valid PressWarden inputs.\n' >&2
+    exit 2
+    ;;
 esac

@@ -91,6 +91,7 @@ export PRESSWARDEN_INTERACTIVE=0
 export PRESSWARDEN_NOCOLOR=1
 export PRESSWARDEN_PROGRESS=0
 run_check(){ ROOT="$T/sites" PRESSWARDEN_DIR="$REPO" bash "$REPO/checks/litespeed.sh" "$@"; }
+run_cli(){ bash "$REPO/presswarden" "$@"; }
 
 # Fleet status inventories all eight documented LiteSpeed WP-CLI families.
 run_check status > "$T/status"
@@ -173,4 +174,33 @@ for action in clear-posts clear-comments clear-trackbacks clear-transients optim
 done
 grep -q 'litespeed-database optimize_all blog 2' "$T/sites/example.com/public_html/.last-command"
 
-printf 'Full LiteSpeed CLI management: all documented families/subcommands, redaction, backups, guards and DB invocation PASS\n'
+# Top-level PressWarden accepts a positional target for LiteSpeed database
+# actions, preserves explicit --target, and gives concise corrections for the
+# common mistaken `--hostname` and top-level `database` forms.
+rm -f "$T/sites/example.com/public_html/.last-command" "$T/sites/other.com/public_html/.last-command"
+run_cli litespeed database optimize-all example.com > "$T/cli-positional" 2>&1
+grep -q 'litespeed-database optimize_all' "$T/sites/example.com/public_html/.last-command"
+[ ! -f "$T/sites/other.com/public_html/.last-command" ]
+rm -f "$T/sites/example.com/public_html/.last-command"
+run_cli litespeed database optimize-all --target example.com > "$T/cli-target" 2>&1
+grep -q 'litespeed-database optimize_all' "$T/sites/example.com/public_html/.last-command"
+
+set +e
+run_cli litespeed database optimize-all --example.com > "$T/cli-bad-target" 2>&1
+rc=$?
+set -e
+[ "$rc" -eq 2 ]
+grep -q 'Invalid PressWarden target syntax: --example.com' "$T/cli-bad-target"
+grep -q 'litespeed database optimize-all --target example.com' "$T/cli-bad-target"
+! grep -q 'Areas and actions:' "$T/cli-bad-target"
+
+set +e
+run_cli database optimize-all --example.com > "$T/cli-top-database" 2>&1
+rc=$?
+set -e
+[ "$rc" -eq 2 ]
+grep -q 'PressWarden has no top-level "database" command' "$T/cli-top-database"
+grep -q 'litespeed-db optimize example.com' "$T/cli-top-database"
+! grep -q 'PressWarden v' "$T/cli-top-database"
+
+printf 'Full LiteSpeed CLI management: all documented families/subcommands, PressWarden targeting/corrections, redaction, backups, guards and DB invocation PASS\n'

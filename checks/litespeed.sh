@@ -46,7 +46,7 @@ Notes:
 EOF
 }
 
-fail_usage() { printf '%s\n\n' "$1" >&2; usage >&2; exit 2; }
+fail_usage() { printf 'PressWarden LiteSpeed input error: %s\n' "$1" >&2; printf 'Run ./presswarden litespeed help for the full command list.\n' >&2; exit 2; }
 _is_uint() { case "${1:-}" in ''|*[!0-9]*) return 1 ;; *) return 0 ;; esac; }
 _is_format() { case "${1:-}" in table|json|csv|yaml|ids|count) return 0 ;; *) return 1 ;; esac; }
 _is_sensitive_name() { printf '%s' "${1:-}" | grep -Eiq '(api.?key|token|secret|password|passwd|private.?key|ssl.?key|auth|credential)'; }
@@ -319,7 +319,7 @@ _parse_database() {
     optimize_all|optimize-all|optimize) LS_SUB=optimize_all ;;
     *) fail_usage 'Unknown database action.' ;;
   esac
-  [ "$#" -le 1 ] || fail_usage 'Database action accepts only optional --blog=ID.'
+  [ "$#" -le 1 ] || fail_usage 'Database action accepts only optional --blog=ID after PressWarden target parsing. Select a website with a positional target or --target SITE.'
   if [ "$#" -eq 1 ]; then case "$1" in --blog=*) LS_DB_BLOG=${1#--blog=} ;; *) fail_usage 'Use --blog=ID for multisite database actions.' ;; esac; _is_uint "$LS_DB_BLOG" || fail_usage 'Database blog ID must be numeric.'; LS_ARGS=(blog "$LS_DB_BLOG"); fi
   LS_MUTATES=1; LS_LABEL="database $LS_SUB"
 }
