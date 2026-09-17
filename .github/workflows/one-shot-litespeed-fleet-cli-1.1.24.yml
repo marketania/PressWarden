@@ -23,33 +23,27 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 tools/apply-litespeed-fleet-cli-1.1.24.py
-
-      - name: Debug focused behavior
-        shell: bash
-        run: |
-          set -uo pipefail
-          set +e
-          git diff --check
-          drc=$?
-          [ "$drc" -eq 0 ] || exit "$drc"
-          bash -n presswarden checks/litespeed.sh checks/litespeed-db.sh tests/litespeed-db.sh tests/litespeed-full-cli.sh
-          drc=$?
-          [ "$drc" -eq 0 ] || exit "$drc"
-          cp tests/litespeed-db.sh /tmp/litespeed-db-test.orig
           python3 - <<'PY'
           from pathlib import Path
-          p=Path('tests/litespeed-db.sh')
-          s=p.read_text()
-          s=s.replace("T=$(mktemp -d); trap 'rm -rf \"$T\"' EXIT", "T=$(mktemp -d); trap 'echo DEBUG_KEEP=$T' EXIT", 1)
-          p.write_text(s)
+          p = Path('tools/apply-litespeed-fleet-cli-1.1.24.py')
+          s = p.read_text(encoding='utf-8')
+          old = 'replace_section("checks/litespeed-db.sh", "_optimize() {\\n", "case \\\"$ACTION\\\" in\\n", new_optimize)'
+          new = 'replace_section("checks/litespeed-db.sh", "\\n_optimize() {\\n", "case \\\"$ACTION\\\" in\\n", "\\n" + new_optimize)'
+          if s.count(old) != 1:
+              raise SystemExit('optimize function boundary patch target not unique')
+          p.write_text(s.replace(old, new, 1), encoding='utf-8')
           PY
-          bash -x tests/litespeed-db.sh
-          rc=$?
-          echo "DEBUG_TEST_RC=$rc"
-          find /tmp -maxdepth 2 -type f \( -name status -o -name fleet-optimize -o -name bad-target \) -print -exec sh -c 'echo "--- $1"; cat "$1"' _ {} \;
-          mv /tmp/litespeed-db-test.orig tests/litespeed-db.sh
-          exit "$rc"
+          python3 tools/apply-litespeed-fleet-cli-1.1.24.py
+
+      - name: Validate focused behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          bash -n presswarden checks/litespeed.sh checks/litespeed-db.sh tests/litespeed-db.sh tests/litespeed-full-cli.sh
+          bash tests/litespeed-db.sh
+          bash tests/litespeed-full-cli.sh
+          bash tests/smoke.sh
 
       - name: Commit implementation
         shell: bash
