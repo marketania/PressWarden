@@ -29,8 +29,13 @@ jobs:
         shell: bash
         run: |
           set -uo pipefail
-          git diff --check || exit $?
-          bash -n presswarden checks/litespeed.sh checks/litespeed-db.sh tests/litespeed-db.sh tests/litespeed-full-cli.sh || exit $?
+          set +e
+          git diff --check
+          drc=$?
+          [ "$drc" -eq 0 ] || exit "$drc"
+          bash -n presswarden checks/litespeed.sh checks/litespeed-db.sh tests/litespeed-db.sh tests/litespeed-full-cli.sh
+          drc=$?
+          [ "$drc" -eq 0 ] || exit "$drc"
           cp tests/litespeed-db.sh /tmp/litespeed-db-test.orig
           python3 - <<'PY'
           from pathlib import Path
