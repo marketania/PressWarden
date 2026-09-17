@@ -31,7 +31,7 @@ jobs:
           set -euo pipefail
           git diff --check
           bash -n presswarden checks/litespeed.sh checks/litespeed-db.sh tests/litespeed-db.sh tests/litespeed-full-cli.sh
-          bash tests/litespeed-db.sh
+          bash -x tests/litespeed-db.sh
           bash tests/litespeed-full-cli.sh
           bash tests/smoke.sh
 
