@@ -25,15 +25,26 @@ jobs:
           set -euo pipefail
           python3 tools/apply-litespeed-fleet-cli-1.1.24.py
 
-      - name: Validate focused behavior
+      - name: Debug focused behavior
         shell: bash
         run: |
-          set -euo pipefail
-          git diff --check
-          bash -n presswarden checks/litespeed.sh checks/litespeed-db.sh tests/litespeed-db.sh tests/litespeed-full-cli.sh
+          set -uo pipefail
+          git diff --check || exit $?
+          bash -n presswarden checks/litespeed.sh checks/litespeed-db.sh tests/litespeed-db.sh tests/litespeed-full-cli.sh || exit $?
+          cp tests/litespeed-db.sh /tmp/litespeed-db-test.orig
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('tests/litespeed-db.sh')
+          s=p.read_text()
+          s=s.replace("T=$(mktemp -d); trap 'rm -rf \"$T\"' EXIT", "T=$(mktemp -d); trap 'echo DEBUG_KEEP=$T' EXIT", 1)
+          p.write_text(s)
+          PY
           bash -x tests/litespeed-db.sh
-          bash tests/litespeed-full-cli.sh
-          bash tests/smoke.sh
+          rc=$?
+          echo "DEBUG_TEST_RC=$rc"
+          find /tmp -maxdepth 2 -type f \( -name status -o -name fleet-optimize -o -name bad-target \) -print -exec sh -c 'echo "--- $1"; cat "$1"' _ {} \;
+          mv /tmp/litespeed-db-test.orig tests/litespeed-db.sh
+          exit "$rc"
 
       - name: Commit implementation
         shell: bash
