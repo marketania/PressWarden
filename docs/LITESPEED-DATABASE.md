@@ -16,7 +16,22 @@ Run cleanup and verify the resulting state:
 presswarden litespeed-db optimize [target]
 ```
 
-`target` follows normal PressWarden targeting: a website name, nested website name, directory, `all`, or the configured fleet when omitted.
+`target` follows normal PressWarden targeting: a website name, nested website name, directory, `all`, or the configured fleet when omitted. The focused command also accepts `--target SITE` / `--site SITE`.
+
+For the umbrella LiteSpeed database interface, both of these are valid PressWarden forms:
+
+```bash
+presswarden litespeed database optimize-all example.com
+presswarden litespeed database optimize-all --target example.com
+```
+
+Do not prefix a website itself with `--` (for example `--example.com`). PressWarden detects that common mistake and prints the corrected command instead of forwarding it to the lower-level parser.
+
+## Fleet execution
+
+Fleet maintenance is streaming. After one fleet confirmation, PressWarden preflights, measures, maintains, and verifies each discovered installation immediately before moving to the next one. It does not wait for an expensive whole-fleet preflight before the first database is changed.
+
+Active-site preflight also probes the LiteSpeed database command family once instead of requesting help for every cleanup subcommand. This substantially reduces redundant WordPress bootstraps on large shared-host fleets while preserving per-site errors and final verification.
 
 ## What “verified” means
 

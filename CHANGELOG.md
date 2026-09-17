@@ -2,6 +2,27 @@
 
 All notable changes to PressWarden are documented here.
 
+## 1.1.24 — 2026-09-17
+
+LiteSpeed fleet throughput and PressWarden-native CLI guidance.
+
+- Change verified LiteSpeed fleet optimization from a whole-fleet preflight followed by execution to streaming per-installation processing, so the first eligible database is measured and maintained immediately after one fleet confirmation.
+- Reduce active-site LiteSpeed DB preflight from nine WordPress/WP-CLI bootstraps to three by checking plugin-active state first and probing the database command family once instead of requesting help for five subcommands on every website.
+- Preserve full before/after dashboard-counter verification, residual cleanup, multisite coverage, allocation telemetry, and fail-closed VERIFIED/UNVERIFIED/FAILED semantics while making large shared-host fleets practical.
+- Accept normal PressWarden positional targets for umbrella LiteSpeed database commands, e.g. `presswarden litespeed database optimize-all example.com`, while continuing to support `--target`/`--site`.
+- Add `--target`/`--site` support and `optimize-all` aliasing to the focused `litespeed-db` command. Mistaken forms such as `--example.com` now receive an exact corrected PressWarden command instead of generic site or lower-level usage output.
+- Add concise guidance for accidental top-level `database`/`litespeed-database` commands and stop dumping the full command matrix for ordinary LiteSpeed input errors.
+- Add fleet-execution and CLI-correction regressions.
+
+## 1.1.23 — 2026-09-16
+
+Verified LiteSpeed database maintenance.
+
+- Replace exit-code-only success with before/after verification using `LiteSpeed\\DB_Optm::db_count()`, the same counters displayed by LiteSpeed Cache > Database > Manage.
+- Run documented post/comment/trackback/transient/table command groups separately, perform one bounded residual cleanup pass, and report ALREADY OPTIMIZED, VERIFIED, UNVERIFIED, or FAILED from measured state.
+- Aggregate real counter reductions and database-allocation telemetry across single-site and validated multisite installs while keeping size changes informational only.
+- Keep verified LiteSpeed cleanup inside the `db` and `full` suites before native SQL maintenance.
+
 ## 1.1.22 — 2026-09-16
 
 LiteSpeed database command correctness and suite integration.
