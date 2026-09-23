@@ -1,0 +1,29 @@
+name: Press family source snapshot
+on:
+  push:
+    branches: [refactor/press-family-split]
+    paths: [.github/workflows/press-family-snapshot.yml]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 63adec182b4d3a20dbd5e24daa9b9fa0e98510b8
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Export source and provenance
+        run: |
+          mkdir -p "$RUNNER_TEMP/press-family-source"
+          git archive --format=tar.gz HEAD > "$RUNNER_TEMP/press-family-source/source.tar.gz"
+          git bundle create "$RUNNER_TEMP/press-family-source/source.bundle" HEAD
+          git ls-files > "$RUNNER_TEMP/press-family-source/files.txt"
+          git log --format=fuller -50 > "$RUNNER_TEMP/press-family-source/history.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: press-family-source
+          path: ${{ runner.temp }}/press-family-source/
+          retention-days: 7
+          if-no-files-found: error
