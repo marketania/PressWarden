@@ -50,7 +50,7 @@ with tempfile.TemporaryDirectory(prefix='presswarden-fs-progress-') as td:
              PRESSWARDEN_PROGRESS='auto', PRESSWARDEN_INTERACTIVE='1', PATH=str(bindir)+':'+os.environ['PATH'])
     (base/'home').mkdir()
 
-    reports=base/'reports-ok'; e=dict(env, REPORTS=str(reports))
+    reports=base/'reports-ok'; e=dict(env, PRESSWARDEN_REPORTS_DIR=str(reports))
     rc,out=terminal(['bash',str(REPO/'checks/filesystem-security-full.sh')],e)
     expect(rc==1,out)
     expect('World-writable: 0% | 0/1 trees processed' in out,out)
@@ -68,7 +68,7 @@ with tempfile.TemporaryDirectory(prefix='presswarden-fs-progress-') as td:
     fw=bindir/'find'
     fw.write_text('#!/usr/bin/env bash\n/usr/bin/find "$@"\nrc=$?\nfor a in "$@"; do [ "$a" != "-perm" ] || exit 1; done\nexit "$rc"\n')
     fw.chmod(0o700)
-    reports2=base/'reports-failed'; e2=dict(env, REPORTS=str(reports2), PRESSWARDEN_DISCOVERY_REFRESH='1')
+    reports2=base/'reports-failed'; e2=dict(env, PRESSWARDEN_REPORTS_DIR=str(reports2), PRESSWARDEN_DISCOVERY_REFRESH='1')
     rc,out=terminal(['bash',str(REPO/'checks/filesystem-security-full.sh')],e2)
     expect(rc==2,out)
     expect('World-writable: INCOMPLETE | 1/1 trees attempted' in out,out)

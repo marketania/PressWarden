@@ -84,23 +84,7 @@ main() {
   sort -u "$saltfix" -o "$saltfix" 2>/dev/null || true
   if [ ! -s "$saltfix" ]; then
     printf '    %s✓ CLEAN%s  no identical WordPress salt/key set found across sites\n' "$G" "$X"
-  elif [ "$PRESSWARDEN_INTERACTIVE" != 0 ] && [ -t 0 ]; then
-    count=$(grep -c . "$saltfix" 2>/dev/null); count=${count:-0}
-    printf '\n    %s%sACTION%s  %s%s%s affected site(s) can receive fresh WordPress authentication keys/salts.\n' "$B" "$BL" "$X" "$B" "$count" "$X"
-    printf '    %s⚠ Rotating these salts invalidates existing WordPress login cookies/nonces; administrators will need to log in again.%s\n' "$Y" "$X"
-    printf '    %s[r]%s rotate with %swp config shuffle-salts%s   %s[s]%s skip %s(default)%s : ' "$B$Y" "$X" "$C" "$X" "$B$G" "$X" "$D" "$X"
-    IFS= read -r ans || ans='s'
-    case "$ans" in
-      r|R|rotate|ROTATE)
-        while IFS= read -r s; do
-          [ -n "$s" ] || continue; d=$(site_domain "$s"); bak=$(tmpf)
-          if ! cp -p "$s/wp-config.php" "$bak" 2>/dev/null; then printf '    %s✖ FAILED%s   %s%s%s  › could not create temporary wp-config.php safety copy\n' "$R" "$X" "$B$M" "$d" "$X"; rm -f "$bak"; continue; fi
-          chmod 600 "$bak" 2>/dev/null || true
-          if wp config shuffle-salts --path="$s" --no-color >/dev/null 2>&1; then printf '    %s✓ ROTATED%s  %s%s%s  › WordPress authentication keys/salts refreshed\n' "$G" "$X" "$B$M" "$d" "$X"; rm -f "$bak"; else cp -p "$bak" "$s/wp-config.php" 2>/dev/null || true; rm -f "$bak"; printf '    %s✖ FAILED%s   %s%s%s  › salt rotation failed; original wp-config.php restored\n' "$R" "$X" "$B$M" "$d" "$X"; fi
-        done < "$saltfix" ;;
-      *) printf '    %s%s↷ SKIPPED%s  WordPress authentication salts were not changed\n' "$B" "$Y" "$X" ;;
-    esac
-  else printf '    %sℹ%s  non-interactive session — salt rotation not offered\n' "$C" "$X"; fi
+  else note "Reused authentication salts: explicit rotation is available in PressHarden; no configuration changed."; fi
 
   sec "Persistent object-cache namespace isolation" "WP_CACHE_KEY_SALT checked only when the installed drop-in actually uses it"
   for s in "${WP_SITES[@]}"; do
@@ -116,11 +100,7 @@ main() {
   sort -u "$cachefix" -o "$cachefix" 2>/dev/null || true
   if [ "$cache_supported" -eq 0 ]; then printf '    %s✓ N/A%s    no installed object-cache.php references WP_CACHE_KEY_SALT\n' "$G" "$X"; elif [ ! -s "$cachefix" ]; then printf '    %s✓ CLEAN%s  all %s compatible object-cache drop-in(s) have unique WP_CACHE_KEY_SALT values\n' "$G" "$X" "$cache_supported"; fi
   [ "$cache_unused" -eq 0 ] || note "$cache_unused object-cache.php drop-in(s) do not consume WP_CACHE_KEY_SALT; no cache-salt recommendation was made for them"
-  if [ -s "$cachefix" ] && [ "$PRESSWARDEN_INTERACTIVE" != 0 ] && [ -t 0 ]; then
-    count=$(grep -c . "$cachefix" 2>/dev/null); count=${count:-0}; printf '\n    %s%sACTION%s  %s%s%s site(s) need a unique cache-key namespace for a drop-in that supports WP_CACHE_KEY_SALT.\n' "$B" "$BL" "$X" "$B" "$count" "$X"
-    printf '    %s[c]%s create/rotate with %swp config shuffle-salts WP_CACHE_KEY_SALT --force%s   %s[s]%s skip %s(default)%s : ' "$B$Y" "$X" "$C" "$X" "$B$G" "$X" "$D" "$X"; IFS= read -r ans || ans='s'
-    case "$ans" in c|C|cache|CACHE) while IFS= read -r s; do [ -n "$s" ] || continue; d=$(site_domain "$s"); bak=$(tmpf); if ! cp -p "$s/wp-config.php" "$bak" 2>/dev/null; then rm -f "$bak"; continue; fi; chmod 600 "$bak" 2>/dev/null || true; if wp config shuffle-salts WP_CACHE_KEY_SALT --force --path="$s" --no-color >/dev/null 2>&1; then printf '    %s✓ CACHE SALT%s %s%s%s  › unique WP_CACHE_KEY_SALT generated\n' "$G" "$X" "$B$M" "$d" "$X"; rm -f "$bak"; else cp -p "$bak" "$s/wp-config.php" 2>/dev/null || true; rm -f "$bak"; printf '    %s✖ FAILED%s   %s%s%s  › cache salt update failed; original wp-config.php restored\n' "$R" "$X" "$B$M" "$d" "$X"; fi; done < "$cachefix"; note "changing WP_CACHE_KEY_SALT starts a fresh cache namespace; old backend keys are left to expire naturally" ;; *) printf '    %s%s↷ SKIPPED%s  cache-key salts were not changed\n' "$B" "$Y" "$X" ;; esac
-  elif [ -s "$cachefix" ]; then printf '    %sℹ%s  non-interactive session — cache-salt remediation not offered\n' "$C" "$X"; fi
+  [ ! -s "$cachefix" ] || note "Cache namespace changes belong to explicit PressHarden salt rotation; no configuration changed."
   rm -f "$creds" "$salts" "$saltfix" "$cachekeys" "$cachefix"; finish
 }
 run_logged wp-db

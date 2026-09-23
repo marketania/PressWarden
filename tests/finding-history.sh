@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+PWFH_REPO="${PWFH_REPO:-$(cd "$(dirname "$0")/.." && pwd)}"
 if [ -n "${PWFH_REPO:-}" ]; then
   PHPH="$PWFH_REPO/lib/finding-history.php"
   PWFH_HELPER_SH="$PWFH_REPO/lib/finding-history.sh"
@@ -76,7 +77,8 @@ php "$PHPH" carry "$runs" parent child check1
 final child
 [ "$(count child NEW)" = 1 ] || [ "$(count child RECURRING)" = 1 ]
 
-php "$PHPH" show "$runs" r3 | grep -q CHANGED
+php "$PHPH" show "$runs" r3 > "$T/show.out"
+grep -q CHANGED "$T/show.out"
 
 # A scanner-version transition can carry known identities but cannot resolve
 # an absent finding until it has been rechecked again under the new version.

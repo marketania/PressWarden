@@ -1,8 +1,5 @@
-# Optional integrations
+# PressWarden integrations
 
-PressWarden core scanning requires no hosting-provider API. Integrations only enrich local findings.
+Wordfence Intelligence, Patchstack, WPScan, CISA KEV, and administrator-supplied YARA rules support security investigation. Tokens belong only in private PressWarden configuration. See the scanner configuration template and [intelligence](../docs/ARCHITECTURE.md).
 
-- **WPScan API** — vulnerability intelligence when `WPSCAN_API_TOKEN` is configured.
-- **Hostinger API** — exact per-site PHP version/options/extensions when `HOSTINGER_API_TOKEN` is configured. Without it, `php-runtime` continues with local/CLI and file-level override checks.
-
-Tokens belong in `~/.config/presswarden/config` (mode `600`) or the environment. Never commit real tokens.
+Hosting PHP configuration comparison now belongs to PressHarden; cache/CDN service management belongs to PressGarden. Neither is a runtime dependency.

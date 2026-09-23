@@ -211,19 +211,6 @@ main() {
   rm -f "$known_mu"
   note "recognized MU plugins are summarized once by plugin/version; only NO MU and unrecognized MU plugins remain per site"
 
-  sec "Drop-ins + object-cache coverage" "only missing object-cache sites and non-object-cache drop-ins are shown"
-  local cache_on=0 cache_off=0 other_drop
-  for s in "${WP_SITES[@]}"; do
-    d=$(site_domain "$s")
-    if [ -f "$s/wp-content/object-cache.php" ]; then cache_on=$((cache_on+1)); else cache_off=$((cache_off+1)); printf '    %s%s⚠ CACHE OFF%s   %s%s%s  %s›%s  object-cache.php missing — candidate to enable\n' "$B" "$Y" "$X" "$B$M" "$d" "$X" "$D" "$X"; fi
-    other_drop=$(find "$s/wp-content" -maxdepth 1 -type f \( -name 'advanced-cache.php' -o -name 'db.php' -o -name 'maintenance.php' -o -name 'sunrise.php' \) -printf '%f ' 2>/dev/null)
-    [ -n "$other_drop" ] && printf '      %sℹ OTHER DROP-IN%s  %s%s%s  %s›%s  %s\n' "$C" "$X" "$B$M" "$d" "$X" "$D" "$X" "$other_drop"
-  done
-  [ "$cache_off" -eq 0 ] && printf '    %s%s✓ CACHE COVERAGE%s  all %s site(s) have object-cache.php\n' "$B" "$G" "$X" "${#WP_SITES[@]}"
-  printf '\n    %s%sOBJECT CACHE SUMMARY%s  %s%s present%s  •  %s%s missing%s  •  %s%s total%s\n' "$B" "$C" "$X" "$G" "$cache_on" "$X" "$Y" "$cache_off" "$X" "$B" "${#WP_SITES[@]}" "$X"
-  note "object-cache.php presence is intentionally hidden per site when enabled; only missing sites are listed"
-  note "presence of object-cache.php does not by itself prove the backing Redis/Memcached service is healthy"
-
   for f in $files; do rm -f "$f"; done
   finish
 }

@@ -44,7 +44,7 @@ class PressWardenQuarantine {
         foreach (['root','quarantine'] as $k) {
             if (!isset($policy[$k]) || $this->absolute($policy[$k]) !== $policy[$k]) $this->fail('invalid scope');
         }
-        if ($policy['root'] === '/' || !in_array($policy['mode'] ?? '', ['generic','cleanup'], true)) $this->fail('invalid scope');
+        if ($policy['root'] === '/' || !in_array($policy['mode'] ?? '', ['generic'], true)) $this->fail('invalid scope');
         $this->plainParents($policy['root'], true);
         foreach (['sites','blocked'] as $k) {
             if (!isset($policy[$k]) || !is_array($policy[$k]) || count($policy[$k]) > self::MAX_ENTRIES) $this->fail('invalid scope');
@@ -81,29 +81,12 @@ class PressWardenQuarantine {
             if ($this->wordpress($path)) $this->fail('target contains a WordPress root');
             if ($top) {
                 $allowed = ['.git','.svn','.hg'];
-                if ($policy['mode'] === 'cleanup') $allowed = array_merge($allowed, ['__MACOSX','.AppleDouble','.idea','.vscode','.pytest_cache','.mypy_cache','.sass-cache']);
                 if (!in_array(basename($path), $allowed, true)) $this->fail('directory requires manual handling');
                 if (!in_array(basename($path), ['.git','.svn','.hg','__MACOSX','.AppleDouble'], true)
                     && preg_match('~^wp-content/(?:plugins|themes)/~', $rel)) $this->fail('packaged development directory');
             }
         } elseif ($type !== 0100000 && $type !== 0120000) $this->fail('special file requires manual handling');
         if ($type === 0100000 && $s['nlink'] !== 1) $this->fail('hard-linked file requires manual handling');
-        if ($top && $policy['mode'] === 'cleanup') {
-            $base = basename($path);
-            $os = in_array($base, ['__MACOSX','.AppleDouble','.DS_Store','Thumbs.db','desktop.ini','.LSOverride'], true) || strpos($base, '._') === 0;
-            if (!$os) {
-                $development = ['.idea','.vscode','.pytest_cache','.mypy_cache','.sass-cache','.gitignore','.gitattributes','.gitkeep',
-                    '.editorconfig','.eslintignore','.stylelintignore','.prettierignore','.npmignore','phpcs.xml','phpcs.xml.dist',
-                    '.phpcs.xml','.phpcs.xml.dist','phpstan.neon','phpstan.neon.dist','phpunit.xml','phpunit.xml.dist',
-                    '.eslintcache','.stylelintcache','.phpunit.result.cache'];
-                if (!in_array($base, $development, true)) $this->fail('not a disposable metadata target');
-                if (preg_match('~^wp-content/(?:plugins|themes)/~', $rel)) $this->fail('packaged development metadata');
-                for ($d = dirname($path); $this->inside($d, $policy['root']); $d = dirname($d)) {
-                    if (file_exists($d.'/.git') || is_link($d.'/.git')) $this->fail('development metadata in a live Git tree');
-                    if ($d === $policy['root']) break;
-                }
-            }
-        }
         return $s;
     }
     private function directoryIdentity($path) {

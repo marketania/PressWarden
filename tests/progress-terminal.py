@@ -157,7 +157,7 @@ with tempfile.TemporaryDirectory(prefix='presswarden-progress-test-') as temp:
     env['PATH']=str(binpath)+':'+os.environ['PATH']
     for kind, expected in [('php',1),('js',1),('db',0)]:
         reportdir = base/('reports-'+kind)
-        e=dict(env, REPORTS=str(reportdir))
+        e=dict(env, PRESSWARDEN_REPORTS_DIR=str(reportdir))
         rc, out = terminal(['bash', str(REPO/'presswarden'), 'inspect', kind, str(root)], e)
         expect(rc == expected, out)
         if kind in ['php','js']:

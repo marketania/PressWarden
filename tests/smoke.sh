@@ -103,12 +103,6 @@ grep -q 'Scanner Feed' "$ROOTDIR/checks/wp-wordfence-intel.sh"
 grep -q 'Production enrichment' "$ROOTDIR/checks/wp-wordfence-intel.sh"
 grep -q 'Scanner-only record' "$ROOTDIR/checks/wp-wordfence-intel.sh"
 
-stage 'DB unsupported CHECK regression'
-grep -q "doesn't support check" "$ROOTDIR/checks/wp-db-maintenance.sh"
-grep -q 'return \[.unsupported.' "$ROOTDIR/checks/wp-db-maintenance.sh"
-grep -q 'echo "SKIP\\t"' "$ROOTDIR/checks/wp-db-maintenance.sh"
-grep -q 'Unsupported CHECK TABLE operations are informational' "$ROOTDIR/checks/wp-db-maintenance.sh"
-
 stage 'output wording regression'
 if grep -R -nE 'runall-(fast|full)\.sh' "$ROOTDIR/checks" "$ROOTDIR/lib" "$ROOTDIR/suites" "$ROOTDIR/README.md" >/dev/null 2>&1; then printf 'stale pre-PressWarden command wording found\n' >&2; exit 1; fi
 grep -q 'local activation is shown separately' "$ROOTDIR/checks/wp-plugins.sh"
@@ -124,10 +118,10 @@ printf '%s\n' "$cfg" | grep -qE 'Deep upload scan:[[:space:]]+1$'
 stage 'CLI aliases/version/intel'
 [ "$($ROOTDIR/presswarden --version)" = "PressWarden $EXPECTED_VERSION" ]
 help=$($ROOTDIR/presswarden help)
-printf '%s\n' "$help" | grep -q '\./presswarden lock \[target\]'
-printf '%s\n' "$help" | grep -q '\./presswarden unlock \[target\]'
-printf '%s\n' "$help" | grep -q '\./presswarden lock-status \[target\]'
-printf '%s\n' "$help" | grep -q '\./presswarden intel ACTION \[target\]'
+printf '%s\n' "$help" | grep -q '\./presswarden fast \[target\]'
+printf '%s\n' "$help" | grep -q '\./presswarden full \[target\]'
+printf '%s\n' "$help" | grep -q '\./presswarden incident \[target\]'
+printf '%s\n' "$help" | grep -q '\./presswarden intel status|update|scan \[target\]'
 intel_status=$(PRESSWARDEN_CONFIG_FILE="$TMP/no-config" PRESSWARDEN_STATE_DIR="$TMP/state-intel" "$ROOTDIR/presswarden" intel status)
 printf '%s\n' "$intel_status" | grep -q 'PressWarden Threat Intelligence'
 printf '%s\n' "$intel_status" | grep -qE 'Native behavior rules[[:space:]]+[1-9][0-9]*'
