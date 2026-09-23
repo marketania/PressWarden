@@ -1,0 +1,15 @@
+{
+  "required_workflows": [
+    ".github/workflows/baseline-quality.yml",
+    ".github/workflows/ci.yml",
+    ".github/workflows/db-quality.yml",
+    ".github/workflows/detection-quality.yml",
+    ".github/workflows/finding-history-quality.yml",
+    ".github/workflows/php-quality.yml",
+    ".github/workflows/progress-quality.yml",
+    ".github/workflows/quarantine-quality.yml",
+    ".github/workflows/report-quality.yml",
+    ".github/workflows/run-state-quality.yml",
+    ".github/workflows/update-quality.yml"
+  ]
+}
