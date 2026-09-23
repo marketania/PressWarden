@@ -10,7 +10,7 @@ PRESSWARDEN_UPDATE_REF="${PRESSWARDEN_REF:-main}"
 # Program paths owned by the PressWarden distribution. Never add config/config,
 # var/, or .presswarden-portable here: those are private/local runtime state.
 _PRESSWARDEN_UPDATE_MANAGED=(
-  .github .gitignore CHANGELOG.md CONTRIBUTING.md LICENSE README.md SECURITY.md VERSION
+  .github .gitignore CHANGELOG.md CONTRIBUTING.md LICENSE README.md SECURITY.md VERSION PRODUCT PROVENANCE.md
   checks docs integrations intel lib suites tests
   install.sh uninstall.sh presswarden
 )
@@ -59,6 +59,7 @@ _pw_update_validate_source() {
   [ -s "$src/lib/intel.sh" ] || { printf 'Update validation failed: threat-intelligence library is missing.\n' >&2; return 2; }
   [ -s "$src/suites/fast.sh" ] || { printf 'Update validation failed: FAST suite is missing.\n' >&2; return 2; }
 
+  [ "$(cat "$src/PRODUCT" 2>/dev/null)" = PressWarden ] || { printf "Update identity mismatch.\n" >&2; return 2; }
   version=$(tr -d '[:space:]' < "$src/VERSION" 2>/dev/null || true)
   case "$version" in ''|*[!0-9A-Za-z._+-]*) printf 'Update validation failed: invalid VERSION value.\n' >&2; return 2 ;; esac
 

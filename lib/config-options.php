@@ -7,7 +7,7 @@ function pw_config_names($path, $optional) {
     if ($lines === false) throw new RuntimeException('cannot read configuration input');
     $keys = [];
     foreach ($lines as $line) {
-        if (preg_match('/^\s*(?:export\s+)?(PRESSWARDEN_[A-Za-z0-9_]+|WPSCAN_API_TOKEN|HOSTINGER_API_TOKEN)\s*=/', $line, $m)) $keys[$m[1]] = true;
+        if (preg_match('/^\s*(?:export\s+)?(PRESSWARDEN_[A-Za-z0-9_]+|WPSCAN_API_TOKEN)\s*=/', $line, $m)) $keys[$m[1]] = true;
     }
     return $keys;
 }

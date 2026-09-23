@@ -25,14 +25,8 @@ PRESSWARDEN_BASELINE_MAX_CHANGES=100
 PRESSWARDEN_UPLOADS_DEEP=""
 # PRESSWARDEN_NOCOLOR=1
 
-# Show full optional per-site PHP API settings in the console (always saved in reports).
-PRESSWARDEN_PHP_DETAILS=0
-
 # Network/cache tuning
-PRESSWARDEN_PHP_RELEASE_CACHE_TTL=86400
 PRESSWARDEN_WPORG_PLUGIN_CACHE_TTL=86400
-PRESSWARDEN_HOSTINGER_PHP_CACHE_TTL=21600
-PRESSWARDEN_HOSTINGER_API_JOBS=3
 
 # Threat intelligence
 PRESSWARDEN_INTEL_AUTO_UPDATE=1
@@ -49,14 +43,7 @@ PRESSWARDEN_YARA_RULES=""
 PRESSWARDEN_DB_MAX_ROWS=5000
 PRESSWARDEN_DB_MAX_BYTES=33554432
 
-# DB and FULL suites run LiteSpeed Cache optimize_all before native table
-# repair/optimization when LiteSpeed Cache is active. Set 0 to keep that cleanup
-# available only through the explicit `litespeed-db optimize` command.
-PRESSWARDEN_LITESPEED_DB_MAINTENANCE=1
-
 # Optional vulnerability/provider integrations. Never commit real tokens.
 WPSCAN_API_TOKEN=""
 PRESSWARDEN_WORDFENCE_TOKEN=""
 PRESSWARDEN_PATCHSTACK_KEY=""
-HOSTINGER_API_TOKEN=""
-PRESSWARDEN_HOSTINGER_USERNAME=""

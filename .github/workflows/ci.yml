@@ -1,77 +1,24 @@
-name: PressWarden CI
-
+name: PressWarden independent validation
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
-
+  workflow_dispatch:
 permissions:
   contents: read
-
 jobs:
-  validate:
+  local:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Bash syntax
-        shell: bash
-        run: |
-          set -euo pipefail
-          while IFS= read -r file; do
-            bash -n "$file"
-          done < <(find . -type f \( -name '*.sh' -o -name 'presswarden' \) -not -path './.git/*' | sort)
-
-      - name: PHP helper syntax
-        shell: bash
-        run: |
-          set -euo pipefail
-          while IFS= read -r file; do
-            php -l "$file" >/dev/null
-          done < <(find lib -type f -name '*.php' | sort)
-
-      - name: Host-agnostic discovery smoke test
-        shell: bash
-        run: bash tests/smoke.sh
-
-      - name: Discovery completeness and cache boundaries
-        shell: bash
-        run: bash tests/discovery-reliability.sh
-
-      - name: Safe self update preservation
-        shell: bash
-        run: bash tests/update.sh
-
-      - name: Baseline and change detection
-        shell: bash
-        run: bash tests/baseline.sh
-
-      - name: Incident response safety
-        shell: bash
-        run: bash tests/incident.sh
-
-      - name: Fleet correlation
-        shell: bash
-        run: bash tests/fleet-correlate.sh
-
-      - name: Threat-intel behavior regressions
-        shell: bash
-        run: bash tests/threat-intel-regressions.sh
-
-      - name: External YARA integration
-        shell: bash
-        run: bash tests/yara-integration.sh
-
-      - name: Threat-intel credential safety
-        shell: bash
-        run: bash tests/intel-security.sh
-
-      - name: Bounded-memory Wordfence streaming
-        shell: bash
-        run: bash tests/wordfence-stream.sh
-
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Independent local syntax and benign-fixture tests
+        env:
+          PRESS_TEST_LOG_DIR: ${{ runner.temp }}/press-tests
+        run: bash tests/run.sh
       - name: No runtime process substitution
         shell: bash
         run: |
@@ -98,3 +45,47 @@ jobs:
             echo 'Potential hard-coded API/token assignment detected.' >&2
             exit 1
           fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: local-test-logs
+          path: ${{ runner.temp }}/press-tests/
+          retention-days: 7
+  php74:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: PHP 7.4 syntax and pure contract tests
+        run: |
+          docker run --rm --network=none -v "$PWD:/work:ro" -w /work php:7.4-cli bash -c 'set -eu; for f in lib/*.php; do php -l "$f" >/dev/null; done; for f in tests/*.php; do case "$f" in */db-mysql.php) continue;; esac; php "$f"; done'
+  wordpress:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: press-family-ephemeral-ci
+          MYSQL_ROOT_HOST: '%'
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -ppress-family-ephemeral-ci"
+          --health-interval=10s --health-timeout=5s --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install test-only WP-CLI
+        run: |
+          mkdir -p "$RUNNER_TEMP/wp-bin"
+          curl -fsSL --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar -o "$RUNNER_TEMP/wp-bin/wp"
+          chmod +x "$RUNNER_TEMP/wp-bin/wp"
+          echo "$RUNNER_TEMP/wp-bin" >> "$GITHUB_PATH"
+      - name: Fresh isolated WordPress and MySQL integration
+        env:
+          PRESS_FAMILY_ALLOW_ISOLATED_WP_TEST: '1'
+          PRESS_TEST_DB_PASSWORD: press-family-ephemeral-ci
+        run: bash tests/live-wp.sh

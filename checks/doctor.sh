@@ -93,7 +93,6 @@ main() {
 
   sec "Optional integrations" "tokens are never printed"
   [ -n "${WPSCAN_API_TOKEN:-}" ] && ok "WPScan" "configured" || printf '    %sℹ WPSCAN%s      not configured\n' "$C" "$X"
-  [ -n "${HOSTINGER_API_TOKEN:-}" ] && ok "Hostinger" "configured for optional PHP-details enrichment" || printf '    %sℹ HOSTINGER%s   not configured (not required)\n' "$C" "$X"
 
   sec "Shell integrity" "all distributed shell scripts + no process substitution"
   local bad=0 f total=0

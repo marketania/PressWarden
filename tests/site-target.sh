@@ -30,7 +30,7 @@ pw_baseline_create(){ bash "$PRESSWARDEN_DIR/suites/fast.sh"; }
 pw_baseline_status(){ pw_baseline_create; }
 pw_baseline_diff(){ pw_baseline_create; }
 STUB
-for cmd in scan fast full incident db doctor cleanup lock unlock lock-status changes correlate; do
+for cmd in scan fast full incident db doctor changes correlate; do
   run "$cmd" example.com > "$T/out" 2>&1
   grep -Fxq "ROOT=$S/example.com/public_html" "$T/out"
   grep -Fxq "SITE=$S/example.com/public_html/shop" "$T/out"
@@ -38,7 +38,6 @@ for cmd in scan fast full incident db doctor cleanup lock unlock lock-status cha
 done
 for kind in php js db runtime; do run inspect "$kind" other.com > "$T/out" 2>&1; grep -Fxq "ROOT=$S/other.com/httpdocs" "$T/out"; done
 for action in create status diff; do run baseline "$action" example.com/shop > "$T/out" 2>&1; grep -Fxq "ROOT=$S/example.com/public_html/shop" "$T/out"; done
-for action in on off status; do run file-mods "$action" other.com > "$T/out" 2>&1; grep -Fxq "ROOT=$S/other.com/httpdocs" "$T/out"; done
 run intel scan opaque.example > "$T/out" 2>&1; grep -Fxq "ROOT=$S/opaque" "$T/out"; [ ! -e "$T/unsafe" ]
 run scan 'https://EXAMPLE.com/shop/' > "$T/out" 2>&1; grep -Fxq "ROOT=$S/example.com/public_html/shop" "$T/out"
 run scan all > "$T/out"; [ "$(grep -c '^SITE=' "$T/out")" -eq 4 ]
@@ -46,10 +45,10 @@ run scan > "$T/out"; grep -Fxq "ROOT=$S" "$T/out"
 run scan "$S/other.com/httpdocs" > "$T/out"; grep -Fxq "ROOT=$S/other.com/httpdocs" "$T/out"
 # Never fall back to all sites for an unknown/unsafe/excluded name.
 for name in missing.com 'example.com/../other.com' 'https://user@example.com' 'example.com;id'; do
-  set +e; run lock "$name" > "$T/out" 2>&1; rc=$?; set -e
+  set +e; run scan "$name" > "$T/out" 2>&1; rc=$?; set -e
   [ "$rc" -eq 2 ]; ! grep -q '^ROOT=' "$T/out"
 done
-set +e; PRESSWARDEN_EXCLUDE=example.com run unlock example.com > "$T/out" 2>&1; rc=$?; set -e
+set +e; PRESSWARDEN_EXCLUDE=example.com run scan example.com > "$T/out" 2>&1; rc=$?; set -e
 [ "$rc" -eq 2 ]; ! grep -q '^ROOT=' "$T/out"
 # A nested exclusion expressed relative to the fleet survives narrowed ROOT.
 PRESSWARDEN_EXCLUDE=example.com/shop run scan example.com > "$T/out" 2>&1
@@ -57,27 +56,27 @@ PRESSWARDEN_EXCLUDE=example.com/shop run scan example.com > "$T/out" 2>&1
 grep -q '^SITE=' "$T/out"
 # Duplicated local names are errors, not first-match wins.
 site "$S/a/duplicate.com/public_html"; site "$S/b/duplicate.com/httpdocs"
-set +e; run lock duplicate.com > "$T/out" 2>&1; rc=$?; set -e
+set +e; run scan duplicate.com > "$T/out" 2>&1; rc=$?; set -e
 [ "$rc" -eq 2 ]; grep -q ambiguous "$T/out"; ! grep -q '^ROOT=' "$T/out"
 # Optional alias resolves only discovered, non-excluded roots; no shell evaluation.
 printf 'custom.example=%s\n' "$S/other.com/httpdocs" > "$T/aliases"
 PRESSWARDEN_SITE_ALIASES_FILE="$T/aliases" run scan custom.example > "$T/out" 2>&1; grep -Fxq "ROOT=$S/other.com/httpdocs" "$T/out"
 printf 'external.example=%s\n' "$T/outside" >> "$T/aliases"
-set +e; PRESSWARDEN_SITE_ALIASES_FILE="$T/aliases" run lock external.example > "$T/out" 2>&1; rc=$?; set -e
+set +e; PRESSWARDEN_SITE_ALIASES_FILE="$T/aliases" run scan external.example > "$T/out" 2>&1; rc=$?; set -e
 [ "$rc" -eq 2 ]; ! grep -q '^ROOT=' "$T/out"
-set +e; PRESSWARDEN_SITE_ALIASES_FILE="$T/aliases" PRESSWARDEN_EXCLUDE=other.com run lock custom.example > "$T/out" 2>&1; rc=$?; set -e
+set +e; PRESSWARDEN_SITE_ALIASES_FILE="$T/aliases" PRESSWARDEN_EXCLUDE=other.com run scan custom.example > "$T/out" 2>&1; rc=$?; set -e
 [ "$rc" -eq 2 ]
 # Even a local relative folder named missing.com is not guessed as the target.
 mkdir "$T/missing.com"
-set +e; (cd "$T" && run lock missing.com) > "$T/out" 2>&1; rc=$?; set -e
+set +e; (cd "$T" && run scan missing.com) > "$T/out" 2>&1; rc=$?; set -e
 [ "$rc" -eq 2 ]
 # Broken discovery refuses names before any operation.
 printf '#!/usr/bin/env bash\nexit 2\n' > "$T/bin/find"; chmod +x "$T/bin/find"
-set +e; run lock example.com > "$T/out" 2>&1; rc=$?; set -e
+set +e; run scan example.com > "$T/out" 2>&1; rc=$?; set -e
 [ "$rc" -eq 2 ]; ! grep -q '^ROOT=' "$T/out"; rm "$T/bin/find"
 # Details flag only applies to runtime, invalid argument counts remain errors.
 run inspect runtime example.com --details > "$T/out" 2>&1; grep -Fxq "ROOT=$S/example.com/public_html" "$T/out"
-for args in 'scan example.com extra' 'inspect js example.com --details' 'lock example.com other.com'; do
+for args in 'scan example.com extra' 'inspect js example.com --details' 'scan example.com other.com'; do
   set +e; run $args > "$T/out" 2>&1; rc=$?; set -e
   [ "$rc" -eq 2 ]; ! grep -q '^ROOT=' "$T/out"
 done

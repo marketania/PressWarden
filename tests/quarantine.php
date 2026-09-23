@@ -122,16 +122,8 @@ try {
     $o=new AncestorMutator();$plan=$o->plan($p,[$f]);
     refused(function()use($o,$plan){capture(function()use($o,$plan){$o->apply($plan);});},'ancestor inode replacement before unlink refused');
     check(is_file($f),'unchanged leaf retained when parent changes');
-    [$site,$p]=fixture('cleanup');$p['mode']='cleanup';mkdir("$site/__MACOSX");file_put_contents("$site/__MACOSX/x",'metadata');
-    $plan=$q->plan($p,["$site/__MACOSX"]);capture(function()use($q,$plan){$q->apply($plan);});check(!is_dir("$site/__MACOSX"),'approved OS metadata directory supported');
-    file_put_contents("$site/.gitignore",'metadata');mkdir("$site/.git");
-    refused(function()use($q,$p,$site){$q->plan($p,["$site/.gitignore"]);},'live Git cleanup protection repeated at action time');
-    file_put_contents("$site/wp-content/plugins/demo/.gitignore",'packaged');
-    refused(function()use($q,$p,$site){$q->plan($p,["$site/wp-content/plugins/demo/.gitignore"]);},'packaged development metadata protected');
-    refused(function()use($q){$q->plainParents('relative/path',true);},'relative inspection path rejected without looping');
-
-    file_put_contents("$site/arbitrary.php",'code');
-    refused(function()use($q,$p,$site){$q->plan($p,["$site/arbitrary.php"]);},'cleanup cannot accept arbitrary code');
+    [$site,$p]=fixture('legacy-cleanup');$p['mode']='cleanup';file_put_contents("$site/metadata",'inert');
+    refused(function()use($q,$p,$site){$q->plan($p,["$site/metadata"]);},'obsolete maintenance mode rejected');
     [$site,$p]=fixture('private-alias');$f="$site/secret.php";file_put_contents($f,'private');symlink($f,$p['root'].'/config-alias');$p['blocked'][]=$p['root'].'/config-alias';
     refused(function()use($q,$p,$f){$q->plan($p,[$f]);},'resolved private config alias protected');
 

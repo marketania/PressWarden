@@ -10,7 +10,7 @@ else
   PRESSWARDEN_CONFIG_FILE="${PRESSWARDEN_CONFIG_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/presswarden/config}"
 fi
 PRESSWARDEN_CONFIG_LOADED=0
-_presswarden_env_overrides=$(env | grep -E '^(PRESSWARDEN_[A-Za-z0-9_]*|WPSCAN_API_TOKEN|HOSTINGER_API_TOKEN)=' || true)
+_presswarden_env_overrides=$(env | grep -E '^(PRESSWARDEN_[A-Za-z0-9_]*|WPSCAN_API_TOKEN)=' || true)
 if [ -r "$PRESSWARDEN_CONFIG_FILE" ]; then
   _presswarden_cfg_mode=$(stat -c %a "$PRESSWARDEN_CONFIG_FILE" 2>/dev/null || printf '')
   case "$_presswarden_cfg_mode" in
@@ -24,7 +24,7 @@ if [ -r "$PRESSWARDEN_CONFIG_FILE" ]; then
 fi
 if [ -n "$_presswarden_env_overrides" ]; then
   while IFS='=' read -r _presswarden_k _presswarden_v; do
-    case "$_presswarden_k" in PRESSWARDEN_*|WPSCAN_API_TOKEN|HOSTINGER_API_TOKEN) printf -v "$_presswarden_k" '%s' "$_presswarden_v"; export "$_presswarden_k" ;; esac
+    case "$_presswarden_k" in PRESSWARDEN_*|WPSCAN_API_TOKEN) printf -v "$_presswarden_k" '%s' "$_presswarden_v"; export "$_presswarden_k" ;; esac
   done <<< "$_presswarden_env_overrides"
 fi
 unset _presswarden_env_overrides _presswarden_k _presswarden_v 2>/dev/null || true
@@ -52,11 +52,11 @@ else
   PRESSWARDEN_STATE_DIR="${PRESSWARDEN_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/presswarden}"
   PRESSWARDEN_CACHE_DIR="${PRESSWARDEN_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/presswarden}"
 fi
-REPORTS="${REPORTS:-$PRESSWARDEN_STATE_DIR/reports}"
+REPORTS="${PRESSWARDEN_REPORTS_DIR:-$PRESSWARDEN_STATE_DIR/reports}"
 PRESSWARDEN_VERSION="$(cat "$PRESSWARDEN_DIR/VERSION" 2>/dev/null || printf '1.0.4')"
 PRESSWARDEN_MAX="${PRESSWARDEN_MAX:-60}"
 PRESSWARDEN_INTERACTIVE="${PRESSWARDEN_INTERACTIVE:-1}"
-QUARANTINE="${QUARANTINE:-$PRESSWARDEN_STATE_DIR/quarantine}"
+QUARANTINE="${PRESSWARDEN_QUARANTINE_DIR:-$PRESSWARDEN_STATE_DIR/quarantine}"
 PRESSWARDEN_EXCLUDE="${PRESSWARDEN_EXCLUDE:-${PRESSWARDEN_EXCLUDE_DOMAINS:-}}"
 # New report directories are private; never chmod existing directories or
 # change the caller's umask (which could affect WordPress repair semantics).

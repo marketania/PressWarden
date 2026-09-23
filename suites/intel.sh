@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+export _PW_EXPLICIT_REMEDIATION=0
 RUN_NAME=intel
 RUN_DESC="focused PHP/JavaScript/campaign/database + vulnerability intelligence"
 RUN_DOES="Runs PressWarden's native behavior/campaign intelligence, optional administrator-supplied YARA rules, plus optional Wordfence, Patchstack and WPScan vulnerability intelligence without the full filesystem/database-maintenance sweep."

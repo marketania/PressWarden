@@ -1,118 +1,199 @@
 #!/usr/bin/env bash
+# Standalone installer: validates a new install; existing installs use update.
 set -euo pipefail
-
-REPO="${PRESSWARDEN_REPO:-marketania/PressWarden}"
-REF="${PRESSWARDEN_REF:-main}"
+umask 077
+PRODUCT=PressWarden
+PROGRAM=presswarden
 MODE="${PRESSWARDEN_INSTALL_MODE:-portable}"
-TMP="${TMPDIR:-/tmp}/presswarden-install.$$"
-ARCHIVE="$TMP/presswarden.tar.gz"
-trap 'rm -rf "$TMP"' EXIT
-
-logo() {
-cat <<'EOF'
- ____                   __        __            _
-|  _ \ _ __ ___  ___ ___\ \      / /_ _ _ __ __| | ___ _ __
-| |_) | '__/ _ \/ __/ __|\ \ /\ / / _` | '__/ _` |/ _ \ '_ \
-|  __/| | |  __/\__ \__ \ \ V  V / (_| | | | (_| |  __/ | | |
-|_|   |_|  \___||___/___/  \_/\_/ \__,_|_|  \__,_|\___|_| |_|
-
-          Fleet-scale WordPress security auditing from the shell.
-EOF
+case "$MODE" in local) MODE=portable;; legacy) MODE=user;; esac
+case "$MODE" in portable) DEST="${PRESSWARDEN_INSTALL_PREFIX:-${PRESSWARDEN_INSTALL_DIR:-$PWD/PressWarden}}";; user) DEST="${PRESSWARDEN_INSTALL_PREFIX:-${PRESSWARDEN_PREFIX:-${XDG_DATA_HOME:-$HOME/.local/share}/presswarden}}";; *) echo 'Install mode must be portable or user.' >&2; exit 2;; esac
+for dep in php tar mktemp find; do command -v "$dep" >/dev/null || { printf 'Missing dependency: %s\n' "$dep" >&2; exit 2; }; done
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/presswarden-install.XXXXXXXX")
+STAGE=''
+trap 'rm -rf -- "$WORK"; [ -z "$STAGE" ] || rm -rf -- "$STAGE"' EXIT
+cat > "$WORK/guard.php" <<'PHP_GUARD'
+<?php
+/** PressWarden update input validation (MIT). Never executes archive contents. */
+function pw_update_octal($field) {
+    $field = trim($field, " \0");
+    if ($field === '') return 0;
+    if (!preg_match('/^[0-7]{1,12}$/D', $field)) throw new RuntimeException('unsupported tar numeric field');
+    $value = octdec($field);
+    if ($value > PHP_INT_MAX) throw new RuntimeException('tar numeric field overflow');
+    return (int)$value;
+}
+function pw_update_read($stream, $length) {
+    $out = '';
+    while (strlen($out) < $length) {
+        $part = @gzread($stream, $length - strlen($out));
+        if ($part === false || $part === '') throw new RuntimeException('truncated gzip/tar stream');
+        $out .= $part;
+    }
+    return $out;
+}
+function pw_update_pax($data) {
+    // git archive uses a global PAX comment containing the source commit.
+    // Do not let metadata override names, sizes, links, or sparse-file behavior.
+    while ($data !== '') {
+        if (!preg_match('/^([1-9][0-9]{0,5}) /', $data, $m)) throw new RuntimeException('invalid PAX record');
+        $length = (int)$m[1];
+        if ($length <= strlen($m[0]) || $length > strlen($data)) throw new RuntimeException('invalid PAX length');
+        $record = substr($data, strlen($m[0]), $length - strlen($m[0]));
+        if (substr($record, -1) !== "\n" || !preg_match('/^(comment|mtime|atime|ctime)=[^\x00-\x1f]*\n$/D', $record)) {
+            throw new RuntimeException('unsupported PAX metadata');
+        }
+        $data = substr($data, $length);
+    }
+}
+function pw_update_archive($path) {
+    if (!function_exists('gzopen')) throw new RuntimeException('PHP zlib is required for archive validation');
+    if (!is_file($path) || !is_readable($path) || filesize($path) > 33554432) throw new RuntimeException('archive missing, unreadable, or larger than 32 MiB');
+    $stream = @gzopen($path, 'rb');
+    if ($stream === false) throw new RuntimeException('cannot read gzip archive');
+    $total = 0; $entries = 0; $root = null; $seen = []; $parents = []; $zero = str_repeat("\0", 512);
+    try {
+        while (true) {
+            $header = pw_update_read($stream, 512); $total += 512;
+            if ($header === $zero) {
+                if (pw_update_read($stream, 512) !== $zero) throw new RuntimeException('invalid tar end marker');
+                $total += 512;
+                // Reject concatenated archives and nonzero data after the terminator.
+                while (!gzeof($stream)) {
+                    $tail = @gzread($stream, 65536);
+                    if ($tail === false || ($tail === '' && !gzeof($stream))) throw new RuntimeException('invalid gzip trailer');
+                    $total += strlen($tail);
+                    if ($total > 134217728 || trim($tail, "\0") !== '') throw new RuntimeException('unexpected archive trailer or size limit');
+                }
+                if ($entries === 0 || $root === null) throw new RuntimeException('empty archive');
+                return;
+            }
+            if (++$entries > 10000) throw new RuntimeException('archive entry limit exceeded');
+            $sum = array_sum(unpack('C*', substr_replace($header, str_repeat(' ', 8), 148, 8)));
+            if ($sum !== pw_update_octal(substr($header, 148, 8))) throw new RuntimeException('invalid tar header checksum');
+            $magic = substr($header, 257, 6);
+            if ($magic !== "ustar\0" && $magic !== 'ustar ') throw new RuntimeException('unsupported tar format');
+            $size = pw_update_octal(substr($header, 124, 12));
+            $mode = pw_update_octal(substr($header, 100, 8));
+            if ($size > 16777216 || ($mode & 06000) !== 0) throw new RuntimeException('oversized member or privileged mode');
+            $type = $header[156];
+            $blocks = (int)(ceil($size / 512) * 512); $total += $blocks;
+            if ($total > 134217728) throw new RuntimeException('expanded archive exceeds 128 MiB');
+            if ($type === 'g' || $type === 'x') {
+                if ($size > 65536) throw new RuntimeException('PAX metadata limit exceeded');
+                pw_update_pax(substr(pw_update_read($stream, $blocks), 0, $size));
+                continue;
+            }
+            if ($type !== '0' && $type !== "\0" && $type !== '5') throw new RuntimeException('links, devices, sparse files, and special entries are not permitted');
+            if ($type === '5' && $size !== 0) throw new RuntimeException('directory with data');
+            if (trim(substr($header, 157, 100), "\0") !== '') throw new RuntimeException('unexpected tar link target');
+            $name = rtrim(substr($header, 0, 100), "\0");
+            $prefix = rtrim(substr($header, 345, 155), "\0");
+            if ($magic === "ustar\0" && $prefix !== '') $name = $prefix.'/'.$name;
+            elseif ($magic === 'ustar ' && $prefix !== '') throw new RuntimeException('unsupported GNU header extension');
+            if ($type === '5') $name = rtrim($name, '/');
+            if ($name === '' || $name[0] === '/' || preg_match('/[\x00-\x1f\x7f\\\\]/', $name)) throw new RuntimeException('unsafe archive name');
+            $parts = explode('/', $name);
+            foreach ($parts as $part) if ($part === '' || $part === '.' || $part === '..') throw new RuntimeException('unsafe archive path component');
+            if ($root === null) $root = $parts[0];
+            if ($parts[0] !== $root || (count($parts) === 1 && $type !== '5')) throw new RuntimeException('archive must have one top-level directory');
+            if (isset($seen[$name]) || ($type !== '5' && isset($parents[$name]))) throw new RuntimeException('duplicate/conflicting archive path');
+            $parent = $name;
+            while (($pos = strrpos($parent, '/')) !== false) {
+                $parent = substr($parent, 0, $pos);
+                if (isset($seen[$parent]) && $seen[$parent] !== '5') throw new RuntimeException('non-directory archive parent');
+                $parents[$parent] = true;
+            }
+            $seen[$name] = $type;
+            while ($blocks > 0) { $read = min(65536, $blocks); pw_update_read($stream, $read); $blocks -= $read; }
+        }
+    } finally { gzclose($stream); }
+}
+function pw_update_canonical($path) {
+    if ($path === '') return '';
+    if ($path[0] !== '/') $path = getcwd().'/'.$path;
+    $out = '';
+    foreach (explode('/', $path) as $part) {
+        if ($part === '' || $part === '.') continue;
+        if ($part === '..') { $out = dirname($out === '' ? '/' : $out); continue; }
+        $next = rtrim($out, '/').'/'.$part;
+        if (file_exists($next) || is_link($next)) {
+            $real = realpath($next);
+            if ($real === false) throw new RuntimeException('cannot resolve private path');
+            $out = $real;
+        } else $out = $next;
+    }
+    return $out === '' ? '/' : $out;
+}
+function pw_update_layout($args) {
+    $target = array_shift($args); $managed = []; $private = false;
+    foreach ($args as $arg) {
+        if ($arg === '--private') { $private = true; continue; }
+        if (!$private) { $managed[] = $target.'/'.$arg; continue; }
+        if ($arg === '') continue;
+        $path = pw_update_canonical($arg);
+        foreach ($managed as $owned) {
+            if ($path === $owned || strpos($path, $owned.'/') === 0) throw new RuntimeException('private data overlaps managed code; move it outside program paths before updating');
+        }
+    }
+}
+if (isset($argv) && realpath($argv[0]) === __FILE__) {
+    try {
+        if (($argv[1] ?? '') === 'archive' && $argc === 3) pw_update_archive($argv[2]);
+        elseif (($argv[1] ?? '') === 'layout' && $argc >= 5) pw_update_layout(array_slice($argv, 2));
+        else throw new RuntimeException('invalid update guard arguments');
+    } catch (Throwable $e) { fwrite(STDERR, 'Update validation failed: '.$e->getMessage().".\n"); exit(2); }
 }
 
-fetch_archive() {
-  local url="https://github.com/$REPO/archive/refs/heads/$REF.tar.gz"
-  mkdir -p "$TMP"
-  if command -v curl >/dev/null 2>&1; then
-    curl -fsSL "$url" -o "$ARCHIVE"
-  elif command -v wget >/dev/null 2>&1; then
-    wget -qO "$ARCHIVE" "$url"
-  else
-    printf 'Error: curl or wget is required.\n' >&2
-    exit 2
-  fi
-  mkdir -p "$TMP/src"
-  tar -xzf "$ARCHIVE" -C "$TMP/src" --strip-components=1
-}
-
-version_from_dir() {
-  local dir="$1"
-  cat "$dir/VERSION" 2>/dev/null || printf 'unknown'
-}
-
-install_portable() {
-  local target version
-  if [ -n "${PRESSWARDEN_INSTALL_DIR:-}" ]; then
-    target="$PRESSWARDEN_INSTALL_DIR"
-  elif [ -f "$PWD/.presswarden-portable" ] && [ -f "$PWD/presswarden" ]; then
-    target="$PWD"
-  else
-    target="$PWD/PressWarden"
-  fi
-  case "$target" in /*) : ;; *) target="$PWD/$target" ;; esac
-  target=${target%/}
-
-  mkdir -p "$target"
-  fetch_archive
-
-  # Copy program files in place. config/config and var/ are not part of the
-  # repository, so an existing portable install keeps its private settings,
-  # reports, cache, and quarantine during upgrades.
-  cp -a "$TMP/src/." "$target/"
-  : > "$target/.presswarden-portable"
-  mkdir -p "$target/config" "$target/var/reports" "$target/var/cache" "$target/var/quarantine"
-  if [ ! -f "$target/config/config" ]; then
-    cp "$target/config/config.example" "$target/config/config"
-  fi
-
-  chmod +x "$target/presswarden" "$target/install.sh" "$target/uninstall.sh" "$target"/checks/*.sh "$target"/suites/*.sh
-  chmod 600 "$target/config/config" 2>/dev/null || true
-  version=$(version_from_dir "$target")
-
-  logo
-  printf '\nPressWarden v%s • portable shared-host install\n' "$version"
-  printf '%s\n\n' 'No bin directory, symlink, PATH change, or system-wide access required.'
-  printf '✓ Installed: %s\n' "$target"
-  printf '✓ Config:    %s/config/config\n' "$target"
-  printf '✓ Data:      %s/var\n' "$target"
-  printf '\nNext steps:\n'
-  printf '  cd %q\n' "$target"
-  printf '  ./presswarden doctor\n'
-  printf '  ./presswarden fast\n'
-  printf '\nFuture upgrades: ./presswarden update\n'
-  printf 'Tip: use ./presswarden full for the comprehensive audit.\n'
-}
-
-install_user() {
-  local prefix="${PRESSWARDEN_PREFIX:-${XDG_DATA_HOME:-$HOME/.local/share}/presswarden}"
-  local bin_dir="${PRESSWARDEN_BIN_DIR:-$HOME/.local/bin}"
-  local config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/presswarden"
-  local version
-
-  mkdir -p "$bin_dir" "$config_dir"
-  fetch_archive
-  rm -rf "$prefix.new"
-  mv "$TMP/src" "$prefix.new"
-  rm -rf "$prefix"
-  mv "$prefix.new" "$prefix"
-  chmod +x "$prefix/presswarden" "$prefix/install.sh" "$prefix/uninstall.sh" "$prefix"/checks/*.sh "$prefix"/suites/*.sh
-  ln -sfn "$prefix/presswarden" "$bin_dir/presswarden"
-  if [ ! -e "$config_dir/config" ]; then
-    cp "$prefix/config/config.example" "$config_dir/config"
-    chmod 600 "$config_dir/config" 2>/dev/null || true
-  fi
-  version=$(version_from_dir "$prefix")
-
-  logo
-  printf '\nPressWarden v%s • user install\n\n' "$version"
-  printf '✓ CLI:    %s/presswarden\n' "$bin_dir"
-  printf '✓ Config: %s/config\n' "$config_dir"
-  printf '\nNext steps:\n  presswarden doctor\n  presswarden fast\n'
-  printf '\nFuture upgrades: presswarden update\n'
-}
-
-case "$MODE" in
-  portable|local) install_portable ;;
-  user|legacy) install_user ;;
-  *) printf 'Error: PRESSWARDEN_INSTALL_MODE must be portable or user.\n' >&2; exit 2 ;;
-esac
+PHP_GUARD
+if [ -n "${PRESSWARDEN_INSTALL_SOURCE:-}" ]; then
+  SRC=$(cd -P -- "$PRESSWARDEN_INSTALL_SOURCE" && pwd -P)
+  [ -z "$(find "$SRC" -type l -print -quit)" ] || { echo 'Symlink in installation source refused.' >&2; exit 2; }
+else
+  command -v curl >/dev/null || { echo 'Remote installation requires curl.' >&2; exit 2; }
+  curl -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 120 --max-filesize 33554432 \
+    "https://github.com/marketania/PressWarden/archive/refs/heads/main.tar.gz" -o "$WORK/source.tar.gz"
+  # The validator is silent on success and guarantees one top-level folder.
+  # Extract that validated folder's contents just as the self-updater does.
+  php "$WORK/guard.php" archive "$WORK/source.tar.gz"
+  mkdir "$WORK/unpacked"
+  (unset TAR_OPTIONS GZIP; tar -xzf "$WORK/source.tar.gz" -C "$WORK/unpacked" --strip-components=1 --no-same-owner --no-same-permissions)
+  SRC="$WORK/unpacked"
+fi
+[ "$(cat "$SRC/PRODUCT" 2>/dev/null)" = "$PRODUCT" ] || { echo 'Installation source identity mismatch.' >&2; exit 2; }
+for item in "$PROGRAM" install.sh uninstall.sh lib/_lib.sh config/config.example VERSION; do
+  [ -s "$SRC/$item" ] && [ ! -L "$SRC/$item" ] || { printf 'Missing/unsafe source file: %s\n' "$item" >&2; exit 2; }
+done
+php -r 'require $argv[1];pw_ops_path($argv[2]);' "$SRC/lib/ops-safety.php" "$DEST"
+[ ! -e "$DEST" ] && [ ! -L "$DEST" ] || { echo 'Destination exists. Use its update command; installation will not overwrite it.' >&2; exit 2; }
+PARENT=$(dirname "$DEST")
+mkdir -p -- "$PARENT"
+STAGE=$(mktemp -d "$PARENT/.presswarden-install.XXXXXXXX")
+for item in .github .gitignore CHANGELOG.md CONTRIBUTING.md LICENSE README.md SECURITY.md VERSION PRODUCT PROVENANCE.md checks docs lib suites intel integrations tests install.sh uninstall.sh "$PROGRAM"; do
+  [ ! -e "$SRC/$item" ] || cp -R -- "$SRC/$item" "$STAGE/$item"
+done
+mkdir -p "$STAGE/config"
+cp "$SRC/config/config.example" "$STAGE/config/config.example"
+find "$STAGE" -type f -name '*.sh' -print > "$WORK/shells"
+printf '%s\n' "$STAGE/$PROGRAM" >> "$WORK/shells"
+while IFS= read -r file; do bash -n "$file"; done < "$WORK/shells"
+find "$STAGE/lib" -type f -name '*.php' -print > "$WORK/php"
+while IFS= read -r file; do php -l "$file" >/dev/null; done < "$WORK/php"
+chmod 755 "$STAGE/$PROGRAM" "$STAGE/install.sh" "$STAGE/uninstall.sh"
+if [ "$MODE" = portable ]; then
+  : > "$STAGE/.presswarden-portable"
+  cp "$SRC/config/config.example" "$STAGE/config/config"
+else
+  CFG="${PRESSWARDEN_CONFIG_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/presswarden/config}"
+  php "$SRC/lib/ops-safety.php" directory "$(dirname "$CFG")" >/dev/null
+  [ ! -L "$CFG" ] || { echo 'Symlink config refused.' >&2; exit 2; }
+  if [ ! -e "$CFG" ]; then (set -C; cat "$SRC/config/config.example" > "$CFG"); fi
+  BIN="${PRESSWARDEN_BIN_DIR:-$HOME/.local/bin}"
+  mkdir -p "$BIN"
+  if [ -e "$BIN/$PROGRAM" ] || [ -L "$BIN/$PROGRAM" ]; then echo 'Executable path already exists; nothing replaced.' >&2; exit 2; fi
+fi
+# A final recheck avoids knowingly nesting into a destination created during validation.
+[ ! -e "$DEST" ] && [ ! -L "$DEST" ] || { echo 'Destination changed during installation.' >&2; exit 2; }
+mv -T -- "$STAGE" "$DEST"; STAGE=''
+if [ "$MODE" = user ]; then ln -s "$DEST/$PROGRAM" "$BIN/$PROGRAM"; fi
+printf 'Installed %s %s at %s\n' "$PRODUCT" "$(cat "$DEST/VERSION")" "$DEST"
+printf 'Review configuration, then run: %s/%s doctor\n' "$DEST" "$PROGRAM"

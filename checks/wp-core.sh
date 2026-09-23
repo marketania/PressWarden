@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # wp-core — cached native verification + targeted official core remediation
 NAME=wp-core; DESC="cached official core checksum verification + targeted remediation"
-SCAN_DOES="Verifies WordPress core files against official WordPress.org MD5 manifests. Each unique WordPress version + package locale manifest is fetched once and cached, then all sites are hashed in one lightweight PHP process. On findings, interactive runs can quarantine EXTRA core-tree files and restore only MISMATCH/MISSING files from the exact official WordPress package."
+SCAN_DOES="Verifies WordPress core files against official WordPress.org MD5 manifests. Each unique WordPress version + package locale manifest is fetched once and cached, then all sites are hashed in one lightweight PHP process. Only explicit remediate core runs can quarantine EXTRA core-tree files and restore only MISMATCH/MISSING files from the exact official WordPress package."
 SCAN_WHY="Checksum mismatches reveal modified or missing core files. Cached manifests remove repeated WP-CLI/network overhead; targeted remediation avoids overwriting healthy core files, wp-content, or wp-config.php."
 . "$(cd "$(dirname "$0")/.." && pwd)/lib/_lib.sh"
 
@@ -12,36 +12,37 @@ _manifest_checksum() { local manifest="$1" rel="$2"; php -r '$j=json_decode(@fil
 _file_md5() { local f="$1"; php -r '$h=@md5_file($argv[1]); if(is_string($h)) echo strtolower($h);' "$f" 2>/dev/null; }
 
 _prepare_core_package() {
-  local ver="$1" locale="$2" pkg_root="$3" key pkg tmp marker
-  key="${ver}-${locale}"; pkg="$pkg_root/$key"; marker="$pkg/.presswarden-official-package"
-  if [ -f "$marker" ] && [ -f "$pkg/wp-includes/version.php" ]; then printf '%s\n' "$pkg"; return 0; fi
-  command -v wp >/dev/null 2>&1 || { printf '    %s✖ RESTORE%s WP-CLI is required to download the official core package\n' "$R" "$X" >&2; return 1; }
-  mkdir -p "$pkg_root" 2>/dev/null || return 1; chmod 700 "$pkg_root" 2>/dev/null || true; tmp="${pkg}.tmp.$$"; rm -rf "$tmp"; mkdir -p "$tmp" || return 1
-  printf '    %sℹ PACKAGE%s downloading official WordPress %s/%s once for targeted repair...\n' "$C" "$X" "$ver" "$locale" >&2
-  if wp core download --path="$tmp" --version="$ver" --locale="$locale" --skip-content --force --quiet >/dev/null 2>&1; then printf '%s\n' "WordPress $ver/$locale downloaded by PressWarden on $(date '+%F %T')" > "$tmp/.presswarden-official-package"; rm -rf "$pkg"; mv "$tmp" "$pkg" || { rm -rf "$tmp"; return 1; }; printf '%s\n' "$pkg"; return 0; fi
-  rm -rf "$tmp"; printf '    %s✖ PACKAGE%s could not download official WordPress %s/%s\n' "$R" "$X" "$ver" "$locale" >&2; return 1
+  local ver="$1" locale="$2" pkg_root="$3" pkg tmp
+  case "$ver$locale" in ''|*[!A-Za-z0-9._-]*) return 2;; esac
+  php "$PRESSWARDEN_DIR/lib/ops-safety.php" scope "$pkg_root" "${WP_SITES[@]}" || return 2
+  pkg="$pkg_root/$ver-$locale"
+  php "$PRESSWARDEN_DIR/lib/ops-safety.php" path "$pkg" || return 2
+  if [ -f "$pkg/.presswarden-official-package" ] && [ -f "$pkg/wp-includes/version.php" ]; then printf '%s\n' "$pkg";return 0;fi
+  [ ! -e "$pkg" ] || { printf 'Refusing unverified package cache; preserve and inspect it before retrying.\n' >&2;return 2; }
+  command -v wp >/dev/null 2>&1 || { printf 'WP-CLI is required to download the official package.\n' >&2;return 2; }
+  tmp=$(mktemp -d "$pkg_root/.core-package.XXXXXXXX") || return 2
+  if ! wp core download --path="$tmp" --version="$ver" --locale="$locale" --skip-content --quiet >/dev/null 2>&1;then rm -rf -- "$tmp";return 2;fi
+  printf 'WordPress %s/%s fetched by WP-CLI; selected files must still pass the official checksum manifest.\n' "$ver" "$locale" > "$tmp/.presswarden-official-package"
+  if [ -e "$pkg" ] || [ -L "$pkg" ];then rm -rf -- "$tmp";return 2;fi
+  mv -T -- "$tmp" "$pkg" || { rm -rf -- "$tmp";return 2; };printf '%s\n' "$pkg"
 }
-
 _quarantine_core_extras() {
-  local site="$1" label="$2" list="$3" stamp qroot rel src dest ok=0 fail=0
-  [ -s "$list" ] || return 0; stamp=$(date +%Y%m%d-%H%M%S); qroot="$QUARANTINE/core-extra-$stamp/$label"; mkdir -p "$qroot" 2>/dev/null || { printf '    %s✖ EXTRA%s cannot create quarantine\n' "$R" "$X"; return 1; }
-  while IFS= read -r rel; do [ -n "$rel" ] || continue; case "$rel" in wp-admin/*|wp-includes/*) ;; *) printf '    %s⚠ SKIP%s unsafe EXTRA path: %s\n' "$Y" "$X" "$rel"; fail=$((fail+1)); continue ;; esac; src="$site/$rel"; [ -f "$src" ] || continue; dest="$qroot/$rel"; mkdir -p "$(dirname "$dest")" || { fail=$((fail+1)); continue; }; if cp -a -- "$src" "$dest" 2>/dev/null && rm -f -- "$src" 2>/dev/null; then ok=$((ok+1)); DELETED=$((DELETED+1)); printf '    %s✓ QUARANTINED+REMOVED%s  %s\n' "$G" "$X" "$rel"; else fail=$((fail+1)); printf '    %s✖ FAILED%s  %s\n' "$R" "$X" "$rel"; fi; done < "$list"
-  printf '    %sℹ%s quarantine: %s\n' "$C" "$X" "$qroot"; [ "$fail" -eq 0 ]
+  local site="$1" label="$2" list="$3" manifest="$4"
+  php "$PRESSWARDEN_DIR/lib/core-transaction.php" extras "$site" "$manifest" "$list" '' "$PRESSWARDEN_STATE_DIR" || { PW_REMEDIATION_FAILED=1;return 2; }
 }
-
 _restore_core_files() {
-  local site="$1" label="$2" ver="$3" locale="$4" manifest="$5" list="$6" pkg_root="$7" pkg stamp qroot rel src dst expected actual backup existed ok=0 fail=0
-  [ -s "$list" ] || return 0; pkg=$(_prepare_core_package "$ver" "$locale" "$pkg_root") || return 1; stamp=$(date +%Y%m%d-%H%M%S); qroot="$QUARANTINE/core-repair-$stamp/$label"; mkdir -p "$qroot" 2>/dev/null || return 1
-  while IFS= read -r rel; do [ -n "$rel" ] || continue; case "$rel" in wp-content/*|wp-config.php|.htaccess|.user.ini|php.ini) printf '    %s⚠ SKIP%s protected/non-core target: %s\n' "$Y" "$X" "$rel"; fail=$((fail+1)); continue ;; esac; expected=$(_manifest_checksum "$manifest" "$rel"); src="$pkg/$rel"; dst="$site/$rel"; if [ -z "$expected" ] || [ ! -f "$src" ]; then printf '    %s✖ RESTORE%s official package source unavailable: %s\n' "$R" "$X" "$rel"; fail=$((fail+1)); continue; fi; actual=$(_file_md5 "$src"); if [ -z "$actual" ] || [ "$actual" != "$expected" ]; then printf '    %s✖ RESTORE%s cached official source failed manifest verification: %s\n' "$R" "$X" "$rel"; fail=$((fail+1)); continue; fi; existed=0; backup=''; if [ -f "$dst" ]; then existed=1; backup="$qroot/$rel"; mkdir -p "$(dirname "$backup")" || { fail=$((fail+1)); continue; }; if ! cp -a -- "$dst" "$backup" 2>/dev/null; then printf '    %s✖ RESTORE%s could not back up existing file: %s\n' "$R" "$X" "$rel"; fail=$((fail+1)); continue; fi; fi; mkdir -p "$(dirname "$dst")" 2>/dev/null || { fail=$((fail+1)); continue; }; if cp -p -- "$src" "$dst" 2>/dev/null; then actual=$(_file_md5 "$dst"); if [ "$actual" = "$expected" ]; then ok=$((ok+1)); printf '    %s✓ RESTORED%s  %s\n' "$G" "$X" "$rel"; continue; fi; fi; if [ "$existed" -eq 1 ] && [ -n "$backup" ] && [ -f "$backup" ]; then cp -a -- "$backup" "$dst" 2>/dev/null || true; else rm -f -- "$dst" 2>/dev/null || true; fi; fail=$((fail+1)); printf '    %s✖ RESTORE%s verification failed; original state restored: %s\n' "$R" "$X" "$rel"; done < "$list"
-  [ "$ok" -gt 0 ] && printf '    %sℹ%s original mismatched files backed up under: %s\n' "$C" "$X" "$qroot"; [ "$fail" -eq 0 ]
+  local site="$1" label="$2" ver="$3" locale="$4" manifest="$5" list="$6" pkg_root="$7" pkg
+  pkg=$(_prepare_core_package "$ver" "$locale" "$pkg_root") || { PW_REMEDIATION_FAILED=1;return 2; }
+  php "$PRESSWARDEN_DIR/lib/core-transaction.php" restore "$site" "$manifest" "$list" "$pkg" "$PRESSWARDEN_STATE_DIR" || { PW_REMEDIATION_FAILED=1;return 2; }
 }
 
 _prompt_core_remediation() {
   local meta="$1" results="$2" pkg_root="$3" id site label ver locale manifest extras bad ne nb ans
+  [ "${_PW_EXPLICIT_REMEDIATION:-0}" = 1 ] || return 0
   [ "$PRESSWARDEN_INTERACTIVE" != 0 ] || return 0; [ -t 0 ] || { printf '    %sℹ%s non-interactive session — core remediation skipped\n' "$C" "$X"; return 0; }
   while IFS=$'\t' read -r id site label ver locale manifest <&3; do [ -n "$id" ] || continue; extras="$results/$id.extra"; bad="$results/$id.bad"; ne=$(grep -c . "$extras" 2>/dev/null); ne=${ne:-0}; nb=$(grep -c . "$bad" 2>/dev/null); nb=${nb:-0}; [ "$ne" -gt 0 ] || [ "$nb" -gt 0 ] || continue; printf '\n    %s%sCORE ACTION%s  %s%s%s  %s(WP %s/%s)%s\n' "$B" "$BL" "$X" "$B" "$label" "$X" "$D" "$ver" "$locale" "$X"; [ "$nb" -gt 0 ] && printf '    %sRESTORE%s  %s mismatched/missing official core file(s)\n' "$C" "$X" "$nb"; [ "$ne" -gt 0 ] && printf '    %sEXTRAS%s   %s non-core file(s) under wp-admin/wp-includes\n' "$Y" "$X" "$ne"; [ "$nb" -gt 0 ] && printf '    %sℹ%s restore downloads the exact official version+locale to a cache and replaces ONLY failed files; originals are quarantined first.\n' "$C" "$X"; [ "$ne" -gt 0 ] && printf '    %s⚠%s extra files are quarantined before removal; an extra .htaccess may be intentional host/plugin hardening.\n' "$Y" "$X"
     if [ "$nb" -gt 0 ] && [ "$ne" -gt 0 ]; then printf '    %s[b]%s both   %s[r]%s restore core   %s[d]%s quarantine/delete extras   %s[s]%s skip %s(default)%s : ' "$B$G" "$X" "$B$C" "$X" "$B$R" "$X" "$B$Y" "$X" "$D" "$X"; elif [ "$nb" -gt 0 ]; then printf '    %s[r]%s restore official core files   %s[s]%s skip %s(default)%s : ' "$B$C" "$X" "$B$Y" "$X" "$D" "$X"; else printf '    %s[d]%s quarantine/delete extras   %s[s]%s skip %s(default)%s : ' "$B$R" "$X" "$B$Y" "$X" "$D" "$X"; fi
-    IFS= read -r ans || ans='s'; case "$ans" in b|B|both|BOTH) [ "$nb" -gt 0 ] && _restore_core_files "$site" "$label" "$ver" "$locale" "$manifest" "$bad" "$pkg_root" || true; [ "$ne" -gt 0 ] && _quarantine_core_extras "$site" "$label" "$extras" || true ;; r|R|restore|RESTORE) [ "$nb" -gt 0 ] && _restore_core_files "$site" "$label" "$ver" "$locale" "$manifest" "$bad" "$pkg_root" || printf '    %s↷ SKIPPED%s no restorable checksum failures\n' "$Y" "$X" ;; d|D|delete|DELETE) [ "$ne" -gt 0 ] && _quarantine_core_extras "$site" "$label" "$extras" || printf '    %s↷ SKIPPED%s no EXTRA core-tree files\n' "$Y" "$X" ;; *) printf '    %s↷ SKIPPED%s no core files changed\n' "$Y" "$X" ;; esac
+    IFS= read -r ans || ans='s'; case "$ans" in b|B|both|BOTH) [ "$nb" -gt 0 ] && _restore_core_files "$site" "$label" "$ver" "$locale" "$manifest" "$bad" "$pkg_root" || true; [ "$ne" -gt 0 ] && _quarantine_core_extras "$site" "$label" "$extras" "$manifest" || true ;; r|R|restore|RESTORE) [ "$nb" -gt 0 ] && _restore_core_files "$site" "$label" "$ver" "$locale" "$manifest" "$bad" "$pkg_root" || printf '    %s↷ SKIPPED%s no restorable checksum failures\n' "$Y" "$X" ;; d|D|delete|DELETE) [ "$ne" -gt 0 ] && _quarantine_core_extras "$site" "$label" "$extras" "$manifest" || printf '    %s↷ SKIPPED%s no EXTRA core-tree files\n' "$Y" "$X" ;; *) printf '    %s↷ SKIPPED%s no core files changed\n' "$Y" "$X" ;; esac
   done 3< "$meta"
 }
 
@@ -56,6 +57,7 @@ main() {
 
   PRESSWARDEN_CORE_META="$meta" PRESSWARDEN_CORE_RESULTS="$results" php <<'PRESSWARDEN_CORE_PHP'
 <?php
+if(!function_exists('str_starts_with')){function str_starts_with($s,$n){return strncmp($s,$n,strlen($n))===0;}}
 $metaFile=getenv('PRESSWARDEN_CORE_META')?:'';$resultsDir=getenv('PRESSWARDEN_CORE_RESULTS')?:'';$manifestCache=[];
 function write_lines(string $f,array $a):void{if($a)@file_put_contents($f,implode("\n",$a)."\n");else @file_put_contents($f,'');}
 function write_result(string $dir,string $id,string $status,array $mismatch=[],array $missing=[],array $extras=[],array $errors=[]):void{@file_put_contents($dir.'/'.$id.'.status',$status."\n");write_lines($dir.'/'.$id.'.mismatch',$mismatch);write_lines($dir.'/'.$id.'.missing',$missing);write_lines($dir.'/'.$id.'.extra',$extras);write_lines($dir.'/'.$id.'.bad',array_merge($mismatch,$missing));$details=[];foreach($mismatch as $f)$details[]='MISMATCH  '.$f;foreach($missing as $f)$details[]='MISSING   '.$f;foreach($extras as $f)$details[]='EXTRA     '.$f.' (not in official core manifest)';foreach($errors as $f)$details[]=$f;if($details){$limit=25;$shown=array_slice($details,0,$limit);if(count($details)>$limit)$shown[]='... '.(count($details)-$limit).' more core issue(s) hidden';@file_put_contents($dir.'/'.$id.'.details',implode("\n",$shown)."\n");}}
@@ -64,7 +66,7 @@ function find_core_extras(string $root,array $expected):array{$extras=[];foreach
 $fh=@fopen($metaFile,'rb');if(!$fh)exit(2);while(($line=fgets($fh))!==false){$line=rtrim($line,"\r\n");if($line==='')continue;$parts=explode("\t",$line,6);[$id,$root,$label,$version,$locale,$manifest]=array_pad($parts,6,'');if($version===''||$version==='unknown'){write_result($resultsDir,$id,'error',[],[],[],['Could not parse $wp_version from wp-includes/version.php']);continue;}if($manifest==='-'||!is_file($manifest)){write_result($resultsDir,$id,'error',[],[],[],["Official checksum manifest unavailable for WordPress {$version} / {$locale}"]);continue;}if(!array_key_exists($manifest,$manifestCache)){$raw=@file_get_contents($manifest);$json=is_string($raw)?json_decode($raw,true):null;$manifestCache[$manifest]=(is_array($json)&&isset($json['checksums'])&&is_array($json['checksums']))?$json['checksums']:false;}$checksums=$manifestCache[$manifest];if(!is_array($checksums)){write_result($resultsDir,$id,'error',[],[],[],["Cached checksum manifest is invalid for WordPress {$version} / {$locale}"]);continue;}$mismatch=[];$missing=[];$expectedCore=[];foreach($checksums as $file=>$checksum){if(str_starts_with($file,'wp-content'))continue;if(str_starts_with($file,'wp-admin/')||str_starts_with($file,'wp-includes/'))$expectedCore[$file]=true;$path=rtrim($root,'/\\').DIRECTORY_SEPARATOR.str_replace('/',DIRECTORY_SEPARATOR,$file);if(!is_file($path)){$missing[]=$file;continue;}$actual=@md5_file($path);if(!is_string($actual)||!hash_equals(strtolower((string)$checksum),strtolower($actual)))$mismatch[]=$file;}$extras=find_core_extras($root,$expectedCore);if($mismatch||$missing)write_result($resultsDir,$id,'alert',$mismatch,$missing,$extras);elseif($extras)write_result($resultsDir,$id,'review',[],[],$extras);else write_result($resultsDir,$id,'clean');}fclose($fh);
 PRESSWARDEN_CORE_PHP
   php_rc=$?; if [ "$php_rc" -ne 0 ]; then rm -rf "$results"; rm -f "$meta" "$groups" "$vf" "$counts"; die "native core checksum verifier failed (php exit $php_rc)"; fi
-  while IFS=$'\t' read -r id s d ver locale manifest; do [ -n "$id" ] || continue; status=$(cat "$results/$id.status" 2>/dev/null || printf error); detail=''; [ -f "$results/$id.details" ] && detail=$(cat "$results/$id.details"); case "$status" in clean) clean_n=$((clean_n+1)); printf '%s\n' "$ver" >> "$vf" ;; alert) issue "$d" "WP $ver" "$detail" ;; review) flag "$d" "WP $ver" "$detail" ;; *) flag "$d" "WP $ver/$locale — checksum verification could not complete" "$detail" ;; esac; done < "$meta"
+  while IFS=$'\t' read -r id s d ver locale manifest; do [ -n "$id" ] || continue; status=$(cat "$results/$id.status" 2>/dev/null || printf error); detail=''; [ -f "$results/$id.details" ] && detail=$(cat "$results/$id.details"); case "$status" in clean) clean_n=$((clean_n+1)); printf '%s\n' "$ver" >> "$vf" ;; alert) issue "$d" "WP $ver" "$detail" ;; review) flag "$d" "WP $ver" "$detail" ;; *) PW_CHECK_INCOMPLETE=1; flag "$d" "WP $ver/$locale — checksum verification could not complete" "$detail" ;; esac; done < "$meta"
   if [ "$clean_n" -gt 0 ]; then sort "$vf" | uniq -c | sort -nr | awk '{n=$1; $1=""; sub(/^ /,""); print n "\t" $0}' > "$counts"; while IFS=$'\t' read -r n v; do [ -n "$v" ] || continue; [ -z "$summary" ] || summary="$summary • "; summary="${summary}WP ${v}: ${n}"; done < "$counts"; printf '    %s%s✓ CLEAN%s  %s%s/%s sites%s passed official core checksums\n' "$B" "$G" "$X" "$B" "$clean_n" "$total_n" "$X"; [ -n "$summary" ] && printf '        %sVERSIONS%s  %s\n' "$D" "$X" "$summary"; fi
   note "Official source: api.wordpress.org/core/checksums/1.0/ keyed by WordPress version + package locale."; note "MISMATCH/MISSING remediation downloads the exact official package into the toolkit cache and restores ONLY failed files; wp-content and wp-config.php are never overwritten."; note "EXTRA files under wp-admin/wp-includes can be quarantine-removed interactively; quarantine first because a host/security plugin may intentionally add an .htaccess."; note "Set PRESSWARDEN_CORE_CHECKSUM_REFRESH=1 to force-refetch cached manifests; released version/locale checksum sets are otherwise reused."
   _prompt_core_remediation "$meta" "$results" "$package_dir"; rm -rf "$results"; rm -f "$meta" "$groups" "$vf" "$counts"; finish

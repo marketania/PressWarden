@@ -87,7 +87,6 @@ function pwc_plan_data($runs,$id,$version){
     $checks=pwc_checks($state);$map=pwc_result_map($state);$carry=[];$missing=null;$seenMissing=false;
     foreach($checks as $i=>$check){if(isset($map[$check])){if($seenMissing)pwc_fail('run results are not a completed prefix');$r=$map[$check];$st=(string)($r['status']??'');if(!in_array($st,['clean','findings','skipped'],true))pwc_fail('completed prefix contains an incomplete check; rerun the suite');$n=$r['findings']??0;if($n!==null&&!is_numeric($n))pwc_fail('invalid carried finding count');$elapsed=$r['elapsed_seconds']??($r['elapsed']??0);if(!is_numeric($elapsed))pwc_fail('invalid carried elapsed time');$carry[]=['check'=>$check,'findings'=>$n===null?0:(int)$n,'status'=>$st,'elapsed'=>(int)$elapsed];}else{if(!$seenMissing){$missing=['check'=>$check,'index'=>$i+1];}$seenMissing=true;}}
     if($missing===null)pwc_fail('run has no unfinished check to continue');
-    if(in_array($missing['check'],['litespeed-db','wp-db-maintenance'],true))pwc_fail('the interrupted check performs automatic database writes; rerun the DB/full suite explicitly instead of replaying it');
     return ['id'=>$id,'dir'=>$dir,'state'=>$state,'scope'=>$scope,'suite'=>$suite,'checks'=>$checks,'carry'=>$carry,'start'=>$missing['check'],'index'=>$missing['index']];
 }
 function pwc_emit_plan($p){

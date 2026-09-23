@@ -65,6 +65,7 @@ _build_action_lists() {
 # Default is always SKIP. In non-interactive use, nothing is deleted.
 _prompt_file_action() {
   local findings="$1" sev="$2" del prot nd np ans
+  [ "${_PW_EXPLICIT_REMEDIATION:-0}" = 1 ] || return 0
   [ "$sev" != info ] || return 0
   [ "${PW_REMEDIATION_FAILED:-0}" -eq 0 ] || return 2
   [ "${PW_CHECK_INCOMPLETE:-0}" -eq 0 ] || return 2

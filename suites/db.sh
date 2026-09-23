@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
+export _PW_EXPLICIT_REMEDIATION=0
 RUN_NAME=db
-RUN_DESC="database only • security/isolation + malware persistence audit → LiteSpeed cleanup → conditional repair → optimize → verify"
-RUN_DOES="Runs database security/isolation checks, targeted stored-malware and suspicious administrator-persistence intelligence, LiteSpeed Cache cleanup where active, then conditional native table repair, optimization, and final verification."
-RUN_WHY="Use when you want database posture, stored-threat inspection, cleanup, and health without scanning the WordPress filesystem."
+RUN_DESC="database security, stored threats and credential isolation; no maintenance"
+RUN_DOES="Inspects stored malicious payloads, administrator persistence, URL tampering, grants and cross-site credential/salt reuse."
+RUN_WHY="Use for database security investigation; PressGarden independently owns database health and maintenance."
 unset PRESSWARDEN_SKIP_DB_PRIV_SCOPE PRESSWARDEN_SKIP_DB_CRED_REUSE 2>/dev/null || true
-PW_LITESPEED_DB_SUITE=1
-export PW_LITESPEED_DB_SUITE
-CHECKS="wp-db wp-db-malware litespeed-db wp-db-maintenance"
+CHECKS="wp-db wp-db-malware"
 . "$(cd "$(dirname "$0")/.." && pwd)/lib/_runner.sh"
 run_all
