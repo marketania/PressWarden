@@ -11,19 +11,38 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 63adec182b4d3a20dbd5e24daa9b9fa0e98510b8
+          repository: marketania/PressWarden
+          ref: 2266752ece1a46b9ff1e0ada3419c9b609fe472a
+          path: PressWarden
           fetch-depth: 0
           persist-credentials: false
-      - name: Export source and provenance
+      - uses: actions/checkout@v4
+        with:
+          repository: marketania/PressHarden
+          ref: 2c250974157edfd50ed3f5da5b9ef9278762a588
+          path: PressHarden
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: marketania/PressGarden
+          ref: 84fa06c00d644c36b6621b555512b76c6c1dc261
+          path: PressGarden
+          persist-credentials: false
+      - name: Export tracked source and provenance only
+        shell: bash
         run: |
-          mkdir -p "$RUNNER_TEMP/press-family-source"
-          git archive --format=tar.gz HEAD > "$RUNNER_TEMP/press-family-source/source.tar.gz"
-          git bundle create "$RUNNER_TEMP/press-family-source/source.bundle" HEAD
-          git ls-files > "$RUNNER_TEMP/press-family-source/files.txt"
-          git log --format=fuller -50 > "$RUNNER_TEMP/press-family-source/history.txt"
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/press-family-candidates"
+          for product in PressWarden PressHarden PressGarden; do
+            git -C "$product" archive --format=tar.gz --prefix="$product/" HEAD > "$RUNNER_TEMP/press-family-candidates/$product.tar.gz"
+            git -C "$product" rev-parse HEAD > "$RUNNER_TEMP/press-family-candidates/$product.commit"
+          done
+          git -C PressWarden archive --format=tar.gz --prefix=PressWarden-original/ 63adec182b4d3a20dbd5e24daa9b9fa0e98510b8 > "$RUNNER_TEMP/press-family-candidates/PressWarden-original.tar.gz"
+          cd "$RUNNER_TEMP/press-family-candidates"
+          sha256sum *.tar.gz > SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
-          name: press-family-source
-          path: ${{ runner.temp }}/press-family-source/
+          name: press-family-candidates
+          path: ${{ runner.temp }}/press-family-candidates/
           retention-days: 7
           if-no-files-found: error
