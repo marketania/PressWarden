@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Inert database values and contextual evidence
         run: php -d memory_limit=64M tests/db-values.php
       - name: Pagination, resource limits and retained findings
@@ -38,7 +38,7 @@ jobs:
           --health-cmd="mysqladmin ping -h 127.0.0.1 -ppresswarden-ci-only"
           --health-interval=10s --health-timeout=5s --health-retries=10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: SELECT-only inspection against real MySQL temporary tables
         env:
           PW_TEST_REAL_DB: '1'
