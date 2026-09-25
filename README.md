@@ -1,5 +1,9 @@
 # PressWarden
 
+<p align="center">
+  <img src="docs/assets/press-tool-family.webp" alt="PressWarden blue security shield, PressHarden green policy shield, and PressGarden gold maintenance shield" width="700">
+</p>
+
 **Fleet-scale WordPress security auditing, malware detection and incident investigation from the shell.**
 
 PressWarden detects and investigates suspicious files, malicious PHP/JavaScript/database content, persistence, integrity failures and vulnerable components. It preserves reports and evidence. It is **not** a maintenance, cache, cleanup, update-policy or configuration-hardening tool.
@@ -7,6 +11,10 @@ PressWarden detects and investigates suspicious files, malicious PHP/JavaScript/
 The Press family contains three independent applications. [PressHarden](https://github.com/marketania/PressHarden) manages desired-state WordPress/PHP security configuration. [PressGarden](https://github.com/marketania/PressGarden) handles maintenance and performance. Neither is a dependency of PressWarden.
 
 ## Install
+
+**Production runtime:** use an upstream-supported, security-patched PHP version. PHP 8.2–8.5 are supported at the September 2026 audit date; retained PHP 7.4 syntax tests are not a recommendation to deploy end-of-life PHP.
+
+Read the [public-readiness audit and rollout checklist](docs/PUBLIC-READINESS.md) before fleet-wide use. Start on one staging site, verify recovery, and run as the site owner rather than root.
 
 Linux with Bash 4+, PHP CLI 7.4+ and standard shell tools is the primary platform. WP-CLI is needed for runtime database/account/component inspections; optional vulnerability services and YARA have separate prerequisites. `doctor` reports actual availability instead of treating missing checks as clean.
 
