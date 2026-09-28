@@ -115,6 +115,8 @@ Use `./presswarden config` for sanitized effective configuration and `./presswar
 
 ## Exit codes and incomplete work
 
+**Optional checks have explicit coverage limits.** Unconfigured YARA is skipped; missing capabilities, scanner errors, unknown plugin vendor coverage and malformed provider data are incomplete, not clean. External matches and added metadata filenames need review, not automatic deletion. See [scanner coverage and troubleshooting](docs/SCANNER-COVERAGE.md) for limits and safe next steps.
+
 For scans, `0` means the selected checks completed without reportable findings; `1` means findings/review conditions; `2` or higher means an incomplete/invalid/failed operation or dependency problem. Individual operational commands have their documented semantics. An interrupted run is not clean. Use run status and finding history to distinguish NEW, RECURRING, CHANGED, RESOLVED and NOT RECHECKED.
 
 Continuation verifies version, scope, exclusions, inventory and check plan. Runs from the combined 1.x product cannot resume into this release and replay maintenance commands; start a fresh security scan instead.

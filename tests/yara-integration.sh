@@ -11,8 +11,10 @@ printf 'rule FakeRule { condition: true }\n' > "$TMP/rules.yar"
 cat > "$TMP/bin/yara" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
+if [ "$1" = --help ]; then echo '--no-follow-symlinks'; exit 0; fi
 [ "$1" = '-r' ]
-target="$3"
+[ "$2" = '--no-follow-symlinks' ]
+target="$4"
 printf 'FakeRule %s/wp-content/plugins/demo/bad.php\n' "$target"
 SH
 chmod +x "$TMP/bin/yara"

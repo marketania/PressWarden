@@ -35,6 +35,8 @@ PRESSWARDEN_PATCHSTACK_CACHE_TTL=21600
 PRESSWARDEN_PATCHSTACK_MAX_LOOKUPS=250
 # Optional administrator-supplied YARA rule file. PressWarden ships no YARA signatures.
 PRESSWARDEN_YARA_RULES=""
+# Per-root external scan limit (1–3600 seconds); GNU timeout is required.
+PRESSWARDEN_YARA_TIMEOUT=120
 # Optional override for intel cache location; portable default is PressWarden/var/intel.
 # PRESSWARDEN_INTEL_DIR=""
 

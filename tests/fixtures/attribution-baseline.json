@@ -1,0 +1,18 @@
+{
+  "upstream_commit": "d7867965a9b9d759568ef1a2503e394b4baa8e99",
+  "tree": "64bc7740b1f17c9955ded49025ede47562f6e6f5",
+  "files": {
+    "LICENSE": "7c5654e169385c8ccfa9caf58efb309fc8b5e2fb4a2b27c152101deb70fd6039",
+    "PROVENANCE.md": "017970c0b6099b96c3b0a2ee7b40c36bba03b3626070faeb4f8d97cbcc9b0ee0",
+    "docs/assets/press-tool-family.webp": "b233844db9fa3ba73b9478b3617ca3bcb080988cc2d081faa71523da8d2f4110"
+  },
+  "readme_protected_lines": [
+    "  <img src=\"docs/assets/press-tool-family.webp\" alt=\"PressWarden blue security shield, PressHarden green policy shield, and PressGarden gold maintenance shield\" width=\"700\">",
+    "The Press family contains three independent applications. [PressHarden](https://github.com/marketania/PressHarden) manages desired-state WordPress/PHP security configuration. [PressGarden](https://github.com/marketania/PressGarden) handles maintenance and performance. Neither is a dependency of PressWarden.",
+    "PressWarden is part of the **Press Tool Family**. Other standalone tools are available for related WordPress administration tasks:",
+    "- **[PressHarden](https://github.com/marketania/PressHarden)** — WordPress hardening, security policy, `wp-config.php` controls, PHP posture, locking, and update preferences.",
+    "- **[PressGarden](https://github.com/marketania/PressGarden)** — WordPress maintenance, database health, cleanup, caching, LiteSpeed management, and performance operations.",
+    "curl -fsSLo install-presswarden.sh https://raw.githubusercontent.com/marketania/PressWarden/main/install.sh",
+    "MIT © 2026 Mustafa Sharif / Marketania. [License](LICENSE)."
+  ]
+}
