@@ -108,27 +108,48 @@ _prompt_file_action() {
   rm -f "$del" "$prot"
 }
 
+_PW_REPORT_DISPLAY_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/report-display.php"
+
+pw_report_source_failure() {
+  PW_REPORT_FAILED=1
+  PW_CHECK_INCOMPLETE=1
+  printf 'INCOMPLETE: findings could not be read or safely displayed; existing source retained and generic file actions disabled.\n' >&2
+  return 2
+}
+
 # report <listfile> [issue|review|info] [clean-message] [noaction]
 # noaction suppresses the generic delete/quarantine prompt when a section has
 # its own safer configuration-specific remediation workflow.
 report() {
-  local f="$1" sev="${2:-issue}" clean_msg="${3:-no matches}" action_mode="${4:-}" n label mark col cap shown line elapsed x
+  local f="$1" sev="${2:-issue}" clean_msg="${3:-no matches}" action_mode="${4:-}" n label mark col cap shown line elapsed x display
   cap="$PRESSWARDEN_MAX"
+  if [ ! -f "$f" ] || [ -L "$f" ] || [ ! -r "$f" ]; then
+    pw_report_source_failure; return 2
+  fi
   # Defense in depth: suppress findings under explicitly excluded WordPress roots,
   # including nested targets such as domain.com/special.
   if [ "${#MANUAL_EXCLUDED_ROOTS[@]}" -gt 0 ] && [ -s "$f" ]; then
     local filt line er skip
-    filt="$f.filtered"; : > "$filt"
-    while IFS= read -r line; do
+    filt=$(mktemp "${TMPDIR:-/tmp}/presswarden-display-filter.XXXXXX") || { pw_report_source_failure; return 2; }
+    while IFS= read -r line || [ -n "$line" ]; do
       skip=0
       for er in "${MANUAL_EXCLUDED_ROOTS[@]}"; do
         case "$line" in "$er"|"$er"/*) skip=1; break ;; esac
       done
-      [ "$skip" -eq 1 ] || printf '%s\n' "$line" >> "$filt"
+      if [ "$skip" -ne 1 ] && ! printf '%s\n' "$line" >> "$filt"; then
+        rm -f -- "$filt"; pw_report_source_failure; return 2
+      fi
     done < "$f"
-    mv -f "$filt" "$f" 2>/dev/null || true
+    if ! mv -f -- "$filt" "$f"; then
+      rm -f -- "$filt"; pw_report_source_failure; return 2
+    fi
   fi
-  n=$(grep -c . "$f" 2>/dev/null); n=${n:-0}
+  display=$(mktemp "${TMPDIR:-/tmp}/presswarden-display.XXXXXX") || { pw_report_source_failure; return 2; }
+  if ! php -d memory_limit=96M "$_PW_REPORT_DISPLAY_HELPER" "$f" "$cap" > "$display" 2>/dev/null; then
+    rm -f -- "$display"; pw_report_source_failure; return 2
+  fi
+  IFS= read -r n < "$display"
+  case "$n" in ''|*[!0-9]*) rm -f -- "$display"; pw_report_source_failure; return 2 ;; esac
   elapsed=$(( $(date +%s) - SEC_T0 ))
 
   case "$sev" in
@@ -140,19 +161,19 @@ report() {
   if [ "$n" -eq 0 ]; then
     printf '    %s%s✓ CLEAN%s  %s%s%s  %s(%s)%s\n' \
       "$B" "$G" "$X" "$D" "$clean_msg" "$X" "$D" "$(human_time "$elapsed")" "$X"
-    rm -f "$f"; return 0
+    rm -f -- "$display" "$f"; return 0
   fi
 
   pw_history_capture "$f" "$sev" "${CURRENT_SECTION:-$NAME}" "$NAME" || true
   if ! _save_details "$f" "$sev"; then pw_report_failure; fi
   shown=0
   while IFS= read -r line; do
-    [ -n "$line" ] || continue
-    shown=$((shown+1)); [ "$shown" -gt "$cap" ] && break
+    shown=$((shown+1)); [ "$shown" -gt 1 ] || continue # trusted count row
     printf '    %s%s%s %-6s%s  ' "$B" "$col" "$mark" "$label" "$X"
     compact_line "$line"
     printf '\n'
-  done < "$f"
+  done < "$display"
+  rm -f -- "$display"
 
   if [ "$n" -gt "$cap" ]; then
     if [ "${PW_REPORT_FAILED:-0}" -eq 0 ]; then
@@ -173,7 +194,8 @@ report() {
 
   # Remediation happens only after the report is printed and fully logged.
   [ "$action_mode" = noaction ] || [ "${PW_REPORT_FAILED:-0}" -ne 0 ] || _prompt_file_action "$f" "$sev"
-  rm -f "$f"
+  # Retain the original temporary evidence when its private log could not be saved.
+  [ "${PW_REPORT_FAILED:-0}" -ne 0 ] || rm -f -- "$f"
 }
 
 finish() {

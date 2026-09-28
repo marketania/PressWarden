@@ -105,6 +105,29 @@ is changed by the wrapper, but remote HTTP requests and WordPress bootstrap can
 have their own effects. Existing local threat-intelligence alternatives remain
 independent from this optional API-backed scan.
 
+## Findings display and original evidence
+
+The shared `report` path treats finding text as untrusted. Terminal escape/control
+bytes and Unicode directional controls are shown as visible escapes, while ordinary
+Unicode is retained. Invalid UTF-8 bytes are represented rather than passed through
+to the terminal. Each displayed record is bounded to a 4,096-byte prefix plus a
+truncation marker; the configured line cap does not truncate the original evidence
+saved by the existing private findings-log path. Do not `cat` raw evidence into a
+terminal: it can still contain malicious terminal controls and sensitive site data.
+
+A readable, single-link regular findings file is required. Missing, linked, unreadable,
+nonregular, changing, or over-128-MiB input is INCOMPLETE (2), never CLEAN. Display
+caps are integers from 0 to 10,000. Failure to render or save evidence disables generic
+file actions; an unsaved temporary source is retained instead of intentionally removed
+by `report`. No recovery persistence across process/system crashes is promised.
+A valid empty file still means no findings in that specific check, not a complete
+security assessment. A last record without a newline is counted and shown.
+
+Display escaping does not change original finding paths used by the separate guarded
+remediation logic. These checks are bounded best-effort identity checks, not an atomic
+filesystem snapshot. This improvement covers shared finding rows, not every direct
+provider message, banner, metadata field, or HTML output surface in the project.
+
 ## Validation and remaining scope
 
 Baseline main `d7867965a9b9d759568ef1a2503e394b4baa8e99` passed 50 local test

@@ -2,6 +2,9 @@
 
 ## Unreleased — scanner coverage refinement
 
+- Escape untrusted terminal/bidi controls in shared findings display, bound long rows without truncating saved evidence, and retain final unterminated findings.
+- Report unreadable/missing/unsafe findings sources as incomplete; retain unsaved temporary evidence and disable generic file actions after report failures. Add inert byte-level reporting regressions.
+
 - Combine static-core linked-path/manifest validation with optional-scanner coverage safeguards.
 - Interpret bounded WPScan JSON, preserve upstream vulnerability exit 5, refuse guessed/invalid URLs, and report API/timeout/coverage failures without leaking raw diagnostics.
 
