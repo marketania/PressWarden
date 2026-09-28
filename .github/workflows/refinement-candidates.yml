@@ -1,0 +1,60 @@
+name: Existing refinement candidate snapshots
+on:
+  push:
+    branches: [audit/refinement-source-20260928]
+    paths: [.github/workflows/refinement-candidates.yml]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: marketania/PressWarden
+          ref: ac435cb22ca6c4af75c26aea8e268b543fb96916
+          path: Warden33
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: marketania/PressWarden
+          ref: b60dd5904823c6d6d4800aadd0f101c10c55dbcb
+          path: Warden34
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: marketania/PressGarden
+          ref: bbb73679e2cde061931ef7ac998d030032c3bc0a
+          path: Garden8
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: marketania/PressGarden
+          ref: 75d37959257f35fd964566eb1b1d98d473aebd2b
+          path: Garden9
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: marketania/PressHarden
+          ref: 227dcddf60d8c93825cb6578cc7868c3d6398bdb
+          path: Harden7
+          persist-credentials: false
+      - name: Export tracked source and Git identity only
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/refinement-candidates"
+          for product in Warden33 Warden34 Garden8 Garden9 Harden7; do
+            git -C "$product" archive --format=tar.gz --prefix="$product/" HEAD > "$RUNNER_TEMP/refinement-candidates/$product.tar.gz"
+            git -C "$product" rev-parse HEAD > "$RUNNER_TEMP/refinement-candidates/$product.commit"
+            git -C "$product" rev-parse 'HEAD^{tree}' > "$RUNNER_TEMP/refinement-candidates/$product.tree"
+          done
+          cd "$RUNNER_TEMP/refinement-candidates"
+          sha256sum *.tar.gz > SHA256SUMS
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: press-refinement-candidates
+          path: ${{ runner.temp }}/refinement-candidates/
+          retention-days: 7
+          if-no-files-found: error
