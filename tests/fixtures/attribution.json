@@ -1,0 +1,43 @@
+{
+  "product": "PressWarden",
+  "files": {
+    "LICENSE": "7c5654e169385c8ccfa9caf58efb309fc8b5e2fb4a2b27c152101deb70fd6039",
+    "PROVENANCE.md": "017970c0b6099b96c3b0a2ee7b40c36bba03b3626070faeb4f8d97cbcc9b0ee0",
+    "docs/assets/press-tool-family.webp": "b233844db9fa3ba73b9478b3617ca3bcb080988cc2d081faa71523da8d2f4110"
+  },
+  "lines": {
+    "LICENSE": [
+      "Copyright (c) 2026 Mustafa Sharif / Marketania",
+      "The above copyright notice and this permission notice shall be included in all",
+      "AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER"
+    ],
+    "PROVENANCE.md": [
+      "MIT copyright in LICENSE is retained. PressHarden and PressGarden are independent successors for policy and maintenance. Publish and verify the siblings before replacing a combined 1.x deployment."
+    ],
+    "README.md": [
+      "The Press family contains three independent applications. [PressHarden](https://github.com/marketania/PressHarden) manages desired-state WordPress/PHP security configuration. [PressGarden](https://github.com/marketania/PressGarden) handles maintenance and performance. Neither is a dependency of PressWarden.",
+      "- **[PressHarden](https://github.com/marketania/PressHarden)** — WordPress hardening, security policy, `wp-config.php` controls, PHP posture, locking, and update preferences.",
+      "- **[PressGarden](https://github.com/marketania/PressGarden)** — WordPress maintenance, database health, cleanup, caching, LiteSpeed management, and performance operations.",
+      "MIT © 2026 Mustafa Sharif / Marketania. [License](LICENSE)."
+    ],
+    "SECURITY.md": [
+      "Please do not publish an exploit, credential exposure, or customer-sensitive security issue in a public issue. Prefer GitHub's private vulnerability reporting / security advisory flow for this repository. If that is unavailable, contact the maintainers through [Marketania.com](https://marketania.com/) and reference `PressWarden security report`.",
+      "PressWarden is developed and maintained with support from [Marketania](https://marketania.com/), a digital services and WordPress-focused agency."
+    ],
+    "checks/wp-wordfence-intel.sh": [
+      "  note \"Wordfence feed data stays in the local intel cache and is not redistributed by PressWarden; source and available copyright attribution are shown for matched records.\""
+    ],
+    "docs/CHANGELOG-1.x.md": [
+      "- Wordfence match output shows available source/copyright attribution metadata supplied by the feed."
+    ],
+    "install.sh": [
+      "    \"https://github.com/marketania/PressWarden/archive/refs/heads/main.tar.gz\" -o \"$WORK/source.tar.gz\""
+    ],
+    "intel/SOURCES.md": [
+      "Wordfence documents the V3 vulnerability feed as available for personal and commercial use subject to the Wordfence Intelligence terms. Individual records can contain copyright/attribution metadata. PressWarden keeps feed data local, emits available Defiant/MITRE attribution for displayed matches, and avoids reproducing full third-party descriptions/remediation text in ordinary output."
+    ],
+    "lib/wordfence-match.php": [
+      "    $copy = (array)($r['copyrights'] ?? array());"
+    ]
+  }
+}
