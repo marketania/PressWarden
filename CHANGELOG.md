@@ -2,6 +2,9 @@
 
 ## Unreleased — scanner coverage refinement
 
+- Combine static-core linked-path/manifest validation with optional-scanner coverage safeguards.
+- Interpret bounded WPScan JSON, preserve upstream vulnerability exit 5, refuse guessed/invalid URLs, and report API/timeout/coverage failures without leaking raw diagnostics.
+
 - Preserve YARA partial matches, require no-follow support, refuse excluded recursive subtrees and bound execution/output; report failures as incomplete.
 - Separate checksum provider diagnostics from JSON, validate plugin identities and paths, and report unavailable vendor coverage honestly. Added metadata names are review conditions, not a claim of harmless contents.
 - Add regression tests and exact attribution/link/artwork preservation checks. No release or runtime dependency between tools is introduced.

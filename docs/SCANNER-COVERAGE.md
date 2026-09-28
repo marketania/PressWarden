@@ -1,7 +1,7 @@
 # Optional scanner coverage and troubleshooting
 
-This checkpoint changes external YARA and active-plugin checksum reporting. It
-is separate from the unmerged static-core verification work in PR #33. Native
+This checkpoint covers external YARA, active-plugin checksums and remote WPScan.
+The integrated candidate also includes the static-core verifier from PR #33. Native
 security detection and site mutations are not combined with maintenance.
 
 ## Start safely
@@ -63,6 +63,48 @@ WordPress; `--skip-plugins` does **not** suppress MU-plugins. They are not safe
 sandboxes for a compromised site. Existing availability caches are not publisher
 signatures or a complete vulnerability assessment.
 
+## Remote WPScan
+
+A configured `WPSCAN_API_TOKEN` enables the optional external check. With no token,
+this check reports SKIPPED and does not bootstrap WordPress or claim coverage.
+Configured but missing `wp`, `wpscan`, PHP or GNU `timeout` is INCOMPLETE (2).
+`PRESSWARDEN_WPSCAN_TIMEOUT` is 1–3600 seconds, default 180, per home-resolution
+or remote-scan invocation. Provider output is capped at 8 MiB for interpretation;
+process output limits and timeouts bound incomplete runs.
+
+Home resolution keeps stdout separate from diagnostics and validates one HTTP(S)
+URL without embedded credentials, queries or fragments. Failure never guesses a
+URL from a directory name. This resolution **executes trusted WordPress and MU-plugin
+code**; it is not static investigation. Do not use it on an untrusted compromised
+installation. Only run remote scans against URLs you are authorized to assess.
+PressWarden is not a network sandbox: operator-owned HOME/XDG WPScan settings,
+WordPress home settings, provider redirects and DNS remain trust boundaries.
+WPScan runs from a new private directory rather than loading site-local `.wpscan`
+options. Review administrator scanner configuration and use an isolated snapshot
+when origin or ownership is uncertain.
+
+Only structured vulnerability records become findings. A record is provider evidence
+requiring version/applicability review, not proof of compromise. Core, main-theme,
+plugin and theme records are checked, bounded and deduplicated. Exit 5 is WPScan's
+normal vulnerability-found code and maps to REVIEW (1) only with valid records;
+actual failed/interrupted scans retain valid findings and report INCOMPLETE (2).
+Malformed data, unknown component versions, missing completion markers, changed
+target URLs, warnings and absent/failed/exhausted API coverage are not clean.
+Quota zero is conservatively incomplete even when the last successful lookup may
+have consumed the final request. An empty valid result means only no records in
+**remote passive enumeration**, never that every installed component was inspected.
+
+No API token is added to process arguments. Raw diagnostics and PoC content are
+not copied into reports; configured token values and terminal controls are removed
+from bounded finding text. Environment variables and administrator scanner code
+are trusted, not a secret vault. Private temporary provider files are removed after
+normal completion; interruption may leave a private directory for administrator
+cleanup. Valid partial matches survive normal error reports; malformed/oversized
+JSON cannot be safely interpreted as evidence. No database, plugin or site file
+is changed by the wrapper, but remote HTTP requests and WordPress bootstrap can
+have their own effects. Existing local threat-intelligence alternatives remain
+independent from this optional API-backed scan.
+
 ## Validation and remaining scope
 
 Baseline main `d7867965a9b9d759568ef1a2503e394b4baa8e99` passed 50 local test
@@ -78,7 +120,7 @@ This is a focused completed repair, not closure of every item in the full
 refinement brief. Real credentialed feeds, every hosting/WordPress variation,
 concurrent filesystem races and comprehensive terminal/HTML surfaces still need
 separate review. No version bump, tag, release, merge or production operation is
-part of this checkpoint. Existing static-core PR #33 remains separately reviewable.
+part of this checkpoint. PR #33 remains independently reviewable; its implementation is included in this combined candidate.
 
 ## Primary references and decisions
 
@@ -89,3 +131,7 @@ part of this checkpoint. Existing static-core PR #33 remains separately reviewab
 - [GitHub secure use](https://docs.github.com/en/actions/reference/security/secure-use): preserve read-only PR jobs and separate release authority.
 - [SSDF publications](https://csrc.nist.gov/projects/ssdf/publications): use SSDF 1.1 final as guidance; 1.2 is listed as an initial public draft, not an adopted certification.
 - [OpenSSF Scorecard checks](https://github.com/ossf/scorecard/blob/main/docs/checks.md): review pinned dependencies and workflow boundaries; no Scorecard score or certification is claimed.
+
+- [WPScan README](https://github.com/wpscanteam/wpscan#optional-wordpress-vulnerability-database-api): quota exhaustion can remove vulnerability coverage; environment token and current-directory configuration behavior.
+- [WPScan JSON templates](https://github.com/wpscanteam/wpscan/tree/master/app/views/json): parse structured vulnerability/API/completion fields, not English output phrases.
+- [WPScan exit codes](https://github.com/wpscanteam/wpscan/blob/master/lib/wpscan/exit_code.rb): preserve exit 5 as vulnerability findings, not a failed engine.

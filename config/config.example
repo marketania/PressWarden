@@ -47,5 +47,7 @@ PRESSWARDEN_DB_MAX_BYTES=33554432
 
 # Optional vulnerability/provider integrations. Never commit real tokens.
 WPSCAN_API_TOKEN=""
+# Per-site WPScan/URL resolution timeout (1–3600 seconds); GNU timeout is required.
+PRESSWARDEN_WPSCAN_TIMEOUT=180
 PRESSWARDEN_WORDFENCE_TOKEN=""
 PRESSWARDEN_PATCHSTACK_KEY=""
