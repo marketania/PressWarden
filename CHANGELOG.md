@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased — scanner coverage refinement
+
+- Preserve exact finding bytes during excluded-site projection, reject unsafe original sources before filtering, and retain original evidence on failure. Refuse cleanup of a projection directory replaced by a link. Add ten exclusion/report regression methods.
+
+- Escape untrusted terminal/bidi controls in shared findings display, bound long rows without truncating saved evidence, and retain final unterminated findings.
+- Report unreadable/missing/unsafe findings sources as incomplete; retain unsaved temporary evidence and disable generic file actions after report failures. Add inert byte-level reporting regressions.
+
+- Combine static-core linked-path/manifest validation with optional-scanner coverage safeguards.
+- Interpret bounded WPScan JSON, preserve upstream vulnerability exit 5, refuse guessed/invalid URLs, and report API/timeout/coverage failures without leaking raw diagnostics.
+
+- Preserve YARA partial matches, require no-follow support, refuse excluded recursive subtrees and bound execution/output; report failures as incomplete.
+- Separate checksum provider diagnostics from JSON, validate plugin identities and paths, and report unavailable vendor coverage honestly. Added metadata names are review conditions, not a claim of harmless contents.
+- Add regression tests and exact attribution/link/artwork preservation checks. No release or runtime dependency between tools is introduced.
+
 ## 2.0.1 — 2026-09-24
 
 - Explicitly empty or invalid `sites` directory arguments now stop with exit 2 instead of falling back to fleet inventory.
