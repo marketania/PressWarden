@@ -143,7 +143,8 @@ The 128-MiB source limit is enforced before filtering, even when all records wou
 be excluded. Invalid exclusions (more than 10,000 roots, over 4,096 bytes per root,
 control bytes, or filesystem root) refuse the projection. If display or evidence
 saving fails, the original source, including excluded records, is retained. The
-projection is disposable; it is not an independent recovery archive. Normal
+projection is disposable; it is not an independent recovery archive. Cleanup refuses
+a projection directory replaced by a symlink instead of following it into unrelated data. Normal
 successful reporting keeps the existing temporary-source cleanup behavior.
 
 This is best-effort filesystem identity checking, not a snapshot against every

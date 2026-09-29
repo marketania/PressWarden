@@ -86,6 +86,18 @@ class ExcludedEvidence(unittest.TestCase):
         self.assertEqual(rc, 1, out); self.assertNotIn(b'A'*64, details)
         self.assertTrue(details.endswith(b'allowed')); self.assertIn(b'findings: 1', out)
 
+    def test_projection_cleanup_refuses_replaced_directory_link(self):
+        with tempfile.TemporaryDirectory(prefix='press-projection-link-') as work:
+            root = Path(work); unrelated = root / 'unrelated'; unrelated.mkdir()
+            original = unrelated / 'findings'; original.write_bytes(b'preserve unrelated')
+            projection = root / 'projection'; projection.symlink_to(unrelated, target_is_directory=True)
+            script = '. "$1/lib/remediation.sh"; _pw_report_projection_cleanup "$2"'
+            r = subprocess.run(['bash','-c',script,'fixture',str(ROOT),str(projection)], capture_output=True, timeout=5)
+            self.assertEqual(r.returncode,0,r.stderr)
+            self.assertTrue(original.exists(), 'cleanup followed a replaced private directory')
+            self.assertEqual(original.read_bytes(), b'preserve unrelated')
+            self.assertTrue(projection.is_symlink())
+
     def test_all_excluded_is_clean_for_this_projection(self):
         rc, out, _, details, _ = self.run_case(lambda r: str(r/'excluded/file').encode())
         self.assertEqual(rc, 0, out); self.assertIn(b'CLEAN', out); self.assertEqual(details, b'')

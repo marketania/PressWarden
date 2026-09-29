@@ -120,6 +120,7 @@ pw_report_source_failure() {
 # Remove only this invocation's known disposable projection, never source evidence.
 _pw_report_projection_cleanup() {
   [ -n "$1" ] || return 0
+  [ -d "$1" ] && [ ! -L "$1" ] || return 0
   rm -f -- "$1/findings"
   rmdir -- "$1" 2>/dev/null || true
 }
