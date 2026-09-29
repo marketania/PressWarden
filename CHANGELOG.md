@@ -2,6 +2,8 @@
 
 ## Unreleased — scanner coverage refinement
 
+- Preserve exact finding bytes during excluded-site projection, reject unsafe original sources before filtering, and retain original evidence on failure. Add nine exclusion/report regression methods.
+
 - Escape untrusted terminal/bidi controls in shared findings display, bound long rows without truncating saved evidence, and retain final unterminated findings.
 - Report unreadable/missing/unsafe findings sources as incomplete; retain unsaved temporary evidence and disable generic file actions after report failures. Add inert byte-level reporting regressions.
 

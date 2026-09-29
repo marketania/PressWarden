@@ -117,6 +117,13 @@ pw_report_source_failure() {
   return 2
 }
 
+# Remove only this invocation's known disposable projection, never source evidence.
+_pw_report_projection_cleanup() {
+  [ -n "$1" ] || return 0
+  rm -f -- "$1/findings"
+  rmdir -- "$1" 2>/dev/null || true
+}
+
 # report <listfile> [issue|review|info] [clean-message] [noaction]
 # noaction suppresses the generic delete/quarantine prompt when a section has
 # its own safer configuration-specific remediation workflow.
@@ -126,42 +133,34 @@ report() {
   if [ ! -f "$f" ] || [ -L "$f" ] || [ ! -r "$f" ]; then
     pw_report_source_failure; return 2
   fi
-  # Defense in depth: suppress findings under explicitly excluded WordPress roots,
-  # including nested targets such as domain.com/special.
-  if [ "${#MANUAL_EXCLUDED_ROOTS[@]}" -gt 0 ] && [ -s "$f" ]; then
-    local filt line er skip
-    filt=$(mktemp "${TMPDIR:-/tmp}/presswarden-display-filter.XXXXXX") || { pw_report_source_failure; return 2; }
-    while IFS= read -r line || [ -n "$line" ]; do
-      skip=0
-      for er in "${MANUAL_EXCLUDED_ROOTS[@]}"; do
-        case "$line" in "$er"|"$er"/*) skip=1; break ;; esac
-      done
-      if [ "$skip" -ne 1 ] && ! printf '%s\n' "$line" >> "$filt"; then
-        rm -f -- "$filt"; pw_report_source_failure; return 2
-      fi
-    done < "$f"
-    if ! mv -f -- "$filt" "$f"; then
-      rm -f -- "$filt"; pw_report_source_failure; return 2
+  # Keep the original intact until display and private evidence publication succeed.
+  # Shell read cannot preserve NUL bytes and must not normalize inspected evidence.
+  local original_f="$f" projection=''
+  if [ "${#MANUAL_EXCLUDED_ROOTS[@]}" -gt 0 ]; then
+    projection=$(mktemp -d "${TMPDIR:-/tmp}/presswarden-projection.XXXXXX") || { pw_report_source_failure; return 2; }
+    if ! php -d memory_limit=96M "${_PW_REPORT_DISPLAY_HELPER%/*}/report-filter.php" "$f" "$projection/findings" "${MANUAL_EXCLUDED_ROOTS[@]}"; then
+      _pw_report_projection_cleanup "$projection"; pw_report_source_failure; return 2
     fi
+    f="$projection/findings"
   fi
-  display=$(mktemp "${TMPDIR:-/tmp}/presswarden-display.XXXXXX") || { pw_report_source_failure; return 2; }
+  display=$(mktemp "${TMPDIR:-/tmp}/presswarden-display.XXXXXX") || { _pw_report_projection_cleanup "$projection"; pw_report_source_failure; return 2; }
   if ! php -d memory_limit=96M "$_PW_REPORT_DISPLAY_HELPER" "$f" "$cap" > "$display" 2>/dev/null; then
-    rm -f -- "$display"; pw_report_source_failure; return 2
+    rm -f -- "$display"; _pw_report_projection_cleanup "$projection"; pw_report_source_failure; return 2
   fi
   IFS= read -r n < "$display"
-  case "$n" in ''|*[!0-9]*) rm -f -- "$display"; pw_report_source_failure; return 2 ;; esac
+  case "$n" in ''|*[!0-9]*) rm -f -- "$display"; _pw_report_projection_cleanup "$projection"; pw_report_source_failure; return 2 ;; esac
   elapsed=$(( $(date +%s) - SEC_T0 ))
 
   case "$sev" in
     review) label='REVIEW'; mark='⚠'; col="$Y" ;;
     info)   label='INFO';   mark='ℹ'; col="$C" ;;
-    *)      label='ALERT';  mark='✖'; col="$R"; sev='issue' ;;
+    *)      label='ALERT'; mark='✖'; col="$R"; sev='issue' ;;
   esac
 
   if [ "$n" -eq 0 ]; then
     printf '    %s%s✓ CLEAN%s  %s%s%s  %s(%s)%s\n' \
       "$B" "$G" "$X" "$D" "$clean_msg" "$X" "$D" "$(human_time "$elapsed")" "$X"
-    rm -f -- "$display" "$f"; return 0
+    rm -f -- "$display" "$original_f"; _pw_report_projection_cleanup "$projection"; return 0
   fi
 
   pw_history_capture "$f" "$sev" "${CURRENT_SECTION:-$NAME}" "$NAME" || true
@@ -195,7 +194,8 @@ report() {
   # Remediation happens only after the report is printed and fully logged.
   [ "$action_mode" = noaction ] || [ "${PW_REPORT_FAILED:-0}" -ne 0 ] || _prompt_file_action "$f" "$sev"
   # Retain the original temporary evidence when its private log could not be saved.
-  [ "${PW_REPORT_FAILED:-0}" -ne 0 ] || rm -f -- "$f"
+  [ "${PW_REPORT_FAILED:-0}" -ne 0 ] || rm -f -- "$original_f"
+  _pw_report_projection_cleanup "$projection"
 }
 
 finish() {

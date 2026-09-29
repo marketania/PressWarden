@@ -128,6 +128,30 @@ remediation logic. These checks are bounded best-effort identity checks, not an 
 filesystem snapshot. This improvement covers shared finding rows, not every direct
 provider message, banner, metadata field, or HTML output surface in the project.
 
+### Excluded findings and byte preservation
+
+Exclusion handling now validates the original single-link regular source before
+reading it and creates a separate private projection. It does not rewrite the
+original with a shell line reader: that reader can remove NUL bytes, append a
+newline to the last record, and conceal an oversized or hardlinked source before
+subsequent validation. Retained rows keep their exact bytes and last-line ending.
+Long excluded rows remain excluded across read chunks; a similarly named sibling
+path is not excluded by prefix alone.
+
+Both source size and identity are checked before and after bounded streaming.
+The 128-MiB source limit is enforced before filtering, even when all records would
+be excluded. Invalid exclusions (more than 10,000 roots, over 4,096 bytes per root,
+control bytes, or filesystem root) refuse the projection. If display or evidence
+saving fails, the original source, including excluded records, is retained. The
+projection is disposable; it is not an independent recovery archive. Normal
+successful reporting keeps the existing temporary-source cleanup behavior.
+
+This is best-effort filesystem identity checking, not a snapshot against every
+same-account concurrent writer. Inspect retained raw evidence with a byte-safe
+viewer rather than displaying it directly in a terminal. The binary-safe bounded
+read and exclusive output mode follow the PHP [fgets](https://www.php.net/manual/en/function.fgets.php)
+and [fopen](https://www.php.net/manual/en/function.fopen.php) contracts.
+
 ## Validation and remaining scope
 
 Baseline main `d7867965a9b9d759568ef1a2503e394b4baa8e99` passed 50 local test
