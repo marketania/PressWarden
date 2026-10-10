@@ -127,6 +127,9 @@ Moved commands print instructions and return `2`; they never launch another appl
 
 ## Development and provenance
 
+For reproducible container tools, offline fixture tests and disposable WordPress
+integration, see [cloud development](docs/CLOUD-DEVELOPMENT.md).
+
 For AI-assisted repository work, see [AI-assisted development](docs/AI-DEVELOPMENT.md). The development configuration defaults trusted Codex projects to GPT-6 Astra; the CLI tool itself has no OpenAI runtime dependency.
 
 Run `bash tests/run.sh` for local benign-fixture tests. Separate CI jobs run upstream package corpora, PHP 7.4 compatibility and isolated MySQL/WordPress integration. Tests never target uncontrolled production websites. See [contributing](CONTRIBUTING.md) and [provenance](PROVENANCE.md).
