@@ -127,8 +127,8 @@ Moved commands print instructions and return `2`; they never launch another appl
 
 ## Development and provenance
 
-For reproducible container tools, offline fixture tests and disposable WordPress
-integration, see [cloud development](docs/CLOUD-DEVELOPMENT.md).
+For Codex/Claude coordination, review [GitHub collaboration](docs/GITHUB-COLLABORATION.md)
+and the current [handoff](docs/HANDOFF.md). Run `bash scripts/check.sh` for local checks.
 
 For AI-assisted repository work, see [AI-assisted development](docs/AI-DEVELOPMENT.md). The development configuration defaults trusted Codex projects to GPT-6 Astra; the CLI tool itself has no OpenAI runtime dependency.
 

@@ -33,21 +33,6 @@ export PRESSWARDEN_INTERACTIVE=0
 export PRESSWARDEN_NOCOLOR=1
 export PRESSWARDEN_OUTPUT_JSON=0
 
-# Runtime inventory is fixture data even when real WP-CLI is installed.
-mkdir -p "$TMP/bin"
-cat > "$TMP/bin/wp" <<'WP'
-#!/usr/bin/env bash
-case "${1:-}" in
-  plugin) printf 'name,status,version\ndemo,active,1\n';;
-  theme) printf 'name,status,version\n';;
-  user) printf 'user_login\n';;
-  cron) printf 'hook,recurrence\n';;
-  *) exit 2;;
-esac
-WP
-chmod +x "$TMP/bin/wp"
-export PATH="$TMP/bin:$PATH"
-
 bash "$REPO/presswarden" baseline create "$ROOT" > "$TMP/create.out"
 
 # Identical legitimate files that were already present at baseline must not be
