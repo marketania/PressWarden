@@ -26,7 +26,7 @@ jobs:
       - name: Independent local syntax and benign-fixture tests
         env:
           PRESS_TEST_LOG_DIR: ${{ runner.temp }}/press-tests
-        run: bash tests/run.sh
+        run: bash scripts/check.sh
       - name: No runtime process substitution
         shell: bash
         run: |
