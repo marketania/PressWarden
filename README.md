@@ -19,6 +19,23 @@ PressWarden is part of the **Press Tool Family**. Other standalone tools are ava
 
 Use PressWarden when you need to **protect, detect, investigate, and preserve security evidence**. The sibling tools are independent applications, not required dependencies.
 
+## Start with a read-only investigation
+
+On a staging copy, replace the path below with the exact WordPress directory:
+
+```bash
+./presswarden help
+./presswarden sites /absolute/path/to/staging-wordpress
+./presswarden inspect runtime /absolute/path/to/staging-wordpress
+```
+
+The runtime inspection reads local PHP directive files as text; it does not load
+WordPress and is not a complete malware assessment. For broader work, use the
+security workflows below. Core integrity checks now report **INCOMPLETE** for
+linked, unreadable, changing or oversized core files and incomplete directory
+coverage; they do not turn those conditions into a clean verdict. See the
+[refinement checkpoint](docs/REFINEMENT.md) for tested scope and limitations.
+
 ## Install
 
 **Production runtime:** use an upstream-supported, security-patched PHP version. PHP 8.2–8.5 are supported at the September 2026 audit date; retained PHP 7.4 syntax tests are not a recommendation to deploy end-of-life PHP.
