@@ -5,25 +5,45 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 permissions:
   contents: read
 jobs:
   precision:
+    outputs:
+      full: ${{ steps.scope.outputs.full }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Classify cumulative pull request scope
+        id: scope
+        run: python3 .github/scripts/ci_scope.py
       - name: Inert database values and contextual evidence
+        if: ${{ steps.scope.outputs.full != 'false' }}
         run: php -d memory_limit=64M tests/db-values.php
       - name: Pagination, resource limits and retained findings
+        if: ${{ steps.scope.outputs.full != 'false' }}
         run: php -d memory_limit=64M tests/db-scan.php
       - name: WP-CLI failure, output protocol and privacy
+        if: ${{ steps.scope.outputs.full != 'false' }}
         run: bash tests/db-runtime.sh
       - name: PHP 7.4 compatibility
+        if: ${{ steps.scope.outputs.full != 'false' }}
         run: |
           docker run --rm --network=none -v "$PWD:/work:ro" -w /work php:7.4-cli php -d memory_limit=64M tests/db-values.php
           docker run --rm --network=none -v "$PWD:/work:ro" -w /work php:7.4-cli php -d memory_limit=64M tests/db-scan.php
+      - name: Documentation-only scope
+        if: ${{ steps.scope.outputs.full == 'false' }}
+        run: echo 'Runtime checks are not applicable to this cumulative documentation-only PR.'
   mysql:
+    needs: precision
+    if: ${{ !cancelled() && (needs.precision.result != 'success' || needs.precision.outputs.full != 'false') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     services:
