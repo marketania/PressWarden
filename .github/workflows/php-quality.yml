@@ -4,11 +4,19 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths-ignore: ['docs/**', '**/*.md']
   workflow_dispatch:
 permissions:
   contents: read
+# Cancel superseded runs of the same pull request. Main and manual runs get a
+# unique group so every exact-commit run finishes for the release gate.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   precision:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -22,6 +30,7 @@ jobs:
       - name: PHP 7.4 compatibility
         run: docker run --rm --network=none -v "$PWD:/work:ro" -w /work php:7.4-cli php -d memory_limit=64M tests/php-flow.php
   upstream:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
