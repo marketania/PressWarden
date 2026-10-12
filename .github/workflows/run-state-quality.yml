@@ -3,15 +3,28 @@ on:
   push:
     branches: [main]
   pull_request:
+    branches: [main]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 permissions:
   contents: read
 jobs:
   resilience:
+    outputs:
+      full: ${{ steps.scope.outputs.full }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Classify cumulative pull request scope
+        id: scope
+        run: python3 .github/scripts/ci_scope.py
       - name: Run-state interruption, continuation, locking and privacy
+        if: ${{ steps.scope.outputs.full != 'false' }}
         run: |
           set -euo pipefail
           bash -n presswarden lib/_runner.sh lib/run-state.sh lib/run-continuation.sh tests/run-state.sh tests/run-continuation.sh tests/runtime-reliability.sh
@@ -22,9 +35,13 @@ jobs:
           bash tests/runtime-reliability.sh
           bash tests/suite-progress.sh
       - name: PHP 7.4 compatibility
+        if: ${{ steps.scope.outputs.full != 'false' }}
         run: |
           set -euo pipefail
           docker run --rm -v "$PWD:/work" -w /work php:7.4-cli php -l lib/run-state.php >/dev/null
           docker run --rm -v "$PWD:/work" -w /work php:7.4-cli php -l lib/run-continuation.php >/dev/null
           docker run --rm -v "$PWD:/work" -w /work php:7.4-cli bash tests/run-state.sh
           docker run --rm -v "$PWD:/work" -w /work php:7.4-cli bash tests/run-continuation.sh
+      - name: Documentation-only scope
+        if: ${{ steps.scope.outputs.full == 'false' }}
+        run: echo 'Runtime checks are not applicable to this cumulative documentation-only PR.'

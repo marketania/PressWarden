@@ -4,27 +4,45 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 permissions:
   contents: read
 jobs:
   safety:
+    outputs:
+      full: ${{ steps.scope.outputs.full }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
+      - name: Classify cumulative pull request scope
+        id: scope
+        run: python3 .github/scripts/ci_scope.py
       - name: Archive validation and resource limits
+        if: ${{ steps.scope.outputs.full != 'false' }}
         run: php -d memory_limit=32M tests/update-guard.php
       - name: Git archive compatibility
+        if: ${{ steps.scope.outputs.full != 'false' }}
         run: |
           git archive --format=tar.gz --prefix=PressWarden-test/ HEAD > "$RUNNER_TEMP/update-source.tar.gz"
           php lib/update-guard.php archive "$RUNNER_TEMP/update-source.tar.gz"
       - name: Transactions, interruption, locks, and recovery
+        if: ${{ steps.scope.outputs.full != 'false' }}
         run: bash tests/update-hardening.sh
       - name: Configuration advice without execution or value disclosure
+        if: ${{ steps.scope.outputs.full != 'false' }}
         run: bash tests/config-advice.sh
       - name: Doctor excludes private evidence from code checks
+        if: ${{ steps.scope.outputs.full != 'false' }}
         run: bash tests/doctor-scope.sh
       - name: PHP 7.4 archive helper compatibility
+        if: ${{ steps.scope.outputs.full != 'false' }}
         run: docker run --rm --network=none -v "$PWD:/work:ro" -w /work php:7.4-cli php -d memory_limit=32M tests/update-guard.php
+      - name: Documentation-only scope
+        if: ${{ steps.scope.outputs.full == 'false' }}
+        run: echo 'Runtime checks are not applicable to this cumulative documentation-only PR.'
