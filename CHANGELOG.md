@@ -2,6 +2,18 @@
 
 ## Unreleased — command usability and scanner coverage
 
+- Add a newcomer walkthrough for selected-source installation, configuration,
+  discovery, first inspection, optional scanner limits, saved results and recovery;
+  distinguish released v2.0.1 from this review candidate and moving-main updates.
+- Refuse unusable, syntactically invalid or unsuccessful saved configuration
+  before dispatch. Preserve exact exported values, including multiline exclusion
+  lists, and stop when a readonly saved value blocks an explicit override.
+- Keep presentation flags from replacing a missing named target; propagate config
+  root-validation errors and display the effective reports directory.
+- Explain empty saved-run history without creating state, and reject explicitly
+  empty, invalid or unrecorded run IDs instead of quietly selecting the latest run.
+- Report missing local prerequisites for configured WPScan/YARA providers in
+  doctor without invoking those scanners or testing external credentials.
 - Add one `scan` entrypoint with full/incident/database/PHP/JavaScript/runtime selectors,
   strict `--target` support and compatibility with all existing scan verbs.
 - Add short grouped help, topic help, a complete `help all` reference and `status`

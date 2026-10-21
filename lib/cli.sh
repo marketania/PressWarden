@@ -1,4 +1,42 @@
 # Terminal presentation and argument helpers. No discovery or state writes.
+
+# Preserve exported configuration without line-oriented `env` parsing. Values
+# may contain newlines (notably exclusion lists), so save names and values apart.
+pw_cli_save_environment() {
+  local key names
+  PW_CLI_ENV_KEYS=(); PW_CLI_ENV_VALUES=()
+  names=$(compgen -e)
+  while IFS= read -r key; do
+    [[ "$key" =~ ^(PRESSWARDEN_[A-Za-z0-9_]*|WPSCAN_API_TOKEN)$ ]] || continue
+    [ "${!key+x}" = x ] || continue
+    PW_CLI_ENV_KEYS+=("$key"); PW_CLI_ENV_VALUES+=("${!key}")
+  done <<< "$names"
+}
+
+pw_cli_restore_environment() {
+  local i
+  for i in "${!PW_CLI_ENV_KEYS[@]}"; do
+    if ! printf -v "${PW_CLI_ENV_KEYS[$i]}" '%s' "${PW_CLI_ENV_VALUES[$i]}" 2>/dev/null || ! export "${PW_CLI_ENV_KEYS[$i]}"; then
+      printf 'Configuration override could not be restored: %s\n' "${PW_CLI_ENV_KEYS[$i]}" >&2
+      return 2
+    fi
+  done
+  unset PW_CLI_ENV_KEYS PW_CLI_ENV_VALUES
+}
+
+pw_cli_config_validate() {
+  [ -e "$1" ] || [ -L "$1" ] || return 0
+  if [ ! -f "$1" ] || [ ! -r "$1" ]; then
+    printf 'Configuration must be a readable regular file: %s\n' "$1" >&2
+    return 2
+  fi
+  if ! bash -n "$1" >/dev/null 2>&1; then
+    printf 'Invalid shell configuration: %s\n' "$1" >&2
+    printf 'Correct its syntax before running commands. Use presswarden config-new to compare option names without loading it.\n' >&2
+    return 2
+  fi
+}
+
 pw_cli_colors() {
   local color=0
   case "${PRESSWARDEN_COLOR:-auto}" in

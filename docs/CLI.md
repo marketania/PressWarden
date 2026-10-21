@@ -33,9 +33,43 @@ Selectors may go before or after a positional target:
 
 Omission selects the configured fleet, as before. Explicit `all` selects that
 fleet too. Empty, unknown, excluded, ambiguous or duplicate targets stop with
-exit 2. A bad option never turns into an omitted target. Narrowing to one site
+exit 2. A bad option never turns into an omitted target; a presentation flag
+immediately after `--target` is refused as a missing/invalid value. Narrowing to one site
 retains nested-site exclusions. Target resolution does not bootstrap WordPress.
 Actual database and runtime checks may still load WordPress through WP-CLI.
+
+## Configuration and readiness
+
+Start with [the installation and first-scan walkthrough](../README.md#install).
+`config` displays effective private paths, including a separately configured
+reports directory, without displaying tokens. Root-validation failures return
+exit 2 instead of displaying a successful table with an empty root.
+
+Saved configuration is trusted shell code. Existing unreadable/nonregular files,
+broken links, syntax errors and unsuccessful loading stop with exit 2 before a
+check can fall back to default scope. `config-new` remains available without
+loading that file. Exported settings override saved assignments; multiline
+values such as exclusion lists are preserved exactly. A saved readonly setting
+that prevents an exported override is an error.
+
+`doctor --target SITE` checks local readiness. A configured WPScan/YARA provider
+with missing local dependencies produces a review and exit 1. Provider presence
+does not establish valid credentials, API quota or complete scan coverage;
+doctor does not invoke those external scanners. An empty discovered inventory
+also needs review. Required dependency or distributed-script syntax failures
+return exit 2.
+
+## Reading saved results
+
+`status`/`run-status` and `history` default to the latest suite run. Before the
+first run, they print a clear empty-state message and return 0 without creating
+state. Explicitly empty, invalid or unrecorded run IDs return 2. An interrupted
+run without finalized finding history is incomplete, not an empty history.
+
+Use the run identifier and console-report path printed by the suite to inspect
+the details. Displaying a saved record successfully does not mean its recorded
+scan completed cleanly. See [reports and run IDs](../README.md#reports-and-run-ids)
+for continuation and finding-state meanings.
 
 ## Color and help
 

@@ -228,6 +228,143 @@ exit "${CLI_TEST_EXIT:-0}"
         self.assertEqual((status.returncode, status.stdout, status.stderr),
                          (old.returncode, old.stdout, old.stderr))
 
+    def test_presentation_flags_cannot_replace_a_missing_named_target(self):
+        for color in ['--color=always', '--color=never', '--no-color']:
+            with self.subTest(color=color):
+                self.assert_refused('scan', '--target', color, 'all')
+                self.assert_refused('doctor', '--target', color, 'all')
+        result = self.run_cli('scan', '--color=never', '--target', 'alpha.example')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('ROOT=' + str(self.alpha), result.stdout)
+        self.assertNotIn('SITE=' + str(self.beta), result.stdout)
+
+    def test_invalid_config_is_refused_before_any_partial_execution(self):
+        config = self.base / 'invalid-config'
+        sentinel = self.base / 'config-executed'
+        config.write_text('touch "' + str(sentinel) + '"\n'
+                          'WPSCAN_API_TOKEN="fixture-value-never-display"\n'
+                          'PRESSWARDEN_EXCLUDE="unterminated\n')
+        env = dict(self.env, PRESSWARDEN_CONFIG_FILE=str(config))
+        for args in [('scan', '--php'), ('scan', '--php', str(self.alpha)),
+                     ('scan', '--php', 'alpha.example'), ('config',)]:
+            with self.subTest(args=args):
+                result = self.run_cli(*args, env=env)
+                self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                self.assertIn('Invalid shell configuration', result.stderr)
+                self.assertNotIn('fixture-value-never-display', result.stdout + result.stderr)
+                self.assertNotIn('SUITE=', result.stdout)
+                self.assertFalse(sentinel.exists())
+        result = subprocess.run(['bash', '-c', '. "$1/lib/env-discovery.sh"', '_', str(self.app)],
+                                env=env, capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn('Invalid shell configuration', result.stderr)
+        self.assertFalse(sentinel.exists())
+        self.assertFalse((self.base / 'state').exists())
+        advice = self.run_cli('config-new', env=env)
+        self.assertEqual(advice.returncode, 0, advice.stdout + advice.stderr)
+        self.assertFalse(sentinel.exists())
+        self.assertNotIn('fixture-value-never-display', advice.stdout + advice.stderr)
+
+    def test_config_propagates_root_failure_and_shows_effective_report_path(self):
+        linked = self.base / 'linked-root'
+        linked.symlink_to(self.fleet, target_is_directory=True)
+        for root in [linked, str(self.base / 'invalid') + '\nroot']:
+            with self.subTest(root=root):
+                result = self.run_cli('config', env=dict(self.env, PRESSWARDEN_SCAN_ROOT=str(root)))
+                self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                self.assertNotIn('Scan root:', result.stdout)
+        custom = self.base / 'private-reports'
+        result = self.run_cli('config', env=dict(self.env, PRESSWARDEN_REPORTS_DIR=str(custom)))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('Reports directory:  ' + str(custom), result.stdout)
+        self.assertFalse(custom.exists())
+
+    def test_exported_values_keep_multiline_scope_and_override_saved_config(self):
+        config = self.base / 'saved-config'
+        config.write_text('PRESSWARDEN_SCAN_ROOT="' + str(self.beta) + '"\n'
+                          'PRESSWARDEN_EXCLUDE="alpha.example"\n')
+        env = dict(self.env, PRESSWARDEN_CONFIG_FILE=str(config),
+                   PRESSWARDEN_EXCLUDE='alpha.example/shop\nbeta.example')
+        result = self.run_cli('scan', '--php', env=env)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('ROOT=' + str(self.fleet), result.stdout)
+        self.assertIn('SITE=' + str(self.alpha) + '\n', result.stdout)
+        self.assertNotIn('SITE=' + str(self.child), result.stdout)
+        self.assertNotIn('SITE=' + str(self.beta), result.stdout)
+        loader = '. "$1/lib/env-discovery.sh"; printf "SITE=%s\\n" "${SCAN_ROOTS[@]}"'
+        result = subprocess.run(['bash', '-c', loader, '_', str(self.app)],
+                                env=env, capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(result.stdout, 'SITE=' + str(self.alpha) + '\n')
+        invalid = dict(env, PRESSWARDEN_SCAN_ROOT=str(self.fleet) + '\ninvalid')
+        result = self.run_cli('scan', '--php', env=invalid)
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn('control character in target', result.stderr)
+        self.assertNotIn('SUITE=', result.stdout)
+        result = subprocess.run(['bash', '-c', loader, '_', str(self.app)],
+                                env=invalid, capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertNotIn('SITE=', result.stdout)
+
+    def test_unusable_config_never_becomes_default_fleet_configuration(self):
+        dangling = self.base / 'dangling-config'
+        dangling.symlink_to(self.base / 'absent-config-target')
+        failing = self.base / 'failing-config'
+        failing.write_text('return 7\n')
+        readonly = self.base / 'readonly-scope-config'
+        readonly.write_text('readonly PRESSWARDEN_SCAN_ROOT="' + str(self.beta) + '"\n')
+        cases = [self.base, dangling, failing, readonly]
+        if os.geteuid() != 0:
+            unreadable = self.base / 'unreadable-config'
+            unreadable.write_text('PRESSWARDEN_EXCLUDE="alpha.example"\n')
+            unreadable.chmod(0)
+            cases.append(unreadable)
+        for config in cases:
+            with self.subTest(config=config):
+                env = dict(self.env, PRESSWARDEN_CONFIG_FILE=str(config))
+                result = self.run_cli('scan', '--php', env=env)
+                self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                self.assertIn('Configuration', result.stderr)
+                self.assertNotIn('SUITE=', result.stdout)
+                result = subprocess.run(['bash', '-c', '. "$1/lib/env-discovery.sh"', '_', str(self.app)],
+                                        env=env, capture_output=True, text=True, timeout=20)
+                self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                self.assertIn('Configuration', result.stderr)
+        self.assertFalse((self.base / 'state').exists())
+
+    def test_new_install_reports_have_a_clear_nonmutating_empty_state(self):
+        for args in [('status',), ('status', 'latest'), ('history',), ('history', 'latest')]:
+            with self.subTest(args=args):
+                result = self.run_cli(*args)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn('No recorded PressWarden suite runs', result.stdout)
+        self.assertFalse((self.base / 'state').exists())
+        runs = self.base / 'state/runs'
+        runs.mkdir(parents=True)
+        result = self.run_cli('history')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('No recorded PressWarden suite runs', result.stdout)
+        self.assertEqual(list(runs.iterdir()), [])
+
+    def test_explicit_empty_invalid_or_missing_run_ids_are_errors(self):
+        for command in ['status', 'run-status', 'history', 'continue', 'resume']:
+            for run_id in ['', '../invalid', 'missing-run']:
+                with self.subTest(command=command, run_id=run_id):
+                    result = self.run_cli(command, run_id)
+                    self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                    self.assertNotIn('SUITE=', result.stdout)
+        self.assertFalse((self.base / 'state').exists())
+
+    def test_empty_history_does_not_hide_unsafe_run_storage(self):
+        runs = self.base / 'state/runs'
+        runs.parent.mkdir()
+        runs.symlink_to(self.base / 'absent-runs', target_is_directory=True)
+        self.assertEqual(self.run_cli('history').returncode, 2)
+        runs.unlink()
+        runs.mkdir()
+        (runs / 'latest').symlink_to(self.base / 'absent-pointer')
+        self.assertEqual(self.run_cli('history').returncode, 2)
+
     def test_older_self_contained_source_does_not_require_unused_cli_helper(self):
         for name in ['install.sh', 'uninstall.sh', 'PRODUCT']:
             shutil.copy2(ROOT / name, self.app / name)

@@ -161,14 +161,17 @@ function pwrs_validate_check($state, $check) {
     return $check;
 }
 function pwrs_show($runs, $id = '') {
+    $latestRequested = $id === '' || $id === 'latest';
+    if (!$latestRequested) $id = pwrs_run_id($id);
     $runsRaw = rtrim(pwrs_text($runs, false, 8192), '/');
     if ($runsRaw === '') $runsRaw = '/';
     if (!file_exists($runsRaw) && !is_link($runsRaw)) {
+        if (!$latestRequested) pwrs_fail('requested run is not recorded');
         fwrite(STDOUT, "No recorded PressWarden suite runs.\n");
         return 0;
     }
     $runs = pwrs_plain_dir($runsRaw, false);
-    if ($id === '' || $id === 'latest') {
+    if ($latestRequested) {
         $latest = $runs.'/latest';
         if (!file_exists($latest) && !is_link($latest)) {
             fwrite(STDOUT, "No recorded PressWarden suite runs.\n");
