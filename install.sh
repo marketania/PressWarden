@@ -163,6 +163,11 @@ fi
 for item in "$PROGRAM" install.sh uninstall.sh lib/_lib.sh config/config.example VERSION; do
   [ -s "$SRC/$item" ] && [ ! -L "$SRC/$item" ] || { printf 'Missing/unsafe source file: %s\n' "$item" >&2; exit 2; }
 done
+# Earlier self-contained source trees remain valid for explicit recovery. Require
+# the CLI helper whenever the source program or scanner library depends on it.
+if grep -Fq 'lib/cli.sh' "$SRC/$PROGRAM" "$SRC/lib/env-discovery.sh" 2>/dev/null; then
+  [ -s "$SRC/lib/cli.sh" ] && [ ! -L "$SRC/lib/cli.sh" ] || { printf 'Missing/unsafe source file: lib/cli.sh\n' >&2; exit 2; }
+fi
 php -r 'require $argv[1];pw_ops_path($argv[2]);' "$SRC/lib/ops-safety.php" "$DEST"
 [ ! -e "$DEST" ] && [ ! -L "$DEST" ] || { echo 'Destination exists. Use its update command; installation will not overwrite it.' >&2; exit 2; }
 PARENT=$(dirname "$DEST")

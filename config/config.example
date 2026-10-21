@@ -23,6 +23,9 @@ PRESSWARDEN_PROGRESS=auto
 PRESSWARDEN_BASELINE_MAX_CHANGES=100
 # Slow image-extension PHP scan in FULL: empty=ask, 1=always run, 0=always skip.
 PRESSWARDEN_UPLOADS_DEEP=""
+# Terminal color: auto uses stdout TTY detection; always/never are explicit.
+# The standard NO_COLOR variable and PRESSWARDEN_NOCOLOR override color forcing.
+PRESSWARDEN_COLOR=auto
 # PRESSWARDEN_NOCOLOR=1
 
 # Network/cache tuning
@@ -35,6 +38,8 @@ PRESSWARDEN_PATCHSTACK_CACHE_TTL=21600
 PRESSWARDEN_PATCHSTACK_MAX_LOOKUPS=250
 # Optional administrator-supplied YARA rule file. PressWarden ships no YARA signatures.
 PRESSWARDEN_YARA_RULES=""
+# Per-root external scan limit (1–3600 seconds); GNU timeout is required.
+PRESSWARDEN_YARA_TIMEOUT=120
 # Optional override for intel cache location; portable default is PressWarden/var/intel.
 # PRESSWARDEN_INTEL_DIR=""
 
@@ -45,5 +50,7 @@ PRESSWARDEN_DB_MAX_BYTES=33554432
 
 # Optional vulnerability/provider integrations. Never commit real tokens.
 WPSCAN_API_TOKEN=""
+# Per-site WPScan/URL resolution timeout (1–3600 seconds); GNU timeout is required.
+PRESSWARDEN_WPSCAN_TIMEOUT=180
 PRESSWARDEN_WORDFENCE_TOKEN=""
 PRESSWARDEN_PATCHSTACK_KEY=""

@@ -6,6 +6,7 @@ never push that agent's branch. Remove the entry when the PR is merged.
 
 | Agent | Branch | Owned area | Status |
 |---|---|---|---|
+| Codex | `codex/cli-usability-audit-2026-10-21` | Reviewable consolidation of existing scanner safety candidate #34 (includes #33), command usability, terminal output and regression coverage | Review candidate; unmerged and unreleased |
 
 This is PressWarden, an independent Bash/PHP application. Runtime changes, client sites,
 production credentials and deployment infrastructure are outside this setup.

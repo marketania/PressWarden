@@ -117,7 +117,7 @@ printf '%s\n' "$cfg" | grep -qE 'Deep upload scan:[[:space:]]+1$'
 
 stage 'CLI aliases/version/intel'
 [ "$($ROOTDIR/presswarden --version)" = "PressWarden $EXPECTED_VERSION" ]
-help=$($ROOTDIR/presswarden help)
+help=$($ROOTDIR/presswarden help all)
 printf '%s\n' "$help" | grep -q '\./presswarden fast \[target\]'
 printf '%s\n' "$help" | grep -q '\./presswarden full \[target\]'
 printf '%s\n' "$help" | grep -q '\./presswarden incident \[target\]'

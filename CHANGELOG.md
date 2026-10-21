@@ -1,5 +1,31 @@
 # Changelog
 
+## Unreleased — command usability and scanner coverage
+
+- Add one `scan` entrypoint with full/incident/database/PHP/JavaScript/runtime selectors,
+  strict `--target` support and compatibility with all existing scan verbs.
+- Add short grouped help, topic help, a complete `help all` reference and `status`
+  as an alias for saved run status.
+- Honor `NO_COLOR`, avoid ANSI output in redirected stdout when only stderr is a
+  terminal, and support `--color=auto|always|never` / `--no-color` consistently.
+- Make `update --help` read-only and reject ignored extra arguments before update,
+  intelligence refresh, configuration advice or version dispatch.
+- Carry forward the unmerged scanner/evidence fixes from candidate #34 (which
+  includes #33), preserving their regression tests and original attribution.
+
+
+- Preserve exact finding bytes during excluded-site projection, reject unsafe original sources before filtering, and retain original evidence on failure. Refuse cleanup of a projection directory replaced by a link. Add ten exclusion/report regression methods.
+
+- Escape untrusted terminal/bidi controls in shared findings display, bound long rows without truncating saved evidence, and retain final unterminated findings.
+- Report unreadable/missing/unsafe findings sources as incomplete; retain unsaved temporary evidence and disable generic file actions after report failures. Add inert byte-level reporting regressions.
+
+- Combine static-core linked-path/manifest validation with optional-scanner coverage safeguards.
+- Interpret bounded WPScan JSON, preserve upstream vulnerability exit 5, refuse guessed/invalid URLs, and report API/timeout/coverage failures without leaking raw diagnostics.
+
+- Preserve YARA partial matches, require no-follow support, refuse excluded recursive subtrees and bound execution/output; report failures as incomplete.
+- Separate checksum provider diagnostics from JSON, validate plugin identities and paths, and report unavailable vendor coverage honestly. Added metadata names are review conditions, not a claim of harmless contents.
+- Add regression tests and exact attribution/link/artwork preservation checks. No release or runtime dependency between tools is introduced.
+
 ## 2.0.1 — 2026-09-24
 
 - Explicitly empty or invalid `sites` directory arguments now stop with exit 2 instead of falling back to fleet inventory.
