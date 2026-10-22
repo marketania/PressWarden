@@ -10,7 +10,10 @@ else
   PRESSWARDEN_CONFIG_FILE="${PRESSWARDEN_CONFIG_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/presswarden/config}"
 fi
 PRESSWARDEN_CONFIG_LOADED=0
-_presswarden_env_overrides=$(env | grep -E '^(PRESSWARDEN_[A-Za-z0-9_]*|WPSCAN_API_TOKEN)=' || true)
+# shellcheck source=lib/cli.sh
+. "$PRESSWARDEN_DIR/lib/cli.sh"
+pw_cli_save_environment
+pw_cli_config_validate "$PRESSWARDEN_CONFIG_FILE" || exit 2
 if [ -r "$PRESSWARDEN_CONFIG_FILE" ]; then
   _presswarden_cfg_mode=$(stat -c %a "$PRESSWARDEN_CONFIG_FILE" 2>/dev/null || printf '')
   case "$_presswarden_cfg_mode" in
@@ -18,16 +21,11 @@ if [ -r "$PRESSWARDEN_CONFIG_FILE" ]; then
     *) printf 'PressWarden warning: config %s has mode %s; use chmod 600 when it contains API keys.\n' "$PRESSWARDEN_CONFIG_FILE" "$_presswarden_cfg_mode" >&2 ;;
   esac
   # shellcheck disable=SC1090
-  . "$PRESSWARDEN_CONFIG_FILE"
+  . "$PRESSWARDEN_CONFIG_FILE" || { printf 'Configuration failed to load: %s\n' "$PRESSWARDEN_CONFIG_FILE" >&2; exit 2; }
   PRESSWARDEN_CONFIG_LOADED=1
   unset _presswarden_cfg_mode
 fi
-if [ -n "$_presswarden_env_overrides" ]; then
-  while IFS='=' read -r _presswarden_k _presswarden_v; do
-    case "$_presswarden_k" in PRESSWARDEN_*|WPSCAN_API_TOKEN) printf -v "$_presswarden_k" '%s' "$_presswarden_v"; export "$_presswarden_k" ;; esac
-  done <<< "$_presswarden_env_overrides"
-fi
-unset _presswarden_env_overrides _presswarden_k _presswarden_v 2>/dev/null || true
+pw_cli_restore_environment || exit 2
 export PRESSWARDEN_PORTABLE
 
 if [ -n "${ROOT:-}" ]; then
@@ -64,11 +62,7 @@ PRESSWARDEN_EXCLUDE="${PRESSWARDEN_EXCLUDE:-${PRESSWARDEN_EXCLUDE_DOMAINS:-}}"
 mkdir -p "$PRESSWARDEN_CACHE_DIR" "$QUARANTINE" 2>/dev/null || true
 export LC_ALL=C
 
-if { [ -n "${PRESSWARDEN_FORCE_COLOR:-}" ] || [ -t 1 ] || [ -t 2 ]; } && [ -z "${PRESSWARDEN_NOCOLOR:-}" ] && [ "${TERM:-dumb}" != dumb ]; then
-  B=$'\033[1m'; D=$'\033[2m'; U=$'\033[4m'; R=$'\033[31m'; G=$'\033[32m'; Y=$'\033[33m'; BL=$'\033[34m'; M=$'\033[35m'; C=$'\033[36m'; WHT=$'\033[37m'; X=$'\033[0m'
-else
-  B=''; D=''; U=''; R=''; G=''; Y=''; BL=''; M=''; C=''; WHT=''; X=''
-fi
+pw_cli_colors || exit 2
 _cols=$(tput cols 2>/dev/null || printf '92'); case "$_cols" in ''|*[!0-9]*) _cols=92 ;; esac; [ "$_cols" -lt 68 ] && _cols=68; [ "$_cols" -gt 108 ] && _cols=108; W=$_cols; unset _cols
 TOTAL=0; ALERTS=0; REVIEWS=0; DELETED=0; PROTECTED_SKIPPED=0; SECN=0; T0=$(date +%s); SEC_T0=$T0
 NAME="${NAME:-check}"; DESC="${DESC:-}"; CURRENT_SECTION=""; SCAN_DOES="${SCAN_DOES:-}"; SCAN_WHY="${SCAN_WHY:-}"

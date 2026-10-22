@@ -171,7 +171,22 @@ function pwfh_show_record($r,$classification){
     printf("  %-13s %-18s %s%s%s\n",$classification,$check,$rule!==''?'['.$rule.'] ':'',$where,$sev!==''?' • '.$sev:'');
 }
 function pwfh_show($runs,$id){
-    $runs=pwfh_plain_dir($runs,false);if($id===''||$id==='latest'){$latest=$runs.'/latest';pwfh_regular($latest,4096);$id=trim((string)@file_get_contents($latest,false,null,0,4097));}$id=pwfh_id($id);$runDir=pwfh_plain_dir($runs.'/'.$id,false);$path=$runDir.'/history.json';
+    $latestRequested=$id===''||$id==='latest';
+    if(!$latestRequested)$id=pwfh_id($id);
+    $runs=rtrim(pwfh_text($runs,false,8192),'/');if($runs==='')$runs='/';
+    if(!file_exists($runs)&&!is_link($runs)){
+        if(!$latestRequested)pwfh_fail('requested run is not recorded');
+        fwrite(STDOUT,"No recorded PressWarden suite runs. Finding history is available after a scan completes.\n");return 0;
+    }
+    $runs=pwfh_plain_dir($runs,false);
+    if($latestRequested){
+        $latest=$runs.'/latest';
+        if(!file_exists($latest)&&!is_link($latest)){
+            fwrite(STDOUT,"No recorded PressWarden suite runs. Finding history is available after a scan completes.\n");return 0;
+        }
+        pwfh_regular($latest,4096);$id=trim((string)@file_get_contents($latest,false,null,0,4097));
+    }
+    $id=pwfh_id($id);$runDir=pwfh_plain_dir($runs.'/'.$id,false);$path=$runDir.'/history.json';
     if(!file_exists($path)&&!is_link($path)){$state=pwfh_state($runDir);$status=(string)($state['status']??'UNKNOWN');fwrite(STDOUT,"No finalized finding history for run $id. Run status: $status. Interrupted/running scans do not publish resolution history.\n");return 2;}
     $j=pwfh_history_read($runDir);$counts=$j['counts'];fwrite(STDOUT,"PRESSWARDEN FINDING HISTORY\n\n");printf("RUN           %s\n",$j['run_id']);printf("SUITE         %s\n",$j['suite']);printf("COMPARE       %s\n",$j['compared_to']??'first structured observation');printf("COMPARISON    %s\n",$j['comparison']??'unknown');printf("CAPTURE       %s\n",!empty($j['capture_integrity'])?'COMPLETE':'INCOMPLETE');printf("DISCOVERY     %s\n",strtoupper((string)($j['discovery_status']??'unknown')));printf("NEW           %d\n",(int)($counts['NEW']??0));printf("RECURRING     %d\n",(int)($counts['RECURRING']??0));printf("CHANGED       %d\n",(int)($counts['CHANGED']??0));printf("RESOLVED      %d\n",(int)($counts['RESOLVED']??0));printf("NOT RECHECKED %d\n",(int)($counts['NOT_RECHECKED']??0));
     $events=$j['events']??[];if(!is_array($events))pwfh_fail('invalid history events');$shown=0;foreach(['NEW','CHANGED','RESOLVED','NOT_RECHECKED','RECURRING'] as $class){$header=false;foreach($events as $r){if(!is_array($r)||($r['classification']??'')!==$class)continue;if(!$header){echo "\n$class\n";$header=true;}pwfh_show_record($r,$class);if(++$shown>=100){echo "\n… detail display capped at 100 identities; the private history.json contains the complete bounded record.\n";return !empty($j['capture_integrity'])?0:2;}}}

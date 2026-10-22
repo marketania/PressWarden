@@ -56,6 +56,11 @@ _pw_update_validate_source() {
   [ -s "$src/VERSION" ] || { printf 'Update validation failed: VERSION is missing.\n' >&2; return 2; }
   [ -s "$src/presswarden" ] || { printf 'Update validation failed: presswarden CLI is missing.\n' >&2; return 2; }
   [ -s "$src/lib/_lib.sh" ] || { printf 'Update validation failed: runtime library is missing.\n' >&2; return 2; }
+  # An explicitly selected older ref may be self-contained; only require the
+  # new helper when the candidate code actually references it.
+  if grep -Fq 'lib/cli.sh' "$src/presswarden" "$src/lib/env-discovery.sh" 2>/dev/null; then
+    [ -s "$src/lib/cli.sh" ] && [ ! -L "$src/lib/cli.sh" ] || { printf 'Update validation failed: required file lib/cli.sh is missing.\n' >&2; return 2; }
+  fi
   [ -s "$src/lib/intel.sh" ] || { printf 'Update validation failed: threat-intelligence library is missing.\n' >&2; return 2; }
   [ -s "$src/suites/fast.sh" ] || { printf 'Update validation failed: FAST suite is missing.\n' >&2; return 2; }
 

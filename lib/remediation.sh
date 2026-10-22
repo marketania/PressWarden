@@ -108,51 +108,72 @@ _prompt_file_action() {
   rm -f "$del" "$prot"
 }
 
+_PW_REPORT_DISPLAY_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/report-display.php"
+
+pw_report_source_failure() {
+  PW_REPORT_FAILED=1
+  PW_CHECK_INCOMPLETE=1
+  printf 'INCOMPLETE: findings could not be read or safely displayed; existing source retained and generic file actions disabled.\n' >&2
+  return 2
+}
+
+# Remove only this invocation's known disposable projection, never source evidence.
+_pw_report_projection_cleanup() {
+  [ -n "$1" ] || return 0
+  [ -d "$1" ] && [ ! -L "$1" ] || return 0
+  rm -f -- "$1/findings"
+  rmdir -- "$1" 2>/dev/null || true
+}
+
 # report <listfile> [issue|review|info] [clean-message] [noaction]
 # noaction suppresses the generic delete/quarantine prompt when a section has
 # its own safer configuration-specific remediation workflow.
 report() {
-  local f="$1" sev="${2:-issue}" clean_msg="${3:-no matches}" action_mode="${4:-}" n label mark col cap shown line elapsed x
+  local f="$1" sev="${2:-issue}" clean_msg="${3:-no matches}" action_mode="${4:-}" n label mark col cap shown line elapsed x display
   cap="$PRESSWARDEN_MAX"
-  # Defense in depth: suppress findings under explicitly excluded WordPress roots,
-  # including nested targets such as domain.com/special.
-  if [ "${#MANUAL_EXCLUDED_ROOTS[@]}" -gt 0 ] && [ -s "$f" ]; then
-    local filt line er skip
-    filt="$f.filtered"; : > "$filt"
-    while IFS= read -r line; do
-      skip=0
-      for er in "${MANUAL_EXCLUDED_ROOTS[@]}"; do
-        case "$line" in "$er"|"$er"/*) skip=1; break ;; esac
-      done
-      [ "$skip" -eq 1 ] || printf '%s\n' "$line" >> "$filt"
-    done < "$f"
-    mv -f "$filt" "$f" 2>/dev/null || true
+  if [ ! -f "$f" ] || [ -L "$f" ] || [ ! -r "$f" ]; then
+    pw_report_source_failure; return 2
   fi
-  n=$(grep -c . "$f" 2>/dev/null); n=${n:-0}
+  # Keep the original intact until display and private evidence publication succeed.
+  # Shell read cannot preserve NUL bytes and must not normalize inspected evidence.
+  local original_f="$f" projection=''
+  if [ "${#MANUAL_EXCLUDED_ROOTS[@]}" -gt 0 ]; then
+    projection=$(mktemp -d "${TMPDIR:-/tmp}/presswarden-projection.XXXXXX") || { pw_report_source_failure; return 2; }
+    if ! php -d memory_limit=96M "${_PW_REPORT_DISPLAY_HELPER%/*}/report-filter.php" "$f" "$projection/findings" "${MANUAL_EXCLUDED_ROOTS[@]}"; then
+      _pw_report_projection_cleanup "$projection"; pw_report_source_failure; return 2
+    fi
+    f="$projection/findings"
+  fi
+  display=$(mktemp "${TMPDIR:-/tmp}/presswarden-display.XXXXXX") || { _pw_report_projection_cleanup "$projection"; pw_report_source_failure; return 2; }
+  if ! php -d memory_limit=96M "$_PW_REPORT_DISPLAY_HELPER" "$f" "$cap" > "$display" 2>/dev/null; then
+    rm -f -- "$display"; _pw_report_projection_cleanup "$projection"; pw_report_source_failure; return 2
+  fi
+  IFS= read -r n < "$display"
+  case "$n" in ''|*[!0-9]*) rm -f -- "$display"; _pw_report_projection_cleanup "$projection"; pw_report_source_failure; return 2 ;; esac
   elapsed=$(( $(date +%s) - SEC_T0 ))
 
   case "$sev" in
     review) label='REVIEW'; mark='⚠'; col="$Y" ;;
     info)   label='INFO';   mark='ℹ'; col="$C" ;;
-    *)      label='ALERT';  mark='✖'; col="$R"; sev='issue' ;;
+    *)      label='ALERT'; mark='✖'; col="$R"; sev='issue' ;;
   esac
 
   if [ "$n" -eq 0 ]; then
     printf '    %s%s✓ CLEAN%s  %s%s%s  %s(%s)%s\n' \
       "$B" "$G" "$X" "$D" "$clean_msg" "$X" "$D" "$(human_time "$elapsed")" "$X"
-    rm -f "$f"; return 0
+    rm -f -- "$display" "$original_f"; _pw_report_projection_cleanup "$projection"; return 0
   fi
 
   pw_history_capture "$f" "$sev" "${CURRENT_SECTION:-$NAME}" "$NAME" || true
   if ! _save_details "$f" "$sev"; then pw_report_failure; fi
   shown=0
   while IFS= read -r line; do
-    [ -n "$line" ] || continue
-    shown=$((shown+1)); [ "$shown" -gt "$cap" ] && break
+    shown=$((shown+1)); [ "$shown" -gt 1 ] || continue # trusted count row
     printf '    %s%s%s %-6s%s  ' "$B" "$col" "$mark" "$label" "$X"
     compact_line "$line"
     printf '\n'
-  done < "$f"
+  done < "$display"
+  rm -f -- "$display"
 
   if [ "$n" -gt "$cap" ]; then
     if [ "${PW_REPORT_FAILED:-0}" -eq 0 ]; then
@@ -173,7 +194,9 @@ report() {
 
   # Remediation happens only after the report is printed and fully logged.
   [ "$action_mode" = noaction ] || [ "${PW_REPORT_FAILED:-0}" -ne 0 ] || _prompt_file_action "$f" "$sev"
-  rm -f "$f"
+  # Retain the original temporary evidence when its private log could not be saved.
+  [ "${PW_REPORT_FAILED:-0}" -ne 0 ] || rm -f -- "$original_f"
+  _pw_report_projection_cleanup "$projection"
 }
 
 finish() {

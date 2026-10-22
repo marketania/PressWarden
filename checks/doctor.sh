@@ -11,7 +11,7 @@ main() {
   for c in bash php find grep sed awk sort stat cksum; do
     if command -v "$c" >/dev/null 2>&1; then ok "$c" "$(command -v "$c")"; else issue "$c" "required command not found"; missing=$((missing+1)); fi
   done
-  for c in wp curl wget jq yara; do
+  for c in wp curl wget jq yara wpscan timeout; do
     if command -v "$c" >/dev/null 2>&1; then ok "$c" "$(command -v "$c")"; else printf '    %sℹ OPTIONAL%s  %-8s not found\n' "$C" "$X" "$c"; fi
   done
 
@@ -79,10 +79,12 @@ main() {
   fi
   [ -n "${PRESSWARDEN_PATCHSTACK_KEY:-}" ] && ok "PATCHSTACK" "API key configured • lookups are deduplicated/cached" || printf '    %sℹ PATCHSTACK%s  not configured (optional)\n' "$C" "$X"
   if [ -n "${PRESSWARDEN_YARA_RULES:-}" ]; then
-    if command -v yara >/dev/null 2>&1 && [ -r "$PRESSWARDEN_YARA_RULES" ] && [ -f "$PRESSWARDEN_YARA_RULES" ]; then
-      ok "YARA" "external rules configured • $PRESSWARDEN_YARA_RULES"
-    elif ! command -v yara >/dev/null 2>&1; then
+    if ! command -v yara >/dev/null 2>&1; then
       flag "YARA" "PRESSWARDEN_YARA_RULES is configured but yara is not installed"
+    elif ! command -v timeout >/dev/null 2>&1 || ! command -v realpath >/dev/null 2>&1; then
+      flag "YARA" "configured check needs GNU timeout and realpath; install them or leave PRESSWARDEN_YARA_RULES empty"
+    elif [ -r "$PRESSWARDEN_YARA_RULES" ] && [ -f "$PRESSWARDEN_YARA_RULES" ]; then
+      ok "YARA" "rules and local dependencies present • the scan still verifies no-follow support"
     else
       flag "YARA" "configured external rules file is not readable: $PRESSWARDEN_YARA_RULES"
     fi
@@ -92,7 +94,19 @@ main() {
   printf '    %sℹ INTEL DIR%s   %s\n' "$C" "$X" "$idir"
 
   sec "Optional integrations" "tokens are never printed"
-  [ -n "${WPSCAN_API_TOKEN:-}" ] && ok "WPScan" "configured" || printf '    %sℹ WPSCAN%s      not configured\n' "$C" "$X"
+  if [ -n "${WPSCAN_API_TOKEN:-}" ]; then
+    local wpscan_missing=''
+    for c in wp wpscan php timeout; do
+      if ! command -v "$c" >/dev/null 2>&1; then wpscan_missing+="${wpscan_missing:+, }$c"; fi
+    done
+    if [ -n "$wpscan_missing" ]; then
+      flag "WPSCAN" "configured but missing: $wpscan_missing; install dependencies or leave WPSCAN_API_TOKEN empty"
+    else
+      ok "WPSCAN" "token and local dependencies present; API access/quota are checked only when scanning"
+    fi
+  else
+    printf '    %sℹ WPSCAN%s      not configured (optional; skipped until a token is set)\n' "$C" "$X"
+  fi
 
   sec "Shell integrity" "all distributed shell scripts + no process substitution"
   local bad=0 f total=0

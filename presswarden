@@ -24,6 +24,32 @@ else
   CONFIG_FILE="${PRESSWARDEN_CONFIG_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/presswarden/config}"
 fi
 
+# Color options are presentation-only and may precede or follow the command.
+# Stop option processing at -- so an explicitly escaped target stays literal.
+_pw_cli_args=(); _pw_cli_options=1; _pw_cli_target_value=0
+for _pw_arg in "$@"; do
+  # Preserve a target value before extracting presentation flags. An invalid
+  # value such as --color=never must reach the target parser and be refused.
+  if [ "$_pw_cli_target_value" -eq 1 ]; then
+    _pw_cli_args+=("$_pw_arg"); _pw_cli_target_value=0; continue
+  fi
+  if [ "$_pw_cli_options" -eq 1 ]; then
+    case "$_pw_arg" in
+      --target) _pw_cli_target_value=1 ;;
+      --) _pw_cli_options=0 ;;
+      --color=auto|--color=always|--color=never)
+        PRESSWARDEN_COLOR=${_pw_arg#--color=}; export PRESSWARDEN_COLOR; continue ;;
+      --no-color) PRESSWARDEN_COLOR=never; export PRESSWARDEN_COLOR; continue ;;
+      --color|--color=*) printf 'Use --color=auto, --color=always, or --color=never.\n' >&2; exit 2 ;;
+    esac
+  fi
+  _pw_cli_args+=("$_pw_arg")
+done
+set -- "${_pw_cli_args[@]}"
+unset _pw_cli_args _pw_cli_options _pw_cli_target_value _pw_arg
+# In particular, update --help must never start an update.
+if [ "$#" -eq 2 ] && { [ "$2" = --help ] || [ "$2" = -h ]; }; then set -- help "$1"; fi
+
 # New scans must not load half-replaced libraries during an update. Existing
 # running scans still need to finish before an administrator starts updating.
 if [ -e "$PRESSWARDEN_DIR/.presswarden-update.lock" ] || [ -L "$PRESSWARDEN_DIR/.presswarden-update.lock" ]; then
@@ -35,24 +61,28 @@ fi
 
 # Config advice must work even with a broken config, without executing it.
 if [ "${1:-}" = config-new ]; then
+  [ "$#" -eq 1 ] || { printf 'Usage: presswarden config-new\n' >&2; exit 2; }
   command -v php >/dev/null 2>&1 || { printf 'config-new requires PHP CLI.\n' >&2; exit 2; }
   exec php "$PRESSWARDEN_DIR/lib/config-options.php" "$PRESSWARDEN_DIR/config/config.example" "$CONFIG_FILE"
 fi
 
 # Preserve explicitly exported PressWarden/API values so one-shot environment
 # overrides win over persistent config values.
-_pw_env_overrides=$(env | grep -E '^(PRESSWARDEN_[A-Za-z0-9_]*|WPSCAN_API_TOKEN)=' || true)
-[ -r "$CONFIG_FILE" ] && . "$CONFIG_FILE"
-if [ -n "$_pw_env_overrides" ]; then
-  while IFS='=' read -r _pw_k _pw_v; do
-    case "$_pw_k" in PRESSWARDEN_*|WPSCAN_API_TOKEN) printf -v "$_pw_k" '%s' "$_pw_v"; export "$_pw_k" ;; esac
-  done <<< "$_pw_env_overrides"
+# shellcheck source=lib/cli.sh
+. "$PRESSWARDEN_DIR/lib/cli.sh"
+pw_cli_save_environment
+pw_cli_config_validate "$CONFIG_FILE" || exit 2
+if [ -r "$CONFIG_FILE" ]; then
+  # shellcheck disable=SC1090
+  . "$CONFIG_FILE" || { printf 'Configuration failed to load: %s\n' "$CONFIG_FILE" >&2; exit 2; }
 fi
-unset _pw_env_overrides _pw_k _pw_v 2>/dev/null || true
+pw_cli_restore_environment || exit 2
 export PRESSWARDEN_PORTABLE
 
+pw_cli_colors || exit 2
+
 logo() { printf 'PressWarden — WordPress security\n'; }
-usage() {
+usage_all() {
   cat <<EOF
 PressWarden v$VERSION
 Fleet-scale WordPress malware detection and incident investigation.
@@ -61,7 +91,7 @@ Fleet-scale WordPress malware detection and incident investigation.
   ./presswarden full [target]          Deep integrity, malware and vulnerability inspection
   ./presswarden incident [target]      Evidence-first compromise investigation
   ./presswarden db [target]            Database threats, persistence and credential isolation
-  ./presswarden scan [target]          Alias for fast
+  ./presswarden scan [target]          Routine audit; --full / --incident / -db / --php / --js / --runtime
   ./presswarden inspect php|js|db|runtime [target]   Focused read-only inspection
   ./presswarden intel status|update|scan [target]
   ./presswarden baseline create|status|diff [target]
@@ -72,6 +102,7 @@ Fleet-scale WordPress malware detection and incident investigation.
   ./presswarden remediate files [target]          Explicit interactive file-threat investigation
   ./presswarden history [RUN_ID]
   ./presswarden last-run
+  ./presswarden status [RUN_ID]        Alias of run-status
   ./presswarden run-status [RUN_ID]
   ./presswarden continue [RUN_ID]
   ./presswarden sites [directory]
@@ -83,11 +114,90 @@ Fleet-scale WordPress malware detection and incident investigation.
   ./presswarden help
 
 Targets: website name, nested site, absolute directory, or explicit all.
+Use --target SITE on targeted scans/checks; --color=auto|always|never controls color.
 Omitted targets use the configured fleet; invalid or empty explicit targets fail.
 Scans do not perform maintenance, policy changes, or site-file remediation.
 For configuration and locking use PressHarden. For maintenance use PressGarden.
 Each is an independent application; moved commands never launch a sibling.
 EOF
+}
+
+usage() {
+  local topic="${1:-}"
+  [ "$#" -le 1 ] || { printf 'Usage: presswarden help [all|scan|reports|remediate|setup]\n' >&2; return 2; }
+  case "$topic" in
+    all) usage_all; return ;;
+    scan|fast|full|incident|db|inspect)
+      printf '%s%sPressWarden scans%s — read-only security investigation\n' "$B" "$C" "$X"
+      pw_cli_section 'Usage: presswarden scan [MODE] [website|directory|all]'
+      pw_cli_row 'scan [target]' 'Routine security audit (default fast mode)'
+      pw_cli_row 'scan --full [target]' 'Deep integrity, malware and vulnerability checks'
+      pw_cli_row 'scan --incident [target]' 'Evidence-first compromise investigation'
+      pw_cli_row 'scan -db [target]' 'Database threats, persistence and credential isolation'
+      pw_cli_row 'scan --php [target]' 'Focused PHP threat intelligence'
+      pw_cli_row 'scan --js [target]' 'Focused JavaScript / inline HTML intelligence'
+      pw_cli_row 'scan --runtime [target]' 'Inert local PHP persistence configuration'
+      printf '\nChoose one mode. --deep aliases --full; -db and --db are equivalent.\n'
+      printf 'Use --target SITE instead of a positional target. Omission selects the configured fleet.\n'
+      printf 'Unknown, empty, duplicate or ambiguous targets stop without scanning the fleet.\n'
+      printf 'Legacy fast/full/incident/db/inspect commands still work. Scans never approve remediation.\n'
+      ;;
+    reports|status|last-run|run-status|history|continue|resume)
+      pw_cli_section 'Reports and continuation'
+      pw_cli_row 'status [RUN_ID]' 'Latest or selected run status; alias of run-status'
+      pw_cli_row 'history [RUN_ID]' 'NEW / RECURRING / CHANGED / RESOLVED findings'
+      pw_cli_row 'continue [RUN_ID]' 'Resume a validated compatible interrupted run'
+      printf '\nINCOMPLETE runs need attention; use history to distinguish skipped work from resolved findings.\n'
+      printf 'These inspect or continue saved security runs, not maintenance jobs.\n'
+      ;;
+    remediate|quarantine)
+      pw_cli_section 'Evidence and explicit security remediation'
+      pw_cli_row 'remediate core [target]' 'Interactive official-core integrity recovery'
+      pw_cli_row 'remediate files [target]' 'Interactive file-threat investigation'
+      pw_cli_row 'quarantine list' 'Inspect preserved evidence cases'
+      pw_cli_row 'quarantine verify CASE_ID' 'Verify saved evidence integrity'
+      printf '\nRemediation requires a terminal and confirmation; prompts default to skip.\n'
+      ;;
+    cleanup|litespeed|litespeed-db|database|litespeed-database)
+      pw_cli_section 'Maintenance belongs to PressGarden'
+      printf 'Use ./pressgarden cleanup [target] to preview all routine cleanup categories.\n'
+      printf 'Use ./pressgarden cleanup -db [target] or -logs [target] to narrow that preview.\n'
+      printf 'PressWarden preserves security evidence and never runs a sibling automatically.\n'
+      ;;
+    setup|sites|doctor|config|config-new|update|version)
+      pw_cli_section 'Setup and updates'
+      pw_cli_row 'sites [directory]' 'List discovered WordPress installations'
+      pw_cli_row 'doctor [target]' 'Check dependencies and available scan coverage'
+      pw_cli_row 'config / config-new' 'Inspect configuration or preview template additions'
+      pw_cli_row 'update / version' 'Update this tool or print its installed version'
+      printf '\nColor: --color=auto|always|never (or --no-color). NO_COLOR disables ANSI color.\n'
+      ;;
+    intel|baseline|changes|correlate)
+      pw_cli_section 'Advanced security commands'
+      pw_cli_row 'intel status|update|scan [target]' 'Inspect feeds, explicitly refresh, or scan'
+      pw_cli_row 'baseline create|status|diff [target]' 'Manage or compare integrity baselines'
+      pw_cli_row 'changes [target]' 'Compare against the saved baseline'
+      pw_cli_row 'correlate [target]' 'Correlate security evidence across selected sites'
+      ;;
+    '')
+      printf '\n%s%sPressWarden v%s%s — WordPress security\n' "$B" "$C" "$VERSION" "$X"
+      pw_cli_section 'Everyday commands'
+      pw_cli_row 'scan [target]' 'Routine security audit'
+      pw_cli_row 'scan --full [target]' 'Deep scan; --incident for compromise investigation'
+      pw_cli_row 'scan -db|--php|--js [target]' 'Focus on one area'
+      pw_cli_row 'status / history / continue [RUN_ID]' 'Review results or continue an interrupted run'
+      pw_cli_row 'sites / doctor [target]' 'Find sites or check readiness'
+      pw_cli_row 'remediate core|files [target]' 'Explicit interactive recovery'
+      pw_cli_section 'Help and setup'
+      printf '  help scan     help reports     help remediate     help all\n'
+      printf '  config        config-new       update             version\n'
+      printf '\nTargets: website, directory, or all; --target SITE also works for scans.\n'
+      printf 'Omitted target selects the configured fleet. Invalid or empty targets stop.\n'
+      printf 'Read-only scans preserve evidence. Routine cleanup: ./pressgarden cleanup [target].\n'
+      printf 'Color: --color=auto|always|never. All legacy commands remain in help all.\n\n'
+      ;;
+    *) printf 'Unknown help topic: %s. Use help all for the complete command list.\n' "$topic" >&2; return 2 ;;
+  esac
 }
 
 resolve_root() {
@@ -114,8 +224,10 @@ resolve_root() {
 # One resolver for every command accepting a site/directory. A failed name must
 # never become an empty ROOT (which would silently broaden the operation).
 select_target() {
-  local target="${1:-}" result scope line kind value first
-  [ "$#" -le 1 ] || { printf 'Use one website name, directory, or all.\n' >&2; return 2; }
+  local target result scope line kind value first
+  pw_cli_target_arguments "$@" || return 2
+  set -- "${PW_CLI_TARGET_ARGS[@]}"
+  target="${1:-}"
   [ "$#" -eq 0 ] || [ -n "$target" ] || { printf 'Explicit target cannot be empty.\n' >&2; return 2; }
   [ -z "$target" ] || [ ! -L "$target" ] || { printf 'Symlink target refused.\n' >&2; return 2; }
   TARGET_NAME=''; TARGET_COUNT=''
@@ -147,8 +259,8 @@ select_target() {
 }
 
 show_config() {
-  local r mode state cache intel baseline
-  r=$(resolve_root '')
+  local r mode state cache intel baseline reports
+  r=$(resolve_root '') || return 2
   if [ "$PRESSWARDEN_PORTABLE" = 1 ]; then
     mode='portable/local'
     state="${PRESSWARDEN_STATE_DIR:-$PRESSWARDEN_DIR/var}"
@@ -160,6 +272,7 @@ show_config() {
   fi
   intel="${PRESSWARDEN_INTEL_DIR:-$state/intel}"
   baseline="$state/baselines"
+  reports="${PRESSWARDEN_REPORTS_DIR:-$state/reports}"
   printf 'PressWarden v%s\n\n' "$VERSION"
   printf 'Install mode:       %s\n' "$mode"
   printf 'Program directory:  %s\n' "$PRESSWARDEN_DIR"
@@ -174,6 +287,7 @@ show_config() {
   printf 'Patchstack Intel:   %s\n' "$([ -n "${PRESSWARDEN_PATCHSTACK_KEY:-}" ] && printf configured || printf 'not configured')"
   printf 'External YARA:      %s\n' "$([ -n "${PRESSWARDEN_YARA_RULES:-}" ] && printf configured || printf 'not configured')"
   printf 'State directory:    %s\n' "$state"
+  printf 'Reports directory:  %s\n' "$reports"
   printf 'Cache directory:    %s\n' "$cache"
   printf 'Intel directory:    %s\n' "$intel"
   printf 'Baseline directory: %s\n' "$baseline"
@@ -184,11 +298,16 @@ show_config() {
 export _PW_EXPLICIT_REMEDIATION=0
 cmd="${1:-help}"; shift || true
 case "$cmd" in
-  -V|--version|version) printf 'PressWarden %s\n' "$VERSION" ;;
-  help|-h|--help) usage ;;
-  config) show_config ;;
+  -V|--version|version)
+    [ "$#" -eq 0 ] || { printf 'Usage: presswarden version\n' >&2; exit 2; }
+    printf 'PressWarden %s\n' "$VERSION" ;;
+  help|-h|--help) usage "$@" ;;
+  config)
+    [ "$#" -eq 0 ] || { printf 'Usage: presswarden config\n' >&2; exit 2; }
+    show_config ;;
   continue|resume)
     [ "$#" -le 1 ] || { printf 'Usage: ./presswarden continue [RUN_ID]\n' >&2; exit 2; }
+    [ "$#" -eq 0 ] || [ -n "$1" ] || { printf 'Run ID cannot be empty; omit it to select the latest run.\n' >&2; exit 2; }
     command -v php >/dev/null 2>&1 || { printf 'Safe continuation requires PHP CLI.\n' >&2; exit 2; }
     if [ "$PRESSWARDEN_PORTABLE" = 1 ]; then state="${PRESSWARDEN_STATE_DIR:-$PRESSWARDEN_DIR/var}"; else state="${PRESSWARDEN_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/presswarden}"; fi
     plan=$(php "$PRESSWARDEN_DIR/lib/run-continuation.php" plan "$state/runs" "${1:-latest}" "$VERSION") || exit 2
@@ -214,12 +333,13 @@ case "$cmd" in
       *) printf 'INCOMPLETE: suite is not continuation-enabled.\n' >&2; exit 2 ;;
     esac
     ;;
-  last-run|run-status)
+  status|last-run|run-status)
     if [ "$cmd" = last-run ]; then
       [ "$#" -eq 0 ] || { printf 'Usage: ./presswarden last-run\n' >&2; exit 2; }
       run_id=''
     else
       [ "$#" -le 1 ] || { printf 'Usage: ./presswarden run-status [RUN_ID]\n' >&2; exit 2; }
+      [ "$#" -eq 0 ] || [ -n "$1" ] || { printf 'Run ID cannot be empty; omit it to inspect the latest run.\n' >&2; exit 2; }
       run_id="${1:-}"
     fi
     command -v php >/dev/null 2>&1 || { printf 'Run-status inspection requires PHP CLI.\n' >&2; exit 2; }
@@ -232,6 +352,7 @@ case "$cmd" in
     ;;
   history)
     [ "$#" -le 1 ] || { printf 'Usage: ./presswarden history [RUN_ID]\n' >&2; exit 2; }
+    [ "$#" -eq 0 ] || [ -n "$1" ] || { printf 'Run ID cannot be empty; omit it to inspect the latest run.\n' >&2; exit 2; }
     run_id="${1:-}"
     command -v php >/dev/null 2>&1 || { printf 'Finding-history inspection requires PHP CLI.\n' >&2; exit 2; }
     if [ "$PRESSWARDEN_PORTABLE" = 1 ]; then
@@ -250,6 +371,7 @@ case "$cmd" in
     exec bash "$PRESSWARDEN_DIR/lib/site-target.sh" "$ROOT" --list
     ;;
   update)
+    [ "$#" -eq 0 ] || { printf 'Usage: presswarden update\n' >&2; exit 2; }
     # shellcheck disable=SC1090
     . "$PRESSWARDEN_DIR/lib/update.sh"
     pw_update
@@ -285,20 +407,29 @@ case "$cmd" in
       *) printf 'Unknown inspect kind. Use php, js, db or runtime.\n' >&2; exit 2 ;;
     esac
     if [ "$kind" = runtime ] && [ "${*: -1}" = --details ]; then
-      : # detailed PHP policy moved to pressharden php inspect --details
+      printf 'Detailed PHP policy belongs to: pressharden php inspect [target] --details. Running the local persistence check only.\n' >&2
       set -- "${@:1:$#-1}"
     fi
-    [ "$#" -le 1 ] || { printf 'Too many inspect arguments; use one website or directory.\n' >&2; exit 2; }
     select_target "$@" || exit 2
     exec bash "$PRESSWARDEN_DIR/suites/inspect.sh" "$kind"
     ;;
-  fast|scan|full|incident|db)
+  scan)
+    pw_cli_scan_arguments "$@"; rc=$?
+    if [ "$rc" -eq 3 ]; then usage scan; exit 0; fi
+    [ "$rc" -eq 0 ] || exit "$rc"
+    select_target -- "${PW_CLI_TARGET_ARGS[@]}" || exit 2
+    if [ "$PW_CLI_SCAN_SUITE" = inspect ]; then exec bash "$PRESSWARDEN_DIR/suites/inspect.sh" "$PW_CLI_SCAN_KIND"; fi
+    exec bash "$PRESSWARDEN_DIR/suites/$PW_CLI_SCAN_SUITE.sh"
+    ;;
+  fast|full|incident|db)
     select_target "$@" || exit 2
-    suite="$cmd"; [ "$suite" = scan ] && suite=fast
-    exec bash "$PRESSWARDEN_DIR/suites/$suite.sh"
+    exec bash "$PRESSWARDEN_DIR/suites/$cmd.sh"
     ;;
   intel)
     action="${1:-status}"; [ "$#" -gt 0 ] && shift || true
+    case "$action" in
+      status|update) [ "$#" -eq 0 ] || { printf 'intel %s does not take a website or extra arguments.\n' "$action" >&2; exit 2; } ;;
+    esac
     # shellcheck disable=SC1090
     . "$PRESSWARDEN_DIR/lib/intel.sh"
     case "$action" in
@@ -313,7 +444,6 @@ case "$cmd" in
     ;;
   baseline)
     action="${1:-status}"; [ "$#" -gt 0 ] && shift || true
-    [ "$#" -le 1 ] || { printf 'Usage: ./presswarden baseline create|status|diff [path]\n' >&2; exit 2; }
     select_target "$@" || exit 2
     # shellcheck disable=SC1090
     . "$PRESSWARDEN_DIR/lib/baseline.sh"
@@ -325,7 +455,6 @@ case "$cmd" in
     esac
     ;;
   changes)
-    [ "$#" -le 1 ] || { printf 'Usage: ./presswarden changes [path]\n' >&2; exit 2; }
     select_target "$@" || exit 2
     # shellcheck disable=SC1090
     . "$PRESSWARDEN_DIR/lib/baseline.sh"

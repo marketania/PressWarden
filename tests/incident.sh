@@ -28,7 +28,7 @@ export PRESSWARDEN_NOCOLOR=1
 export PRESSWARDEN_OUTPUT_JSON=0
 
 help_out="$TMP/help.out"
-bash "$REPO/presswarden" help > "$help_out"
+bash "$REPO/presswarden" help all > "$help_out"
 grep -q './presswarden incident \[target\]' "$help_out"
 
 # Incident response is evidence-first: it must include baseline/persistence/account
