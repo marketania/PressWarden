@@ -1,10 +1,10 @@
 # Changelog
 
-## Unreleased — command usability and scanner coverage
+## 2.0.2 — 2026-10-21
 
 - Add a newcomer walkthrough for selected-source installation, configuration,
   discovery, first inspection, optional scanner limits, saved results and recovery;
-  distinguish released v2.0.1 from this review candidate and moving-main updates.
+  explain versioned source installation and moving-main updates.
 - Refuse unusable, syntactically invalid or unsuccessful saved configuration
   before dispatch. Preserve exact exported values, including multiline exclusion
   lists, and stop when a readonly saved value blocks an explicit override.
@@ -22,7 +22,7 @@
   terminal, and support `--color=auto|always|never` / `--no-color` consistently.
 - Make `update --help` read-only and reject ignored extra arguments before update,
   intelligence refresh, configuration advice or version dispatch.
-- Carry forward the unmerged scanner/evidence fixes from candidate #34 (which
+- Include the scanner/evidence fixes from #34 (which
   includes #33), preserving their regression tests and original attribution.
 
 
@@ -36,7 +36,7 @@
 
 - Preserve YARA partial matches, require no-follow support, refuse excluded recursive subtrees and bound execution/output; report failures as incomplete.
 - Separate checksum provider diagnostics from JSON, validate plugin identities and paths, and report unavailable vendor coverage honestly. Added metadata names are review conditions, not a claim of harmless contents.
-- Add regression tests and exact attribution/link/artwork preservation checks. No release or runtime dependency between tools is introduced.
+- Add regression tests and exact attribution/link/artwork preservation checks. The tools remain independently installable with no sibling runtime dependency.
 
 ## 2.0.1 — 2026-09-24
 

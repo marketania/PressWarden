@@ -112,12 +112,11 @@ quarantine rules, independent configuration/state, or production deployment.
 
 ## Included scanner fixes
 
-This branch is based on main `8240dc44fc78117ab85db84980e2d95dd40883cd`. It reuses
-the scanner/evidence candidate from PR #34 at
+Version 2.0.2 includes the scanner/evidence work from PR #34 at
 `9fad6dd4f4eb22ec971cab1db76df248b219f96d`, including PR #33. Original review
 branches are untouched. The inherited work addresses static-core boundaries,
 optional scanner completeness, preserved partial findings and inert report
 display; see [scanner coverage](SCANNER-COVERAGE.md) and
-[the original refinement record](REFINEMENT.md). New work here adds public CLI
-routing and terminal-output regression coverage. No version bump, merge, release
-or production-server operation is implied by this branch.
+[the original refinement record](REFINEMENT.md). This release adds public CLI
+routing and terminal-output regression coverage. Its verified source publication
+does not run operations on production websites.

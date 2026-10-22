@@ -167,8 +167,9 @@ for current results; mock-provider tests do not establish every upstream version
 This is a focused completed repair, not closure of every item in the full
 refinement brief. Real credentialed feeds, every hosting/WordPress variation,
 concurrent filesystem races and comprehensive terminal/HTML surfaces still need
-separate review. No version bump, tag, release, merge or production operation is
-part of this checkpoint. PR #33 remains independently reviewable; its implementation is included in this combined candidate.
+separate review. This implementation, including the work from PR #33, is included
+in [version 2.0.2](releases/2.0.2.md). Source publication does not run operations on
+production websites.
 
 ## Primary references and decisions
 

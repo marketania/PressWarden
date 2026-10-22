@@ -12,7 +12,7 @@ The Press family contains three independent applications. [PressHarden](https://
 
 **New here?** Follow [Install](#install), [Configuration, state and privacy](#configuration-state-and-privacy), then [Start with a read-only investigation](#start-with-a-read-only-investigation). Keep [the command guide](docs/CLI.md) nearby for topic help and a terminal preview.
 
-**Review-candidate guide, 2026-10-21:** the compact `scan` commands, topic help and color controls described here are part of [PR #40](https://github.com/marketania/PressWarden/pull/40). The published [v2.0.1 release](https://github.com/marketania/PressWarden/releases/tag/v2.0.1) predates them. The candidate intentionally retains version `2.0.1`; check the source/commit and installed `help`, rather than using the version alone to infer available commands. The first-run examples below use existing commands that also work in that release.
+**Version 2.0.2** adds compact `scan` commands, topic help, color controls and clearer coverage reporting. See the [release notes](docs/releases/2.0.2.md). Existing installations can follow [Update, uninstall and migration](#update-uninstall-and-migration), then confirm `./presswarden version` reports `2.0.2` or newer.
 
 ## Other Press tools
 
@@ -33,11 +33,11 @@ Run as the website's operating-system owner. Keep PressWarden, its private confi
 
 ### Recommended: install from source you selected
 
-Choose a published tag from [Releases](https://github.com/marketania/PressWarden/releases). This example selects the existing `v2.0.1` release and installs a separate portable copy under your home directory:
+Choose a published tag from [Releases](https://github.com/marketania/PressWarden/releases). This example selects `v2.0.2` and installs a separate portable copy under your home directory:
 
 ```bash
 mkdir -p "$HOME/src" "$HOME/tools"
-git clone --branch v2.0.1 --depth 1 \
+git clone --branch v2.0.2 --depth 1 \
   https://github.com/marketania/PressWarden.git "$HOME/src/PressWarden"
 
 # Review the selected source and install.sh before running it.
@@ -50,9 +50,7 @@ cd "$HOME/tools/PressWarden"
 ./presswarden help
 ```
 
-Use new source/destination directories if those paths already exist. The installer refuses to overwrite an existing installation. Release downloads also provide `PressWarden-2.0.1.tar.gz`, `SHA256SUMS`, `SOURCE.json` and `RELEASE_NOTES.md`; an extracted, reviewed release directory can be used as `PRESSWARDEN_INSTALL_SOURCE` instead of a Git checkout.
-
-To evaluate this review candidate, use its reviewed checkout as the source in the same installation command. An unmerged branch is not fetched by the normal installer or updater. Keep a candidate installation separate from an existing operational installation.
+Use new source/destination directories if those paths already exist. The installer refuses to overwrite an existing installation. Release downloads also provide `PressWarden-2.0.2.tar.gz`, `SHA256SUMS`, `SOURCE.json` and `RELEASE_NOTES.md`; an extracted, reviewed release directory can be used as `PRESSWARDEN_INSTALL_SOURCE` instead of a Git checkout.
 
 ### Alternative: follow the moving main branch
 
@@ -119,22 +117,22 @@ This lists that directory for this invocation; it does not save a new scan root.
 Replace this path with the intended staging WordPress directory:
 
 ```bash
-./presswarden inspect runtime /home/account/domains/example.com/public_html
-./presswarden run-status
+./presswarden scan --runtime --target /home/account/domains/example.com/public_html
+./presswarden status
 ./presswarden history
 ```
 
-This inspection reads local PHP directive files as inert text for persistence indicators. It does not bootstrap WordPress, alter website settings or provide a complete malware assessment. In the review candidate, the equivalent compact form is `./presswarden scan --runtime --target SITE`.
+This inspection reads local PHP directive files as inert text for persistence indicators. It does not bootstrap WordPress, alter website settings or provide a complete malware assessment. The existing `./presswarden inspect runtime SITE` spelling remains supported.
 
 ### 3. Expand when the site and environment are understood
 
-For a routine security audit, use `./presswarden fast SITE`; the review candidate also accepts `./presswarden scan SITE`. Use an explicit discovered label or directory first. The suite prints the selected scope, check progress, findings, run ID and report locations.
+For a routine security audit, use `./presswarden scan SITE`. Use an explicit discovered label or directory first. The suite prints the selected scope, check progress, findings, run ID and report locations.
 
 Ordinary scans are read-only **with respect to website maintenance, configuration and remediation**. They write private toolkit reports and caches. Some checks load WordPress through WP-CLI, including MU-plugin code; that bootstrap is trusted executable input, not a sandbox. For suspected compromise, start with static inspection or an isolated copy. Read-only also does not mean offline: integrity checks and enabled intelligence providers may contact external services.
 
 ## Everyday commands
 
-The compact forms in this table are available in the review candidate. Existing spellings remain supported and are shown where useful.
+Use these compact forms for everyday work. Existing spellings remain supported and are shown where useful.
 
 | Task | Command |
 |---|---|
@@ -171,10 +169,10 @@ Operational commands have their own semantics: `doctor` returns `1` for readines
 
 ### Reports and run IDs
 
-`./presswarden run-status` shows the latest suite run, its status and console-report path. In this candidate, `status` is a shorter alias. Use the `RUN` identifier printed by the scan to select an earlier run:
+`./presswarden status` shows the latest suite run, its status and console-report path; `run-status` remains supported. Use the `RUN` identifier printed by the scan to select an earlier run:
 
 ```bash
-./presswarden run-status RUN_ID
+./presswarden status RUN_ID
 ./presswarden history RUN_ID
 ./presswarden continue RUN_ID
 ```
@@ -223,7 +221,7 @@ For a normal installed copy, finish current scans before updating:
 ./presswarden config-new
 ```
 
-By default, `update` tracks **moving `main`**, then refreshes enabled security intelligence. It does not select the latest release or fetch an unmerged review branch. A deliberately selected `PRESSWARDEN_REF` or `PRESSWARDEN_UPDATE_ARCHIVE` can choose another trusted distribution; see [updating and recovery](docs/UPDATING.md). Git development checkouts refuse the self-updater by default: manage the checkout with Git, or install a separate portable copy.
+By default, `update` tracks **moving `main`**, then refreshes enabled security intelligence. A deliberately selected `PRESSWARDEN_REF` or `PRESSWARDEN_UPDATE_ARCHIVE` can choose another trusted distribution; see [updating and recovery](docs/UPDATING.md). An override pinned to an older tag or archive must be updated deliberately to obtain a newer release. Git development checkouts refuse the self-updater by default: manage the checkout with Git, or install a separate portable copy.
 
 Updates preserve private configuration, reports and evidence. Uninstall removes managed program files and its own symlink while retaining private state. Moved commands print guidance and return `2`; no sibling is launched. Review [migration](docs/MIGRATION.md), [architecture](docs/ARCHITECTURE.md), and [source ownership](docs/OWNERSHIP.md) when moving from the combined 1.x product. [The old changelog](docs/CHANGELOG-1.x.md) preserves historical behavior.
 
@@ -237,11 +235,11 @@ Updates preserve private configuration, reports and evidence. Uninstall removes 
 | Configured scanner is unavailable | Follow the named dependency guidance in `doctor`; configure only integrations you intend to use. |
 | Run is incomplete | Read its report and coverage messages; preserve partial findings and repeat the affected check after resolving the cause. |
 | Update/recovery lock is present | Follow [the recovery procedure](docs/UPDATING.md); preserve its recorded workspace until the previous operation is understood. |
-| A documented command is missing | Check installed `help` and the selected source: released v2.0.1 predates the compact candidate interface. |
+| A documented command is missing | Check `version` and `help`. Update to 2.0.2 or newer for the compact interface; check whether a saved ref or archive override pins an older source. |
 
 ## Advanced and legacy commands
 
-Existing `fast`, `full`, `incident`, `db` and `inspect php|js|db|runtime` commands remain available. `inspect db` is the narrower database-malware recheck; `db`/`scan -db` selects the broader database security suite. Baselines and correlation remain separate tasks: `baseline create|status|diff`, `changes` and `correlate`. A full security scan does not perform database maintenance, cache purges, cleanup or policy changes. Use `help all` in the candidate and [the command guide](docs/CLI.md) for the complete reference.
+Existing `fast`, `full`, `incident`, `db` and `inspect php|js|db|runtime` commands remain available. `inspect db` is the narrower database-malware recheck; `db`/`scan -db` selects the broader database security suite. Baselines and correlation remain separate tasks: `baseline create|status|diff`, `changes` and `correlate`. A full security scan does not perform database maintenance, cache purges, cleanup or policy changes. Use `help all` and [the command guide](docs/CLI.md) for the complete reference.
 
 ## Development and provenance
 
