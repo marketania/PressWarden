@@ -23,6 +23,23 @@ PressWarden is part of the **Press Tool Family**. Other standalone tools are ava
 
 Each tool has independent installation, configuration and state. Choose the tool for the task; none requires a sibling application.
 
+## Start with a read-only investigation
+
+On a staging copy, replace the path below with the exact WordPress directory:
+
+```bash
+./presswarden help
+./presswarden sites /absolute/path/to/staging-wordpress
+./presswarden inspect runtime /absolute/path/to/staging-wordpress
+```
+
+The runtime inspection reads local PHP directive files as text; it does not load
+WordPress and is not a complete malware assessment. For broader work, use the
+security workflows below. Core integrity checks now report **INCOMPLETE** for
+linked, unreadable, changing or oversized core files and incomplete directory
+coverage; they do not turn those conditions into a clean verdict. See the
+[refinement checkpoint](docs/REFINEMENT.md) for tested scope and limitations.
+
 ## Install
 
 ### Requirements
