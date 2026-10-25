@@ -12,7 +12,7 @@ The Press family contains three independent applications. [PressHarden](https://
 
 **New here?** Follow [Install](#install), [Configuration, state and privacy](#configuration-state-and-privacy), then [Start with a read-only investigation](#start-with-a-read-only-investigation). Keep [the command guide](docs/CLI.md) nearby for topic help and a terminal preview.
 
-**Version 2.0.2** adds compact `scan` commands, topic help, color controls and clearer coverage reporting. See the [release notes](docs/releases/2.0.2.md). Existing installations can follow [Update, uninstall and migration](#update-uninstall-and-migration), then confirm `./presswarden version` reports `2.0.2` or newer.
+**Version 2.0.3** asks `Remediate now? [y/N]` right after each scan step that finds removable items (default No; quarantine before removal), adds public exposure findings to `remediate files`, and adds `quarantine prune`. Version 2.0.2 added compact `scan` commands, topic help, color controls and clearer coverage reporting. See the [release notes](docs/releases/2.0.3.md). Existing installations can follow [Update, uninstall and migration](#update-uninstall-and-migration), then confirm `./presswarden version` reports `2.0.3` or newer.
 
 ## Other Press tools
 
@@ -33,11 +33,11 @@ Run as the website's operating-system owner. Keep PressWarden, its private confi
 
 ### Recommended: install from source you selected
 
-Choose a published tag from [Releases](https://github.com/marketania/PressWarden/releases). This example selects `v2.0.2` and installs a separate portable copy under your home directory:
+Choose a published tag from [Releases](https://github.com/marketania/PressWarden/releases). This example selects `v2.0.3` and installs a separate portable copy under your home directory:
 
 ```bash
 mkdir -p "$HOME/src" "$HOME/tools"
-git clone --branch v2.0.2 --depth 1 \
+git clone --branch v2.0.3 --depth 1 \
   https://github.com/marketania/PressWarden.git "$HOME/src/PressWarden"
 
 # Review the selected source and install.sh before running it.
@@ -50,7 +50,7 @@ cd "$HOME/tools/PressWarden"
 ./presswarden help
 ```
 
-Use new source/destination directories if those paths already exist. The installer refuses to overwrite an existing installation. Release downloads also provide `PressWarden-2.0.2.tar.gz`, `SHA256SUMS`, `SOURCE.json` and `RELEASE_NOTES.md`; an extracted, reviewed release directory can be used as `PRESSWARDEN_INSTALL_SOURCE` instead of a Git checkout.
+Use new source/destination directories if those paths already exist. The installer refuses to overwrite an existing installation. Release downloads also provide `PressWarden-2.0.3.tar.gz`, `SHA256SUMS`, `SOURCE.json` and `RELEASE_NOTES.md`; an extracted, reviewed release directory can be used as `PRESSWARDEN_INSTALL_SOURCE` instead of a Git checkout.
 
 ### Alternative: follow the moving main branch
 
