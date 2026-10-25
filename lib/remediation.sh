@@ -64,16 +64,12 @@ _build_action_lists() {
 # Checks whose findings the explicit remediate files suite can act on.
 _PW_REMEDIATE_FILES_CHECKS=' phpcheck phpquick phpdeep wp-uploads sensitive-files '
 
-# Routine scans stay read-only: print only the command that offers remediation.
+# Without a terminal prompt, a scan only names the command that offers remediation.
 _pw_remediation_hint() {
   local target='[target]'
   case "$_PW_REMEDIATE_FILES_CHECKS" in *" ${NAME:-} "*) : ;; *) return 0 ;; esac
   [ "${#SCAN_ROOTS[@]}" -eq 1 ] && target=$(printf '%q' "${SCAN_ROOTS[0]}")
   printf '    %sℹ%s  to review these items with default-skip quarantine prompts, run: ./presswarden remediate files %s\n' "$C" "$X" "$target"
-  # A terminal scan offers that separate workflow only after every check finished.
-  if [ -n "${_PW_REMEDIATION_OFFER_FILE:-}" ] && [ -f "$_PW_REMEDIATION_OFFER_FILE" ] && [ ! -L "$_PW_REMEDIATION_OFFER_FILE" ]; then
-    printf '%s\n' "${NAME:-}" >> "$_PW_REMEDIATION_OFFER_FILE" || true
-  fi
 }
 
 # Ask for remediation after a section with file findings.
@@ -81,8 +77,13 @@ _pw_remediation_hint() {
 _prompt_file_action() {
   local findings="$1" sev="$2" del prot nd np ans
   if [ "${_PW_EXPLICIT_REMEDIATION:-0}" != 1 ]; then
-    [ "$sev" = info ] || _pw_remediation_hint
-    return 0
+    # A terminal scan asks right after each remediable section, once that
+    # section's findings are printed and saved; otherwise it only names the command.
+    if [ "${_PW_SCAN_STEP_REMEDIATION:-0}" != 1 ] || [ ! -t 0 ] || [ "$PRESSWARDEN_INTERACTIVE" = 0 ]; then
+      [ "$sev" = info ] || _pw_remediation_hint
+      return 0
+    fi
+    case "$_PW_REMEDIATE_FILES_CHECKS" in *" ${NAME:-} "*) : ;; *) return 0 ;; esac
   fi
   [ "$sev" != info ] || return 0
   [ "${PW_REMEDIATION_FAILED:-0}" -eq 0 ] || return 2
@@ -108,10 +109,10 @@ _prompt_file_action() {
 
   if [ "$nd" -gt 0 ]; then
     _pw_quarantine_prepare "$del" || { rm -f "$del" "$prot"; return 2; }
-    printf '    %s[d]%s delete + quarantine   %s[s]%s skip %s(default)%s : ' "$B$R" "$X" "$B$G" "$X" "$D" "$X"
+    printf '    %sRemediate now?%s %s[y]%s quarantine copy, then delete   %s[N]%s skip %s(default)%s : ' "$B" "$X" "$B$R" "$X" "$B$G" "$X" "$D" "$X"
     IFS= read -r ans || ans='s'
     case "$ans" in
-      d|D|delete|DELETE)
+      y|Y|yes|YES|d|D|delete|DELETE)
         printf '    %sℹ%s  revalidating approved snapshot, then backing up before removal...\n' "$C" "$X"
         _quarantine_delete "$del" "$PW_Q_WORK/plan.json" || true
         ;;

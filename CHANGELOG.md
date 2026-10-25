@@ -2,12 +2,16 @@
 
 ## Unreleased
 
+- Ask `Remediate now? [y/N]` right after each remediable scan section with
+  findings (for example the `.env` search, then the public log search), instead
+  of once after the whole scan. Findings are printed and saved first; Yes uses
+  the existing quarantine-then-delete engine; default No. Without a terminal or
+  with `PRESSWARDEN_INTERACTIVE=0`, scans still only print the command.
 - Add the public exposure check (`.env`/credential files, keys, database/config
   backup artifacts, VCS metadata, public logs) to `remediate files`, with the same
   default-skip, evidence-first quarantine prompt.
 - Print the exact `remediate files` command after routine-scan sections whose
-  findings that workflow can handle. In a terminal, offer it once after the scan
-  finished (`Remediate now? [y/N]`, default No); scans themselves change nothing.
+  findings that workflow can handle when no terminal prompt is available.
 - Add `quarantine prune --older-than=DAYS [--apply]`: preview by default; only
   complete, hash-verified cases are eligible; typed terminal confirmation, exact
   previewed set, rename-before-removal and a private prune log.
