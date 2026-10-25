@@ -373,4 +373,84 @@ class PressWardenQuarantine {
         }
         return ['objects'=>$n, 'removal'=>$complete ? 'recorded complete' : 'incomplete or unconfirmed'];
     }
+    /** Retention preview: only complete, verified cases older than $days are eligible. */
+    public function pruneCandidates($root, $days, $now = null) {
+        $root = $this->absolute($root);
+        if (!is_int($days) || $days < 1 || $days > 36500) $this->fail('invalid retention days');
+        $out = ['eligible'=>[], 'kept'=>[]];
+        if (!file_exists($root) && !is_link($root)) return $out;
+        $this->plainParents($root, true);
+        if (is_link($root) || !is_dir($root)) $this->fail('unsafe quarantine root');
+        $cutoff = ($now ?? time()) - $days * 86400; $count = 0; $ids = [];
+        $h = @opendir($root); if ($h === false) $this->fail('unreadable quarantine root');
+        try {
+            while (false !== ($name = readdir($h))) {
+                if (++$count > self::MAX_ENTRIES) $this->fail('case listing limit');
+                if (preg_match('/^case-([0-9]{8}T[0-9]{6}Z)-[a-f0-9]{16}$/D', $name, $m)) $ids[$name] = $m[1];
+            }
+        } finally { closedir($h); }
+        ksort($ids, SORT_STRING);
+        foreach ($ids as $id => $stamp) {
+            $t = DateTime::createFromFormat('!Ymd\THis\Z', $stamp, new DateTimeZone('UTC'));
+            if ($t === false || $t->getTimestamp() > $cutoff) continue;
+            if (is_link($root.'/'.$id) || !is_dir($root.'/'.$id)) { $out['kept'][$id] = 'not a plain directory'; continue; }
+            try { $r = $this->verify($root, $id); }
+            catch (PressWardenQuarantineError $e) { $out['kept'][$id] = 'verification failed: '.$e->getMessage(); continue; }
+            if ($r['removal'] !== 'recorded complete') { $out['kept'][$id] = 'removal incomplete or unconfirmed'; continue; }
+            $out['eligible'][$id] = $this->caseBytes($root.'/'.$id);
+        }
+        return $out;
+    }
+    private function caseBytes($dir, $depth = 0) {
+        if ($depth > 2) $this->fail('unexpected case layout');
+        $bytes = 0; $h = @opendir($dir); if ($h === false) $this->fail('cannot read case');
+        try {
+            while (false !== ($name = readdir($h))) {
+                if ($name === '.' || $name === '..') continue;
+                $s = $this->statPath($dir.'/'.$name); $type = $s['mode'] & 0170000;
+                if ($type === 0040000) $bytes += $this->caseBytes($dir.'/'.$name, $depth + 1);
+                elseif ($type === 0100000 && $s['nlink'] === 1) $bytes += $s['size'];
+                else $this->fail('unexpected entry in case');
+            }
+        } finally { closedir($h); }
+        return $bytes;
+    }
+    private function removeTree($dir, $depth = 0) {
+        if ($depth > 2) $this->fail('unexpected case layout');
+        $h = @opendir($dir); if ($h === false) $this->fail('cannot read case');
+        $names = [];
+        try { while (false !== ($name = readdir($h))) if ($name !== '.' && $name !== '..') $names[] = $name; }
+        finally { closedir($h); }
+        foreach ($names as $name) {
+            $s = $this->statPath($dir.'/'.$name); $type = $s['mode'] & 0170000;
+            if ($type === 0040000) $this->removeTree($dir.'/'.$name, $depth + 1);
+            elseif ($type === 0100000) { if (!@unlink($dir.'/'.$name)) $this->fail('case file removal failed'); }
+            else $this->fail('unexpected entry in case');
+        }
+        if (!@rmdir($dir)) $this->fail('case directory removal failed');
+    }
+    /** Remove exactly the approved case IDs after recomputing eligibility. */
+    public function prune($root, $days, array $approved, $now = null) {
+        $root = $this->absolute($root);
+        $current = $this->pruneCandidates($root, $days, $now);
+        $ids = array_keys($current['eligible']); $want = $approved; sort($want, SORT_STRING);
+        if (!$approved || $ids !== $want) $this->fail('eligible cases changed since preview');
+        $log = $root.'/prune-log.tsv';
+        if (is_link($log) || (file_exists($log) && !is_file($log))) $this->fail('unsafe prune log');
+        $removed = 0; $bytes = 0;
+        foreach ($ids as $id) {
+            // Rename first so a partial removal is never listed or verified as a case.
+            $work = $root.'/.pruning-'.$id;
+            if (file_exists($work) || is_link($work)) $this->fail('stale prune work directory');
+            if (!@rename($root.'/'.$id, $work)) $this->fail('cannot reserve case for pruning');
+            $this->removeTree($work);
+            clearstatcache(true, $work);
+            if (file_exists($work) || is_link($work) || file_exists($root.'/'.$id)) $this->fail('case still present after pruning');
+            if (@file_put_contents($log, gmdate('c')."\t".$id."\t".$current['eligible'][$id]."\tpruned\n", FILE_APPEND | LOCK_EX) === false) $this->fail('prune log write failed');
+            @chmod($log, 0600);
+            ++$removed; $bytes += $current['eligible'][$id];
+            $this->emit("PRUNED\t".$id."\t".$current['eligible'][$id]."\n");
+        }
+        return ['removed'=>$removed, 'bytes'=>$bytes];
+    }
 }

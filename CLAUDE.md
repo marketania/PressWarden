@@ -7,7 +7,7 @@ Security detection, malware and vulnerability investigation, integrity, threat i
 ## Engineering rules
 
 - Read only the documentation relevant to the task. Use `docs/AI-DEVELOPMENT.md` for model/effort guidance and the repository architecture/migration docs when a change touches those boundaries.
-- Keep ordinary scans evidence-first and read-only with respect to website maintenance and configuration. Never reintroduce routine DB optimization, cache management, cleanup, or hardening-policy mutations. Invalid or ambiguous targets must fail closed and must never broaden to the fleet.
+- Keep ordinary scans evidence-first and read-only with respect to website maintenance and configuration. Never reintroduce routine DB optimization, cache management, cleanup, or hardening-policy mutations. Invalid or ambiguous targets must fail closed and must never broaden to the fleet. After a terminal scan finishes and saves its evidence, it may offer the separate `remediate files` workflow (default No); that workflow rescans and asks again before any change.
 - Treat repository edits, pull requests, releases, and production website operations as distinct actions. Report only actions actually confirmed by tools.
 - Keep this repository independently installable and runnable. Do not add a runtime dependency on either sibling tool.
 - Keep secrets, client data, SQL dumps, evidence, and private state out of prompts, commits, issues, and test fixtures.

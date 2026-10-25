@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -uo pipefail
 # Internal target context is rebuilt for each CLI invocation, never inherited.
-unset _PW_TARGET_EXCLUSIONS _PW_FLEET_ROOT _PW_EXPLICIT_REMEDIATION
+unset _PW_TARGET_EXCLUSIONS _PW_FLEET_ROOT _PW_EXPLICIT_REMEDIATION _PW_REMEDIATION_OFFER_FILE
 export _PW_EXPLICIT_REMEDIATION=0
 
 # Resolve the real program directory even when the CLI is invoked through the
@@ -156,6 +156,7 @@ usage() {
       pw_cli_row 'remediate files [target]' 'Interactive file-threat investigation'
       pw_cli_row 'quarantine list' 'Inspect preserved evidence cases'
       pw_cli_row 'quarantine verify CASE_ID' 'Verify saved evidence integrity'
+      pw_cli_row 'quarantine prune --older-than=DAYS' 'Preview old verified cases; add --apply to delete'
       printf '\nRemediation requires a terminal and confirmation; prompts default to skip.\n'
       ;;
     cleanup|litespeed|litespeed-db|database|litespeed-database)
@@ -297,6 +298,65 @@ show_config() {
 
 export _PW_EXPLICIT_REMEDIATION=0
 cmd="${1:-help}"; shift || true
+# Run a security scan. In a terminal, when a check printed a remediation hint,
+# offer the separate remediate files workflow after the whole scan and its reports
+# finished. The scan itself never changes files; the default answer is No.
+pw_scan_then_offer_remediation() {
+  local offer rc ans
+  if [ ! -t 0 ] || [ "${PRESSWARDEN_INTERACTIVE:-1}" = 0 ]; then exec bash "$@"; fi
+  offer=$(mktemp "${TMPDIR:-/tmp}/presswarden-offer.XXXXXX") || exec bash "$@"
+  _PW_REMEDIATION_OFFER_FILE="$offer" bash "$@"; rc=$?
+  if [ ! -s "$offer" ]; then rm -f -- "$offer"; return "$rc"; fi
+  printf '\nThis scan found items that remediate files can quarantine (checks: %s).\n' "$(sort -u "$offer" | paste -sd ' ' -)"
+  rm -f -- "$offer"
+  printf 'It reruns those checks and asks again per section before any change.\n'
+  printf 'Remediate now? [y/N] '
+  IFS= read -r ans || ans=''
+  case "$ans" in
+    y|Y|yes|YES) export _PW_EXPLICIT_REMEDIATION=1; exec bash "$PRESSWARDEN_DIR/suites/remediate-files.sh" ;;
+    *) printf 'Skipped. No files changed.\n'; return "$rc" ;;
+  esac
+}
+
+# Manual quarantine retention. Preview by default; --apply deletes only the
+# previewed, complete and hash-verified cases after a typed terminal confirmation.
+pw_quarantine_prune() {
+  local root="$1" days='' apply=0 arg preview list kind id extra n=0 total=0 kept=0 ans rc
+  shift
+  for arg in "$@"; do
+    case "$arg" in
+      --older-than=*) days=${arg#*=} ;;
+      --apply) apply=1 ;;
+      *) printf 'Usage: ./presswarden quarantine prune --older-than=DAYS [--apply]\n' >&2; return 2 ;;
+    esac
+  done
+  [[ "$days" =~ ^[1-9][0-9]{0,4}$ ]] || { printf 'Usage: ./presswarden quarantine prune --older-than=DAYS [--apply]\n' >&2; return 2; }
+  preview=$(mktemp "${TMPDIR:-/tmp}/presswarden-prune.XXXXXX") || return 2
+  list=$(mktemp "${TMPDIR:-/tmp}/presswarden-prune-ids.XXXXXX") || { rm -f -- "$preview"; return 2; }
+  php "$PRESSWARDEN_DIR/lib/quarantine-cli.php" prune-preview "$root" "$days" > "$preview" || { rm -f -- "$preview" "$list"; return 2; }
+  printf 'PressWarden quarantine retention preview (cases older than %s days)\n' "$days"
+  while IFS=$'\t' read -r kind id extra; do
+    case "$kind" in
+      ELIGIBLE) n=$((n+1)); total=$((total+extra)); printf '  PRUNE  %s  %s bytes\n' "$id" "$extra"; printf '%s\n' "$id" >> "$list" ;;
+      KEPT) kept=$((kept+1)); printf '  KEEP   %s  %s\n' "$id" "$extra" ;;
+    esac
+  done < "$preview"
+  rm -f -- "$preview"
+  printf 'Eligible: %s case(s), %s bytes of retained evidence. Kept: %s.\n' "$n" "$total" "$kept"
+  if [ "$apply" -ne 1 ] || [ "$n" -eq 0 ]; then
+    [ "$n" -eq 0 ] || printf 'PREVIEW: nothing deleted. Add --apply to delete these cases after confirmation.\n'
+    rm -f -- "$list"; return 0
+  fi
+  [ -t 0 ] && [ "${PRESSWARDEN_INTERACTIVE:-1}" != 0 ] || { printf 'Quarantine pruning requires an interactive terminal; it never auto-approves.\n' >&2; rm -f -- "$list"; return 2; }
+  printf 'Deleted evidence cannot be restored by PressWarden. Keep an offline copy if an incident is open.\n'
+  printf 'Type prune to delete these %s case(s), anything else to skip: ' "$n"
+  IFS= read -r ans || ans=''
+  if [ "$ans" != prune ]; then printf 'SKIPPED: no cases deleted.\n'; rm -f -- "$list"; return 0; fi
+  php "$PRESSWARDEN_DIR/lib/quarantine-cli.php" prune-apply "$root" "$days" "$list"; rc=$?
+  rm -f -- "$list"
+  return "$rc"
+}
+
 case "$cmd" in
   -V|--version|version)
     [ "$#" -eq 0 ] || { printf 'Usage: presswarden version\n' >&2; exit 2; }
@@ -381,13 +441,17 @@ case "$cmd" in
     case "$action" in
       list) [ "$#" -eq 0 ] || { printf 'Usage: ./presswarden quarantine list\n' >&2; exit 2; } ;;
       verify) [ "$#" -eq 1 ] || { printf 'Usage: ./presswarden quarantine verify CASE_ID\n' >&2; exit 2; } ;;
-      *) printf 'Use quarantine list or quarantine verify CASE_ID. No restore/delete action is provided.\n' >&2; exit 2 ;;
+      prune) : ;;
+      *) printf 'Use quarantine list, quarantine verify CASE_ID or quarantine prune --older-than=DAYS [--apply]. No restore action is provided.\n' >&2; exit 2 ;;
     esac
     command -v php >/dev/null 2>&1 || { printf 'Quarantine inspection requires PHP CLI.\n' >&2; exit 2; }
     if [ "$PRESSWARDEN_PORTABLE" = 1 ]; then
       state="${PRESSWARDEN_STATE_DIR:-$PRESSWARDEN_DIR/var}"
     else
       state="${PRESSWARDEN_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/presswarden}"
+    fi
+    if [ "$action" = prune ]; then
+      pw_quarantine_prune "${QUARANTINE:-$state/quarantine}" "$@"; exit $?
     fi
     exec php "$PRESSWARDEN_DIR/lib/quarantine-cli.php" "$action" "${QUARANTINE:-$state/quarantine}" "$@"
     ;;
@@ -419,11 +483,11 @@ case "$cmd" in
     [ "$rc" -eq 0 ] || exit "$rc"
     select_target -- "${PW_CLI_TARGET_ARGS[@]}" || exit 2
     if [ "$PW_CLI_SCAN_SUITE" = inspect ]; then exec bash "$PRESSWARDEN_DIR/suites/inspect.sh" "$PW_CLI_SCAN_KIND"; fi
-    exec bash "$PRESSWARDEN_DIR/suites/$PW_CLI_SCAN_SUITE.sh"
+    pw_scan_then_offer_remediation "$PRESSWARDEN_DIR/suites/$PW_CLI_SCAN_SUITE.sh"; exit $?
     ;;
   fast|full|incident|db)
     select_target "$@" || exit 2
-    exec bash "$PRESSWARDEN_DIR/suites/$cmd.sh"
+    pw_scan_then_offer_remediation "$PRESSWARDEN_DIR/suites/$cmd.sh"; exit $?
     ;;
   intel)
     action="${1:-status}"; [ "$#" -gt 0 ] && shift || true

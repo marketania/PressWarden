@@ -205,7 +205,12 @@ Recovery is explicit and interactive:
 ./presswarden remediate core SITE
 ./presswarden quarantine list
 ./presswarden quarantine verify CASE_ID
+./presswarden quarantine prune --older-than=DAYS [--apply]
 ```
+
+`remediate files` covers PHP/upload threat findings and public exposure findings: `.env` and credential files, keys, database/config backup artifacts, VCS metadata and public logs. Each section asks once; eligible items are copied to a private quarantine case and hash-verified before removal. Scans themselves never change files. When a section has findings that this workflow can handle, the scan prints the exact `remediate files` command. In a terminal, `scan`, `fast`, `full`, `incident` and `db` then ask `Remediate now? [y/N]` after every check and report has finished. Yes starts the separate workflow, which reruns the checks and asks again per section; No or Enter changes nothing. Redirected input and `PRESSWARDEN_INTERACTIVE=0` never show the offer.
+
+`quarantine prune` previews cases older than the given number of days and deletes nothing. Only cases that verify and record a complete removal are eligible; tampered, incomplete or unrecognized cases are kept and listed. `--apply` asks for a typed `prune` in a terminal, refuses if the eligible set changed since the preview, and appends each removal to `prune-log.tsv` in the quarantine directory.
 
 Remediation requires a terminal, and prompts default to skip. `PRESSWARDEN_INTERACTIVE=0` never approves changes. Generic file handling retains quarantine/evidence protections; critical configuration/core paths are not generic deletion targets. Core recovery verifies the exact official version/locale package and selected file identities, preserves recovery copies and reports partial outcomes.
 
