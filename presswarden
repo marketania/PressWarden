@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -uo pipefail
 # Internal target context is rebuilt for each CLI invocation, never inherited.
-unset _PW_TARGET_EXCLUSIONS _PW_FLEET_ROOT _PW_EXPLICIT_REMEDIATION _PW_REMEDIATION_OFFER_FILE
+unset _PW_TARGET_EXCLUSIONS _PW_FLEET_ROOT _PW_EXPLICIT_REMEDIATION _PW_SCAN_STEP_REMEDIATION
 export _PW_EXPLICIT_REMEDIATION=0
 
 # Resolve the real program directory even when the CLI is invoked through the
@@ -298,24 +298,12 @@ show_config() {
 
 export _PW_EXPLICIT_REMEDIATION=0
 cmd="${1:-help}"; shift || true
-# Run a security scan. In a terminal, when a check printed a remediation hint,
-# offer the separate remediate files workflow after the whole scan and its reports
-# finished. The scan itself never changes files; the default answer is No.
-pw_scan_then_offer_remediation() {
-  local offer rc ans
-  if [ ! -t 0 ] || [ "${PRESSWARDEN_INTERACTIVE:-1}" = 0 ]; then exec bash "$@"; fi
-  offer=$(mktemp "${TMPDIR:-/tmp}/presswarden-offer.XXXXXX") || exec bash "$@"
-  _PW_REMEDIATION_OFFER_FILE="$offer" bash "$@"; rc=$?
-  if [ ! -s "$offer" ]; then rm -f -- "$offer"; return "$rc"; fi
-  printf '\nThis scan found items that remediate files can quarantine (checks: %s).\n' "$(sort -u "$offer" | paste -sd ' ' -)"
-  rm -f -- "$offer"
-  printf 'It reruns those checks and asks again per section before any change.\n'
-  printf 'Remediate now? [y/N] '
-  IFS= read -r ans || ans=''
-  case "$ans" in
-    y|Y|yes|YES) export _PW_EXPLICIT_REMEDIATION=1; exec bash "$PRESSWARDEN_DIR/suites/remediate-files.sh" ;;
-    *) printf 'Skipped. No files changed.\n'; return "$rc" ;;
-  esac
+# Run a security scan. In a terminal, each remediable section asks right after
+# its findings are printed and saved (default No). Redirected input and
+# PRESSWARDEN_INTERACTIVE=0 never prompt and never change files.
+pw_scan_with_step_prompts() {
+  if [ -t 0 ] && [ "${PRESSWARDEN_INTERACTIVE:-1}" != 0 ]; then export _PW_SCAN_STEP_REMEDIATION=1; fi
+  exec bash "$@"
 }
 
 # Manual quarantine retention. Preview by default; --apply deletes only the
@@ -483,11 +471,11 @@ case "$cmd" in
     [ "$rc" -eq 0 ] || exit "$rc"
     select_target -- "${PW_CLI_TARGET_ARGS[@]}" || exit 2
     if [ "$PW_CLI_SCAN_SUITE" = inspect ]; then exec bash "$PRESSWARDEN_DIR/suites/inspect.sh" "$PW_CLI_SCAN_KIND"; fi
-    pw_scan_then_offer_remediation "$PRESSWARDEN_DIR/suites/$PW_CLI_SCAN_SUITE.sh"; exit $?
+    pw_scan_with_step_prompts "$PRESSWARDEN_DIR/suites/$PW_CLI_SCAN_SUITE.sh"
     ;;
   fast|full|incident|db)
     select_target "$@" || exit 2
-    pw_scan_then_offer_remediation "$PRESSWARDEN_DIR/suites/$cmd.sh"; exit $?
+    pw_scan_with_step_prompts "$PRESSWARDEN_DIR/suites/$cmd.sh"
     ;;
   intel)
     action="${1:-status}"; [ "$#" -gt 0 ] && shift || true

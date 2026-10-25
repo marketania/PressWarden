@@ -108,7 +108,7 @@ print that direction, return exit 2, and never run a sibling application.
 Security evidence, quarantine and recovery remain explicit. Ordinary scans never
 delete website files or approve remediation. Use `help remediate` for the existing
 interactive operations, including the manual `quarantine prune` retention step.
-Scans with findings that `remediate files` can handle print that command and, in a terminal, offer it once at the end (default No).
+Scans with findings that `remediate files` can handle ask `Remediate now? [y/N]` right after that section in a terminal, and otherwise print the command.
 
 ## Included scanner fixes
 
