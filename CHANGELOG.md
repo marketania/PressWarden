@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.0.3 — 2026-10-25
 
 - Ask `Remediate now? [y/N]` right after each remediable scan section with
   findings (for example the `.env` search, then the public log search), instead

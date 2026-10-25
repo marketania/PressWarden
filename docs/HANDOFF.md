@@ -4,15 +4,13 @@ Check this file and open pull requests before starting work. Record one branch a
 owned area per agent/task. Resolve overlap through comments on the owning PR;
 never push that agent's branch. Remove the entry when the PR is merged.
 
-## Publication handoff — 2.0.2
+## Publication handoff — 2.0.3
 
-The owner authorized publication on 2026-10-21. PR #40 includes the command
-usability, scanner coverage, configuration and newcomer-guide work in version
-2.0.2, including the reviewed safety fixes from PR #34/#33. The task ownership
-entry is removed with this merge.
+The owner asked to publish these changes on 2026-10-25. Version 2.0.3 releases
+the per-step scan remediation prompt (PR #43), the public-exposure check in `remediate files` and `quarantine prune` (PR #41). No task ownership entry remains.
 
 The existing verified source-release workflow publishes only after the required
-checks pass on the exact main commit. See [release notes](releases/2.0.2.md) for
+checks pass on the exact main commit. See [release notes](releases/2.0.3.md) for
 operator changes and update instructions. Production website operations are
 separate from source publication.
 
