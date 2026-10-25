@@ -4,6 +4,12 @@ Check this file and open pull requests before starting work. Record one branch a
 owned area per agent/task. Resolve overlap through comments on the owning PR;
 never push that agent's branch. Remove the entry when the PR is merged.
 
+## Active work
+
+- `claude/project-thread-kwdhal` (Claude): exposure findings in `remediate files`,
+  post-scan remediation offer and `quarantine prune`. Owns `checks/sensitive-files.sh`,
+  `lib/remediation.sh`, quarantine prune code and related docs/tests.
+
 ## Publication handoff — 2.0.2
 
 The owner authorized publication on 2026-10-21. PR #40 includes the command

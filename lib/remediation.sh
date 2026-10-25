@@ -61,11 +61,29 @@ _build_action_lists() {
   sort -u -o "$protected" "$protected" 2>/dev/null || true
 }
 
+# Checks whose findings the explicit remediate files suite can act on.
+_PW_REMEDIATE_FILES_CHECKS=' phpcheck phpquick phpdeep wp-uploads sensitive-files '
+
+# Routine scans stay read-only: print only the command that offers remediation.
+_pw_remediation_hint() {
+  local target='[target]'
+  case "$_PW_REMEDIATE_FILES_CHECKS" in *" ${NAME:-} "*) : ;; *) return 0 ;; esac
+  [ "${#SCAN_ROOTS[@]}" -eq 1 ] && target=$(printf '%q' "${SCAN_ROOTS[0]}")
+  printf '    %sℹ%s  to review these items with default-skip quarantine prompts, run: ./presswarden remediate files %s\n' "$C" "$X" "$target"
+  # A terminal scan offers that separate workflow only after every check finished.
+  if [ -n "${_PW_REMEDIATION_OFFER_FILE:-}" ] && [ -f "$_PW_REMEDIATION_OFFER_FILE" ] && [ ! -L "$_PW_REMEDIATION_OFFER_FILE" ]; then
+    printf '%s\n' "${NAME:-}" >> "$_PW_REMEDIATION_OFFER_FILE" || true
+  fi
+}
+
 # Ask for remediation after a section with file findings.
 # Default is always SKIP. In non-interactive use, nothing is deleted.
 _prompt_file_action() {
   local findings="$1" sev="$2" del prot nd np ans
-  [ "${_PW_EXPLICIT_REMEDIATION:-0}" = 1 ] || return 0
+  if [ "${_PW_EXPLICIT_REMEDIATION:-0}" != 1 ]; then
+    [ "$sev" = info ] || _pw_remediation_hint
+    return 0
+  fi
   [ "$sev" != info ] || return 0
   [ "${PW_REMEDIATION_FAILED:-0}" -eq 0 ] || return 2
   [ "${PW_CHECK_INCOMPLETE:-0}" -eq 0 ] || return 2

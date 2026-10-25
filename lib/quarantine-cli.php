@@ -51,6 +51,16 @@ try {
         printf("Cases: %d; legacy/unrecognized directories: %d (left untouched).\n", count($ids), $legacy);
         if (count($ids) > 100) echo "Showing 100 case IDs. Use the quarantine directory for older cases.\n";
         echo "Verify a case with: ./presswarden quarantine verify CASE_ID\n";
+    } elseif ($mode === 'prune-preview' && $argc === 4 && preg_match('/^[1-9][0-9]{0,4}$/D', $argv[3])) {
+        $r = $q->pruneCandidates($argv[2], (int)$argv[3]);
+        foreach ($r['eligible'] as $id => $bytes) printf("ELIGIBLE\t%s\t%d\n", $id, $bytes);
+        foreach ($r['kept'] as $id => $why) printf("KEPT\t%s\t%s\n", $id, $why);
+    } elseif ($mode === 'prune-apply' && $argc === 5 && preg_match('/^[1-9][0-9]{0,4}$/D', $argv[3])) {
+        if (is_link($argv[4]) || !is_file($argv[4])) throw new RuntimeException('invalid approval list');
+        $ids = array_values(array_filter(explode("\n", (string)file_get_contents($argv[4], false, null, 0, 1048576)), 'strlen'));
+        foreach ($ids as $id) if (!preg_match('/^case-[0-9]{8}T[0-9]{6}Z-[a-f0-9]{16}$/D', $id)) throw new RuntimeException('invalid approval list');
+        $r = $q->prune($argv[2], (int)$argv[3], $ids);
+        printf("COMPLETE\t%d\t%d\n", $r['removed'], $r['bytes']);
     } else throw new RuntimeException('invalid arguments');
 } catch (Throwable $e) {
     // Do not echo arbitrary exception messages, file contents or filesystem diagnostics.

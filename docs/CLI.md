@@ -107,8 +107,8 @@ print that direction, return exit 2, and never run a sibling application.
 
 Security evidence, quarantine and recovery remain explicit. Ordinary scans never
 delete website files or approve remediation. Use `help remediate` for the existing
-interactive operations. This command consolidation does not change retention,
-quarantine rules, independent configuration/state, or production deployment.
+interactive operations, including the manual `quarantine prune` retention step.
+Scans with findings that `remediate files` can handle print that command and, in a terminal, offer it once at the end (default No).
 
 ## Included scanner fixes
 

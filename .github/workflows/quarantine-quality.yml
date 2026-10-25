@@ -29,6 +29,9 @@ jobs:
       - name: Approved actions, read-only inspection, privacy and concurrency
         if: ${{ steps.scope.outputs.full != 'false' }}
         run: bash tests/quarantine-runtime.sh
+      - name: Manual retention preview, verification gate and exact approval
+        if: ${{ steps.scope.outputs.full != 'false' }}
+        run: bash tests/quarantine-prune.sh
       - name: Interruption before and after source removal
         if: ${{ steps.scope.outputs.full != 'false' }}
         run: bash tests/quarantine-interruption.sh
